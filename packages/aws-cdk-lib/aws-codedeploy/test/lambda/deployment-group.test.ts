@@ -11,7 +11,7 @@ function mockFunction(stack: cdk.Stack, id: string) {
   return new lambda.Function(stack, id, {
     code: lambda.Code.fromInline('mock'),
     handler: 'index.handler',
-    runtime: lambda.Runtime.NODEJS_14_X,
+    runtime: lambda.Runtime.NODEJS_LATEST,
   });
 }
 function mockAlias(stack: cdk.Stack) {
@@ -94,15 +94,7 @@ describe('CodeDeploy Lambda DeploymentGroup', () => {
           Action: 'sts:AssumeRole',
           Effect: 'Allow',
           Principal: {
-            Service: {
-              'Fn::FindInMap': [
-                'ServiceprincipalMap',
-                {
-                  Ref: 'AWS::Region',
-                },
-                'codedeploy',
-              ],
-            },
+            Service: 'codedeploy.amazonaws.com',
           },
         }],
         Version: '2012-10-17',
@@ -650,6 +642,58 @@ describe('CodeDeploy Lambda DeploymentGroup', () => {
       expect(group.deploymentConfig.deploymentConfigArn).toEqual(expect.stringContaining(
         `:codedeploy:${region}:${account}:deploymentconfig:CodeDeployDefault.LambdaCanary10Percent5Minutes`,
       ));
+    });
+  });
+
+  test('can ignore alarm status when alarms are present', () => {
+    const stack = new cdk.Stack();
+    const application = new codedeploy.LambdaApplication(stack, 'MyApp');
+    const alias = mockAlias(stack);
+    new codedeploy.LambdaDeploymentGroup(stack, 'MyDG', {
+      application,
+      alias,
+      postHook: mockFunction(stack, 'PostHook'),
+      deploymentConfig: codedeploy.LambdaDeploymentConfig.ALL_AT_ONCE,
+      ignoreAlarmConfiguration: true,
+      alarms: [new cloudwatch.Alarm(stack, 'Failures', {
+        metric: alias.metricErrors(),
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        threshold: 1,
+        evaluationPeriods: 1,
+      })],
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::CodeDeploy::DeploymentGroup', {
+      AlarmConfiguration: {
+        Enabled: false,
+      },
+    });
+  });
+
+  test('alarms not enabled when removeAlarms is passed with ignoreAlarmConfiguration', () => {
+    const stack = new cdk.Stack();
+    stack.node.setContext('@aws-cdk/aws-codedeploy:removeAlarmsFromDeploymentGroup', true);
+
+    const application = new codedeploy.LambdaApplication(stack, 'MyApp');
+    const alias = mockAlias(stack);
+    new codedeploy.LambdaDeploymentGroup(stack, 'MyDG', {
+      application,
+      alias,
+      postHook: mockFunction(stack, 'PostHook'),
+      deploymentConfig: codedeploy.LambdaDeploymentConfig.ALL_AT_ONCE,
+      ignoreAlarmConfiguration: true,
+      alarms: [new cloudwatch.Alarm(stack, 'Failures', {
+        metric: alias.metricErrors(),
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        threshold: 1,
+        evaluationPeriods: 1,
+      })],
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::CodeDeploy::DeploymentGroup', {
+      AlarmConfiguration: {
+        Enabled: false,
+      },
     });
   });
 });

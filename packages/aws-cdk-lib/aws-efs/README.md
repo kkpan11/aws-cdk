@@ -27,6 +27,8 @@ const fileSystem = new efs.FileSystem(this, 'MyEfsFileSystem', {
   lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS, // files are not transitioned to infrequent access (IA) storage by default
   performanceMode: efs.PerformanceMode.GENERAL_PURPOSE, // default
   outOfInfrequentAccessPolicy: efs.OutOfInfrequentAccessPolicy.AFTER_1_ACCESS, // files are not transitioned back from (infrequent access) IA to primary storage by default
+  transitionToArchivePolicy: efs.LifecyclePolicy.AFTER_14_DAYS, // files are not transitioned to Archive by default
+  replicationOverwriteProtection: efs.ReplicationOverwriteProtection.ENABLED, // Set to `DISABLED` if you want to create a read-only file system for use as a replication destination
 });
 ```
 
@@ -50,6 +52,77 @@ const importedFileSystem = efs.FileSystem.fromFileSystemAttributes(this, 'existi
   }),
 });
 ```
+
+### One Zone file system
+
+To initialize a One Zone file system use the `oneZone` property:
+
+```ts
+declare const vpc: ec2.Vpc;
+
+new efs.FileSystem(this, 'OneZoneFileSystem', {
+  vpc,
+  oneZone: true,
+})
+```
+
+⚠️ One Zone file systems are not compatible with the MAX_IO performance mode.
+
+⚠️ When `oneZone` is enabled, the file system is automatically placed in the first availability zone of the VPC.
+To specify a different availability zone:
+
+```ts
+declare const vpc: ec2.Vpc;
+
+new efs.FileSystem(this, 'OneZoneFileSystem', {
+  vpc,
+  oneZone: true,
+  vpcSubnets: {
+    availabilityZones: ['us-east-1b'],
+  },
+})
+```
+
+⚠️ When `oneZone` is enabled, mount targets will be created only in the specified availability zone.
+This is to prevent deployment failures due to cross-AZ configurations.
+
+⚠️ When `oneZone` is enabled, `vpcSubnets` can be specified with
+`availabilityZones` that contains exactly one single zone.
+
+### Replicating file systems
+
+You can create a replica of your EFS file system in the AWS Region of your preference.
+
+```ts
+declare const vpc: ec2.Vpc;
+
+// auto generate a regional replication destination file system
+new efs.FileSystem(this, 'RegionalReplicationFileSystem', {
+  vpc,
+  replicationConfiguration: efs.ReplicationConfiguration.regionalFileSystem('us-west-2'),
+});
+
+// auto generate a one zone replication destination file system
+new efs.FileSystem(this, 'OneZoneReplicationFileSystem', {
+  vpc,
+  replicationConfiguration: efs.ReplicationConfiguration.oneZoneFileSystem('us-east-1', 'us-east-1a'),
+});
+
+const destinationFileSystem = new efs.FileSystem(this, 'DestinationFileSystem', {
+  vpc,
+  // set as the read-only file system for use as a replication destination
+  replicationOverwriteProtection: efs.ReplicationOverwriteProtection.DISABLED,
+});
+// specify the replication destination file system
+new efs.FileSystem(this, 'ReplicationFileSystem', {
+  vpc,
+  replicationConfiguration: efs.ReplicationConfiguration.existingFileSystem(destinationFileSystem),
+});
+```
+
+**Note**: EFS now supports only one replication destination and thus allows specifying just one `replicationConfiguration` for each file system.
+
+> Visit [Replicating file systems](https://docs.aws.amazon.com/efs/latest/ug/efs-replication.html) for more details.
 
 ### IAM to control file system data access
 
@@ -96,14 +169,41 @@ fileSystem.addToResourcePolicy(statement);
 ### Permissions
 
 If you need to grant file system permissions to another resource, you can use the `.grant()` API.
-As an example, the following code gives `elasticfilesystem:ClientWrite` permissions to an IAM role.
+As an example, the following code gives `elasticfilesystem:Backup` permissions to an IAM role.
 
 ```ts fixture=with-filesystem-instance
 const role = new iam.Role(this, 'Role', {
   assumedBy: new iam.AnyPrincipal(),
 });
 
-fileSystem.grant(role, 'elasticfilesystem:ClientWrite');
+fileSystem.grant(role, 'elasticfilesystem:Backup');
+```
+
+APIs for clients also include `.grantRead()`, `.grantReadWrite()`, and `.grantRootAccess()`. Using these APIs grants access to clients.
+Also, by default, the file system policy is updated to only allow access to clients using IAM authentication and deny access to anonymous clients.
+
+```ts fixture=with-filesystem-instance
+const role = new iam.Role(this, 'ClientRole', {
+  assumedBy: new iam.AnyPrincipal(),
+});
+
+fileSystem.grantRead(role);
+```
+
+You can control this behavior with `allowAnonymousAccess`. The following example continues to allow anonymous client access.
+
+```ts
+import * as iam from 'aws-cdk-lib/aws-iam';
+
+const role = new iam.Role(this, 'ClientRole', {
+  assumedBy: new iam.AnyPrincipal(),
+});
+const fileSystem = new efs.FileSystem(this, 'MyEfsFileSystem', {
+  vpc: new ec2.Vpc(this, 'VPC'),
+  allowAnonymousAccess: true,
+});
+
+fileSystem.grantRead(role);
 ```
 
 ### Access Point
@@ -117,7 +217,10 @@ the access point can only access data in its own directory and below. To learn m
 Use the `addAccessPoint` API to create an access point from a fileSystem.
 
 ```ts fixture=with-filesystem-instance
-fileSystem.addAccessPoint('AccessPoint');
+fileSystem.addAccessPoint('MyAccessPoint', {
+  // create a unique access point via an optional client token
+  clientToken: 'client-token',
+});
 ```
 
 By default, when you create an access point, the root(`/`) directory is exposed to the client

@@ -526,15 +526,15 @@ describe('CDK Include for nested stacks', () => {
       grandChild = child.includedTemplate.getNestedStack('GrandChildStack');
 
       hash1 = '5dc7d4a99cfe2979687dc74f2db9fd75f253b5505a1912b5ceecf70c9aefba50';
-      hash2 = '7775730164edb5faae717ac1d2e90d9c0d0fdbeafe48763e5c1b7fb5e39e00a5';
+      hash2 = 'e5a13211dc428f077438af77fb9807401b0fe4ec327a22ee7d6b889a8d4d4240';
 
       parentBucketParam = `AssetParameters${hash1}S3BucketEAA24F0C`;
       parentKeyParam = `AssetParameters${hash1}S3VersionKey1194CAB2`;
       grandChildBucketParam = `referencetoAssetParameters${hash1}S3BucketEAA24F0CRef`;
       grandChildKeyParam = `referencetoAssetParameters${hash1}S3VersionKey1194CAB2Ref`;
 
-      childBucketParam = `AssetParameters${hash2}S3BucketDEB194C6`;
-      childKeyParam = `AssetParameters${hash2}S3VersionKey8B342ED1`;
+      childBucketParam = `AssetParameters${hash2}S3BucketBFD439A3`;
+      childKeyParam = `AssetParameters${hash2}S3VersionKey2E0E4821`;
     });
 
     test('correctly creates parameters in the parent stack, and passes them to the child stack', () => {
@@ -560,7 +560,7 @@ describe('CDK Include for nested stacks', () => {
             "Type": "String",
             "Description": `S3 key for asset version \"${hash2}\"`,
           },
-          [`AssetParameters${hash2}ArtifactHashAA82D4CC`]: {
+          [`AssetParameters${hash2}ArtifactHashBC693046`]: {
             "Type": "String",
             "Description": `Artifact hash for asset \"${hash2}\"`,
           },
@@ -741,6 +741,77 @@ describe('CDK Include for nested stacks', () => {
           "SecondParameter": "second-value",
         },
       });
+    });
+  });
+
+  describe('dehydrated resources', () => {
+    let parentStack: core.Stack;
+    let childStack: core.Stack;
+
+    beforeEach(() => {
+      parentStack = new core.Stack();
+    });
+
+    test('dehydrated resources are included in child templates, even if they are otherwise invalid', () => {
+      const parentTemplate = new inc.CfnInclude(parentStack, 'ParentStack', {
+        templateFile: testTemplateFilePath('parent-dehydrated.json'),
+        dehydratedResources: ['ASG'],
+        loadNestedStacks: {
+          'ChildStack': {
+            templateFile: testTemplateFilePath('child-dehydrated.json'),
+            dehydratedResources: ['ChildASG'],
+          },
+        },
+      });
+      childStack = parentTemplate.getNestedStack('ChildStack').stack;
+
+      Template.fromStack(childStack).templateMatches({
+        "Conditions": {
+          "SomeCondition": {
+            "Fn::Equals": [
+              2,
+              2,
+            ],
+          },
+        },
+        "Resources": {
+          "ChildStackChildASGF815DFE9": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "Properties": {
+              "MaxSize": 10,
+              "MinSize": 1,
+            },
+            "UpdatePolicy": {
+              "AutoScalingScheduledAction": {
+                "Fn::If": [
+                  "SomeCondition",
+                  {
+                    "IgnoreUnmodifiedGroupSizeProperties": true,
+                  },
+                  {
+                    "IgnoreUnmodifiedGroupSizeProperties": false,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+    });
+
+    test('throws if a nested stack is marked dehydrated', () => {
+      expect(() => {
+        new inc.CfnInclude(parentStack, 'ParentStack', {
+          templateFile: testTemplateFilePath('parent-dehydrated.json'),
+          dehydratedResources: ['ChildStack'],
+          loadNestedStacks: {
+            'ChildStack': {
+              templateFile: testTemplateFilePath('child-dehydrated.json'),
+              dehydratedResources: ['ChildASG'],
+            },
+          },
+        });
+      }).toThrow(/nested stack 'ChildStack' was marked as dehydrated - nested stacks cannot be dehydrated/);
     });
   });
 });

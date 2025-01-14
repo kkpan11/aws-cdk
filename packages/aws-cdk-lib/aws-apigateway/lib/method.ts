@@ -13,7 +13,7 @@ import { IStage } from './stage';
 import { validateHttpMethod } from './util';
 import * as cloudwatch from '../../aws-cloudwatch';
 import * as iam from '../../aws-iam';
-import { ArnFormat, FeatureFlags, Lazy, Names, Resource, Stack } from '../../core';
+import { Annotations, ArnFormat, FeatureFlags, Lazy, Names, Resource, Stack } from '../../core';
 import { APIGATEWAY_REQUEST_VALIDATOR_UNIQUE_ID } from '../../cx-api';
 
 export interface MethodOptions {
@@ -173,7 +173,7 @@ export class Method extends Resource {
    */
   public readonly api: IRestApi;
 
-  private methodResponses: MethodResponse[];
+  private readonly methodResponses: MethodResponse[] = [];
 
   constructor(scope: Construct, id: string, props: MethodProps) {
     super(scope, id);
@@ -185,25 +185,50 @@ export class Method extends Resource {
     validateHttpMethod(this.httpMethod);
 
     const options = props.options || {};
-
     const defaultMethodOptions = props.resource.defaultMethodOptions || {};
-    const authorizer = options.authorizer || defaultMethodOptions.authorizer;
+
+    // do not use the default authorizer config in case if the provided authorizer type is None
+    const authorizer =
+        options.authorizationType === AuthorizationType.NONE
+        && options.authorizer == undefined ? undefined : options.authorizer || defaultMethodOptions.authorizer;
     const authorizerId = authorizer?.authorizerId ? authorizer.authorizerId : undefined;
 
-    const authorizationTypeOption = options.authorizationType || defaultMethodOptions.authorizationType;
-    const authorizationType = authorizer?.authorizationType || authorizationTypeOption || AuthorizationType.NONE;
+    /**
+     * Get and validate authorization type from the values set by API resource and method.
+     *
+     * REST API Resource
+     * └── defaultMethodOptions: Method options to use as a default for all methods created within this API unless custom options are specified.
+     *    ├── authorizationType: Specifies the default authorization type unless custom options are specified, recommended to not be specified.
+     *    └── authorizer: Specifies the default authorizer for all methods created within this API unless custom options are specified.
+     *        └── authorizerType: The default authorization type of this authorizer.
+     *
+     * REST API Method
+     * └── options: Method options.
+     *    ├── authorizationType: Specifies the authorization type, recommended to not be specified.
+     *    └── authorizer: Specifies an authorizer to use for this method.
+     *        └── authorizerType: The authorization type of this authorizer.
+     *
+     * Authorization type is first set to "authorizer.authorizerType", falling back to method's "authorizationType",
+     * falling back to API resource's default "authorizationType", and lastly "Authorizer.NONE".
+     *
+     * Note that "authorizer.authorizerType" should match method or resource's "authorizationType" if exists.
+     */
+    const authorizationType = this.getMethodAuthorizationType(options, defaultMethodOptions, authorizer);
 
-    // if the authorizer defines an authorization type and we also have an explicit option set, check that they are the same
-    if (authorizer?.authorizationType && authorizationTypeOption && authorizer?.authorizationType !== authorizationTypeOption) {
-      throw new Error(`${this.resource}/${this.httpMethod} - Authorization type is set to ${authorizationTypeOption} ` +
-        `which is different from what is required by the authorizer [${authorizer.authorizationType}]`);
+    // AuthorizationScope should only be applied to COGNITO_USER_POOLS AuthorizationType.
+    const defaultScopes = options.authorizationScopes ?? defaultMethodOptions.authorizationScopes;
+    const authorizationScopes = authorizationType === AuthorizationType.COGNITO ? defaultScopes : undefined;
+    if (authorizationType !== AuthorizationType.COGNITO && defaultScopes) {
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-apigateway:invalidAuthScope', '\'AuthorizationScopes\' can only be set when \'AuthorizationType\' sets \'COGNITO_USER_POOLS\'. Default to ignore the values set in \'AuthorizationScopes\'.');
     }
 
     if (Authorizer.isAuthorizer(authorizer)) {
       authorizer._attachToApi(this.api);
     }
 
-    this.methodResponses = options.methodResponses ?? [];
+    for (const mr of options.methodResponses ?? defaultMethodOptions.methodResponses ?? []) {
+      this.addMethodResponse(mr);
+    }
 
     const integration = props.integration ?? this.resource.defaultIntegration ?? new MockIntegration();
     const bindResult = integration.bind(this);
@@ -221,7 +246,7 @@ export class Method extends Resource {
       methodResponses: Lazy.any({ produce: () => this.renderMethodResponses(this.methodResponses) }, { omitEmptyArray: true }),
       requestModels: this.renderRequestModels(options.requestModels),
       requestValidatorId: this.requestValidatorId(options),
-      authorizationScopes: options.authorizationScopes ?? defaultMethodOptions.authorizationScopes,
+      authorizationScopes: authorizationScopes,
     };
 
     const resource = new CfnMethod(this, 'Resource', methodProps);
@@ -278,9 +303,38 @@ export class Method extends Resource {
 
   /**
    * Add a method response to this method
+   *
+   * You should only add one method reponse for every status code. The API allows it
+   * for historical reasons, but will add a warning if this happens. If you do, your Method
+   * will nondeterministically use one of the responses, and ignore the rest.
    */
   public addMethodResponse(methodResponse: MethodResponse): void {
+    const mr = this.methodResponses.find((x) => x.statusCode === methodResponse.statusCode);
+    if (mr) {
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-apigateway:duplicateStatusCodes', `addMethodResponse called multiple times with statusCode=${methodResponse.statusCode}, deployment will be nondeterministic. Use a single addMethodResponse call to configure the entire response.`);
+    }
     this.methodResponses.push(methodResponse);
+  }
+
+  /**
+   * Get API Gateway Method's authorization type
+   * @param options API Gateway Method's options to use
+   * @param defaultMethodOptions API Gateway resource's default Method's options to use
+   * @param authorizer Authorizer used for API Gateway Method
+   * @returns API Gateway Method's authorizer type
+   */
+  private getMethodAuthorizationType(options: MethodOptions, defaultMethodOptions: MethodOptions, authorizer?: IAuthorizer): string {
+    const authorizerAuthType = authorizer?.authorizationType;
+    const optionsAuthType = options.authorizationType || defaultMethodOptions.authorizationType;
+    const finalAuthType = authorizerAuthType || optionsAuthType || AuthorizationType.NONE;
+
+    // if the authorizer defines an authorization type and we also have an explicit option set, check that they are the same
+    if (authorizerAuthType && optionsAuthType && authorizerAuthType !== optionsAuthType) {
+      throw new Error(`${this.resource}/${this.httpMethod} - Authorization type is set to ${optionsAuthType} ` +
+        `which is different from what is required by the authorizer [${authorizerAuthType}]`);
+    }
+
+    return finalAuthType;
   }
 
   private renderIntegration(bindResult: IntegrationConfig): CfnMethod.IntegrationProperty {
@@ -322,12 +376,8 @@ export class Method extends Resource {
       let responseModels: {[contentType: string]: string} | undefined;
 
       if (mr.responseModels) {
-        responseModels = {};
-        for (const contentType in mr.responseModels) {
-          if (mr.responseModels.hasOwnProperty(contentType)) {
-            responseModels[contentType] = mr.responseModels[contentType].modelId;
-          }
-        }
+        responseModels = Object.fromEntries(Object.entries(mr.responseModels)
+          .map(([contentType, rm]) => [contentType, rm.modelId]));
       }
 
       const methodResponseProp = {

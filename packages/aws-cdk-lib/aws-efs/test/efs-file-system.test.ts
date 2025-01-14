@@ -2,8 +2,10 @@ import { Template, Match } from '../../assertions';
 import * as ec2 from '../../aws-ec2';
 import * as iam from '../../aws-iam';
 import * as kms from '../../aws-kms';
-import { RemovalPolicy, Size, Stack, Tags } from '../../core';
-import { FileSystem, LifecyclePolicy, PerformanceMode, ThroughputMode, OutOfInfrequentAccessPolicy } from '../lib';
+import { App, RemovalPolicy, Size, Stack, Tags } from '../../core';
+import * as cxapi from '../../cx-api';
+import { FileSystem, LifecyclePolicy, PerformanceMode, ThroughputMode, OutOfInfrequentAccessPolicy, ReplicationOverwriteProtection } from '../lib';
+import { ReplicationConfiguration } from '../lib/efs-file-system';
 
 let stack = new Stack();
 let vpc = new ec2.Vpc(stack, 'VPC');
@@ -107,12 +109,13 @@ test('file system is created correctly with a life cycle property', () => {
   });
 });
 
-test('file system is created correctly with a life cycle property and out of infrequent access property', () => {
+test('file system LifecyclePolicies is created correctly', () => {
   // WHEN
   new FileSystem(stack, 'EfsFileSystem', {
     vpc,
     lifecyclePolicy: LifecyclePolicy.AFTER_7_DAYS,
     outOfInfrequentAccessPolicy: OutOfInfrequentAccessPolicy.AFTER_1_ACCESS,
+    transitionToArchivePolicy: LifecyclePolicy.AFTER_14_DAYS,
   });
   // THEN
   Template.fromStack(stack).hasResourceProperties('AWS::EFS::FileSystem', {
@@ -122,6 +125,25 @@ test('file system is created correctly with a life cycle property and out of inf
       },
       {
         TransitionToPrimaryStorageClass: 'AFTER_1_ACCESS',
+      },
+      {
+        TransitionToArchive: 'AFTER_14_DAYS',
+      },
+    ],
+  });
+});
+
+test('file system with transition to archive is created correctly', () => {
+  // WHEN
+  new FileSystem(stack, 'EfsFileSystem', {
+    vpc,
+    transitionToArchivePolicy: LifecyclePolicy.AFTER_1_DAY,
+  });
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::EFS::FileSystem', {
+    LifecyclePolicies: [
+      {
+        TransitionToArchive: 'AFTER_1_DAY',
       },
     ],
   });
@@ -182,7 +204,7 @@ test('Exception when throughput mode is set to ELASTIC, performance mode cannot 
       throughputMode: ThroughputMode.ELASTIC,
       performanceMode: PerformanceMode.MAX_IO,
     });
-  }).toThrowError(/ThroughputMode ELASTIC is not supported for file systems with performanceMode MAX_IO/);
+  }).toThrow(/ThroughputMode ELASTIC is not supported for file systems with performanceMode MAX_IO/);
 });
 
 test('Exception when throughput mode is set to PROVISIONED, but provisioned throughput is not set', () => {
@@ -191,7 +213,7 @@ test('Exception when throughput mode is set to PROVISIONED, but provisioned thro
       vpc,
       throughputMode: ThroughputMode.PROVISIONED,
     });
-  }).toThrowError(/Property provisionedThroughputPerSecond is required when throughputMode is PROVISIONED/);
+  }).toThrow(/Property provisionedThroughputPerSecond is required when throughputMode is PROVISIONED/);
 });
 
 test('fails when provisioned throughput is less than the valid range', () => {
@@ -209,7 +231,7 @@ test('fails when provisioned throughput is not a whole number of mebibytes', () 
       throughputMode: ThroughputMode.PROVISIONED,
       provisionedThroughputPerSecond: Size.kibibytes(2050),
     });
-  }).toThrowError(/cannot be converted into a whole number/);
+  }).toThrow(/cannot be converted into a whole number/);
 });
 
 test('file system is created correctly with provisioned throughput mode', () => {
@@ -558,5 +580,530 @@ test('imported file system can not add statements to file system policy', () => 
   });
   expect(importedFileSystemResult).toStrictEqual({
     statementAdded: false,
+  });
+});
+
+test('mountTargetOrderInsensitiveLogicalId flag is true', () => {
+  // WHEN
+  const customStack = new Stack();
+  customStack.node.setContext('@aws-cdk/aws-efs:mountTargetOrderInsensitiveLogicalId', true);
+
+  const customVpc = new ec2.Vpc(customStack, 'VPC');
+
+  new FileSystem(customVpc, 'EfsFileSystem', {
+    vpc: customVpc,
+  });
+
+  // THEN
+  Template.fromStack(customStack).templateMatches({
+    Resources: {
+      VPCEfsFileSystemEfsMountTargetPrivateSubnet1D8128D53: {
+        Type: 'AWS::EFS::MountTarget',
+        Properties: {
+          SubnetId: { Ref: 'VPCPrivateSubnet1Subnet8BCA10E0' },
+        },
+      },
+      VPCEfsFileSystemEfsMountTargetPrivateSubnet283880431: {
+        Type: 'AWS::EFS::MountTarget',
+        Properties: {
+          SubnetId: { Ref: 'VPCPrivateSubnet2SubnetCFCDAA7A' },
+        },
+      },
+    },
+  });
+});
+
+test('mountTargetOrderInsensitiveLogicalId flag is false', () => {
+  // WHEN
+  const customStack = new Stack();
+  const customVpc = new ec2.Vpc(customStack, 'VPC');
+
+  new FileSystem(customVpc, 'EfsFileSystem', {
+    vpc: customVpc,
+  });
+
+  // THEN
+  Template.fromStack(customStack).templateMatches({
+    Resources: {
+      VPCEfsFileSystemEfsMountTarget143787C9B: {
+        Type: 'AWS::EFS::MountTarget',
+        Properties: {
+          SubnetId: { Ref: 'VPCPrivateSubnet1Subnet8BCA10E0' },
+        },
+      },
+      VPCEfsFileSystemEfsMountTarget297D688BB: {
+        Type: 'AWS::EFS::MountTarget',
+        Properties: {
+          SubnetId: { Ref: 'VPCPrivateSubnet2SubnetCFCDAA7A' },
+        },
+      },
+    },
+  });
+});
+
+test('anonymous access is prohibited by default when using GrantRead', () => {
+  // WHEN
+  const clientRole = new iam.Role(stack, 'ClientRole', { assumedBy: new iam.AnyPrincipal() });
+  const fileSystem = new FileSystem(stack, 'EfsFileSystem', { vpc });
+  fileSystem.grantRead(clientRole);
+
+  // THEN
+  const template = Template.fromStack(stack);
+  template.hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: [
+        {
+          Action: 'elasticfilesystem:ClientMount',
+          Effect: 'Allow',
+          Resource: {
+            'Fn::GetAtt': [
+              'EfsFileSystem37910666',
+              'Arn',
+            ],
+          },
+        },
+      ],
+      Version: '2012-10-17',
+    },
+    PolicyName: 'ClientRoleDefaultPolicy6F610F20',
+    Roles: [
+      {
+        Ref: 'ClientRole910E33D4',
+      },
+    ],
+  });
+  template.hasResourceProperties('AWS::EFS::FileSystem', {
+    FileSystemPolicy: {
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: {
+            AWS: '*',
+          },
+          Action: [
+            'elasticfilesystem:ClientWrite',
+            'elasticfilesystem:ClientRootAccess',
+          ],
+          Condition: {
+            Bool: {
+              'elasticfilesystem:AccessedViaMountTarget': 'true',
+            },
+          },
+        },
+      ],
+    },
+  });
+});
+
+test('anonymous access is prohibited by default when using GrantReadWrite', () => {
+  // WHEN
+  const clientRole = new iam.Role(stack, 'ClientRole', { assumedBy: new iam.AnyPrincipal() });
+  const fileSystem = new FileSystem(stack, 'EfsFileSystem', { vpc });
+  fileSystem.grantReadWrite(clientRole);
+
+  // THEN
+  const template = Template.fromStack(stack);
+  template.hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: [
+        {
+          Action: [
+            'elasticfilesystem:ClientMount',
+            'elasticfilesystem:ClientWrite',
+          ],
+          Effect: 'Allow',
+          Resource: {
+            'Fn::GetAtt': [
+              'EfsFileSystem37910666',
+              'Arn',
+            ],
+          },
+        },
+      ],
+      Version: '2012-10-17',
+    },
+    PolicyName: 'ClientRoleDefaultPolicy6F610F20',
+    Roles: [
+      {
+        Ref: 'ClientRole910E33D4',
+      },
+    ],
+  });
+  template.hasResourceProperties('AWS::EFS::FileSystem', {
+    FileSystemPolicy: {
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: {
+            AWS: '*',
+          },
+          Action: [
+            'elasticfilesystem:ClientWrite',
+            'elasticfilesystem:ClientRootAccess',
+          ],
+          Condition: {
+            Bool: {
+              'elasticfilesystem:AccessedViaMountTarget': 'true',
+            },
+          },
+        },
+      ],
+    },
+  });
+});
+
+test('anonymous access is prohibited by default when using GrantRootAccess', () => {
+  // WHEN
+  const clientRole = new iam.Role(stack, 'ClientRole', { assumedBy: new iam.AnyPrincipal() });
+  const fileSystem = new FileSystem(stack, 'EfsFileSystem', { vpc });
+  fileSystem.grantRootAccess(clientRole);
+
+  // THEN
+  const template = Template.fromStack(stack);
+  template.hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: [
+        {
+          Action: [
+            'elasticfilesystem:ClientMount',
+            'elasticfilesystem:ClientWrite',
+            'elasticfilesystem:ClientRootAccess',
+          ],
+          Effect: 'Allow',
+          Resource: {
+            'Fn::GetAtt': [
+              'EfsFileSystem37910666',
+              'Arn',
+            ],
+          },
+        },
+      ],
+      Version: '2012-10-17',
+    },
+    PolicyName: 'ClientRoleDefaultPolicy6F610F20',
+    Roles: [
+      {
+        Ref: 'ClientRole910E33D4',
+      },
+    ],
+  });
+  template.hasResourceProperties('AWS::EFS::FileSystem', {
+    FileSystemPolicy: {
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: {
+            AWS: '*',
+          },
+          Action: [
+            'elasticfilesystem:ClientWrite',
+            'elasticfilesystem:ClientRootAccess',
+          ],
+          Condition: {
+            Bool: {
+              'elasticfilesystem:AccessedViaMountTarget': 'true',
+            },
+          },
+        },
+      ],
+    },
+  });
+});
+
+test('anonymous access is prohibited by the allowAnonymousAccess props even when GrantXXX is not used', () => {
+  // WHEN
+  new FileSystem(stack, 'EfsFileSystem', {
+    vpc,
+    allowAnonymousAccess: false,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::EFS::FileSystem', {
+    FileSystemPolicy: {
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: {
+            AWS: '*',
+          },
+          Action: [
+            'elasticfilesystem:ClientWrite',
+            'elasticfilesystem:ClientRootAccess',
+          ],
+          Condition: {
+            Bool: {
+              'elasticfilesystem:AccessedViaMountTarget': 'true',
+            },
+          },
+        },
+      ],
+    },
+  });
+});
+
+test('anonymous access is allowed by allowAnonymousAccess props when using GrantXxx', () => {
+  // WHEN
+  const clientRole = new iam.Role(stack, 'ClientRole', { assumedBy: new iam.AnyPrincipal() });
+  const fileSystem = new FileSystem(stack, 'EfsFileSystem', {
+    vpc,
+    allowAnonymousAccess: true,
+  });
+  fileSystem.grantRead(clientRole);
+  fileSystem.grantReadWrite(clientRole);
+  fileSystem.grantRootAccess(clientRole);
+
+  // THEN
+  const template = Template.fromStack(stack);
+  template.resourceCountIs('AWS::EFS::FileSystem', 1);
+  template.hasResourceProperties('AWS::EFS::FileSystem', {
+    FileSystemPolicy: Match.absent(),
+  });
+});
+
+test('anonymous access is prohibited by the @aws-cdk/aws-efs:denyAnonymousAccess feature flag', () => {
+  // WHEN
+  const app = new App({
+    context: {
+      [cxapi.EFS_DENY_ANONYMOUS_ACCESS]: true,
+    },
+  });
+  const customStack = new Stack(app);
+  const customVpc = new ec2.Vpc(customStack, 'VPC');
+  new FileSystem(customStack, 'EfsFileSystem', {
+    vpc: customVpc,
+  });
+
+  // THEN
+  Template.fromStack(customStack).hasResourceProperties('AWS::EFS::FileSystem', {
+    FileSystemPolicy: {
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: {
+            AWS: '*',
+          },
+          Action: [
+            'elasticfilesystem:ClientWrite',
+            'elasticfilesystem:ClientRootAccess',
+          ],
+          Condition: {
+            Bool: {
+              'elasticfilesystem:AccessedViaMountTarget': 'true',
+            },
+          },
+        },
+      ],
+    },
+  });
+});
+
+test('specify availabilityZoneName to create mount targets in a specific AZ', () => {
+  // WHEN
+  new FileSystem(stack, 'EfsFileSystem', {
+    vpc,
+    oneZone: true,
+  });
+
+  // THEN
+  const template = Template.fromStack(stack);
+  template.hasResourceProperties('AWS::EFS::FileSystem', {
+    AvailabilityZoneName: {
+      'Fn::Select': [
+        0,
+        {
+          'Fn::GetAZs': '',
+        },
+      ],
+    },
+  });
+
+  // make sure only one mount target is created.
+  template.resourceCountIs('AWS::EFS::MountTarget', 1);
+});
+
+test('one zone file system with MAX_IO performance mode is not supported', () => {
+  // THEN
+  expect(() => {
+    new FileSystem(stack, 'EfsFileSystem', {
+      vpc,
+      oneZone: true,
+      performanceMode: PerformanceMode.MAX_IO,
+    });
+  }).toThrow(/performanceMode MAX_IO is not supported for One Zone file systems./);
+});
+
+test('one zone file system with vpcSubnets but availabilityZones undefined is not supported', () => {
+  // THEN
+  expect(() => {
+    new FileSystem(stack, 'EfsFileSystem', {
+      vpc,
+      oneZone: true,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+    });
+  }).toThrow(/When oneZone is enabled and vpcSubnets defined, vpcSubnets.availabilityZones can not be undefined./);
+});
+
+test('one zone file system with vpcSubnets but availabilityZones not in the vpc', () => {
+  // THEN
+  expect(() => {
+    // vpc with defined AZs
+    const vpc2 = new ec2.Vpc(stack, 'Vpc2', { availabilityZones: ['zonea', 'zoneb', 'zonec'] });
+    new FileSystem(stack, 'EfsFileSystem', {
+      vpc: vpc2,
+      oneZone: true,
+      vpcSubnets: { availabilityZones: ['not-exist-zone'] },
+    });
+  }).toThrow(/vpcSubnets.availabilityZones specified is not in vpc.availabilityZones./);
+});
+
+test('one zone file system with vpcSubnets but vpc.availabilityZones are dummy or unresolved tokens', () => {
+  // THEN
+  // this should not throw because vpc.availabilityZones are unresolved or dummy values
+  expect(() => {
+    new FileSystem(stack, 'EfsFileSystem', {
+      vpc,
+      oneZone: true,
+      vpcSubnets: { availabilityZones: ['not-exist-zone'] },
+    });
+  }).not.toThrow();
+});
+
+test('one zone file system with vpcSubnets.availabilityZones having 1 AZ.', () => {
+  // THEN
+  new FileSystem(stack, 'EfsFileSystem', {
+    vpc,
+    oneZone: true,
+    vpcSubnets: { availabilityZones: ['us-east-1a'] },
+  });
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::EFS::FileSystem', {
+    AvailabilityZoneName: 'us-east-1a',
+  });
+
+});
+
+test('one zone file system with vpcSubnets.availabilityZones having more than 1 AZ.', () => {
+  // THEN
+  expect(() => {
+    new FileSystem(stack, 'EfsFileSystem', {
+      vpc,
+      oneZone: true,
+      vpcSubnets: { availabilityZones: ['mock-az1', 'mock-az2'] },
+    });
+  }).toThrow(/When oneZone is enabled, vpcSubnets.availabilityZones should exactly have one zone./);
+});
+
+test('one zone file system with vpcSubnets.availabilityZones empty.', () => {
+  // THEN
+  expect(() => {
+    new FileSystem(stack, 'EfsFileSystem', {
+      vpc,
+      oneZone: true,
+      vpcSubnets: { availabilityZones: [] },
+    });
+  }).toThrow(/When oneZone is enabled, vpcSubnets.availabilityZones should exactly have one zone./);
+});
+
+test.each([
+  ReplicationOverwriteProtection.ENABLED, ReplicationOverwriteProtection.DISABLED,
+])('create read-only file system for replication destination', ( replicationOverwriteProtection ) => {
+  // WHEN
+  new FileSystem(stack, 'EfsFileSystem', {
+    vpc,
+    replicationOverwriteProtection,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::EFS::FileSystem', {
+    FileSystemProtection: {
+      ReplicationOverwriteProtection: replicationOverwriteProtection,
+    },
+  });
+});
+
+describe('replication configuration', () => {
+  test('regional file system', () => {
+    // WHEN
+    new FileSystem(stack, 'EfsFileSystem', {
+      vpc,
+      replicationConfiguration: ReplicationConfiguration.regionalFileSystem('ap-northeast-1'),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::EFS::FileSystem', {
+      ReplicationConfiguration: {
+        Destinations: [
+          {
+            Region: 'ap-northeast-1',
+          },
+        ],
+      },
+    });
+  });
+
+  test('specify destination file system', () => {
+    // WHEN
+    const destination = new FileSystem(stack, 'DestinationFileSystem', {
+      vpc,
+      replicationOverwriteProtection: ReplicationOverwriteProtection.DISABLED,
+    });
+    new FileSystem(stack, 'EfsFileSystem', {
+      vpc,
+      replicationConfiguration: ReplicationConfiguration.existingFileSystem(destination),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::EFS::FileSystem', {
+      ReplicationConfiguration: {
+        Destinations: [
+          {
+            FileSystemId: {
+              Ref: 'DestinationFileSystem12545967',
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  test('one zone file system', () => {
+    // WHEN
+    new FileSystem(stack, 'EfsFileSystem', {
+      vpc,
+      replicationConfiguration: ReplicationConfiguration.oneZoneFileSystem(
+        'us-east-1',
+        'us-east-1a',
+        new kms.Key(stack, 'customKey'),
+      ),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::EFS::FileSystem', {
+      ReplicationConfiguration: {
+        Destinations: [
+          {
+            Region: 'us-east-1',
+            AvailabilityZoneName: 'us-east-1a',
+            KmsKeyId: {
+              'Fn::GetAtt': [
+                'customKeyFEB2B57F',
+                'Arn',
+              ],
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  test('throw error for read-only file system', () => {
+    // THEN
+    expect(() => {
+      new FileSystem(stack, 'EfsFileSystem', {
+        vpc,
+        replicationConfiguration: ReplicationConfiguration.regionalFileSystem('ap-northeast-1'),
+        replicationOverwriteProtection: ReplicationOverwriteProtection.DISABLED,
+      });
+    }).toThrow('Cannot configure \'replicationConfiguration\' when \'replicationOverwriteProtection\' is set to \'DISABLED\'');
   });
 });

@@ -9,7 +9,7 @@ describe('parameter group', () => {
 
     // WHEN
     new ParameterGroup(stack, 'Params', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       description: 'desc',
       parameters: {
         key: 'value',
@@ -27,8 +27,9 @@ describe('parameter group', () => {
 
     // WHEN
     const parameterGroup = new ParameterGroup(stack, 'Params', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       description: 'desc',
+      name: 'name',
       parameters: {
         key: 'value',
       },
@@ -37,8 +38,9 @@ describe('parameter group', () => {
 
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBParameterGroup', {
+      DBParameterGroupName: 'name',
       Description: 'desc',
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         key: 'value',
       },
@@ -51,8 +53,9 @@ describe('parameter group', () => {
 
     // WHEN
     const parameterGroup = new ParameterGroup(stack, 'Params', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       description: 'desc',
+      name: 'name',
       parameters: {
         key: 'value',
       },
@@ -61,8 +64,9 @@ describe('parameter group', () => {
 
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBClusterParameterGroup', {
+      DBClusterParameterGroupName: 'name',
       Description: 'desc',
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         key: 'value',
       },
@@ -75,7 +79,7 @@ describe('parameter group', () => {
 
     // WHEN
     const parameterGroup = new ParameterGroup(stack, 'Params', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       description: 'desc',
       parameters: {
         key: 'value',
@@ -89,13 +93,40 @@ describe('parameter group', () => {
     Template.fromStack(stack).resourceCountIs('AWS::RDS::DBClusterParameterGroup', 1);
   });
 
+  test('creates 2 parameter groups when bound to a cluster and an instance and they have the correct removal policy', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    // WHEN
+    const parameterGroup = new ParameterGroup(stack, 'Params', {
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
+      description: 'desc',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      parameters: {
+        key: 'value',
+      },
+    });
+    parameterGroup.bindToCluster({});
+    parameterGroup.bindToInstance({});
+
+    // THEN
+    Template.fromStack(stack).resourceCountIs('AWS::RDS::DBParameterGroup', 1);
+    Template.fromStack(stack).resourceCountIs('AWS::RDS::DBClusterParameterGroup', 1);
+
+    const instanceParameterGroup = Template.fromStack(stack).findResources('AWS::RDS::DBParameterGroup');
+    const clusterParameterGroup = Template.fromStack(stack).findResources('AWS::RDS::DBClusterParameterGroup');
+
+    expect(Object.values(instanceParameterGroup)[0].DeletionPolicy).toEqual('Retain');
+    expect(Object.values(clusterParameterGroup)[0].DeletionPolicy).toEqual('Retain');
+  });
+
   test('Add an additional parameter to an existing parameter group', () => {
     // GIVEN
     const stack = new cdk.Stack();
 
     // WHEN
     const clusterParameterGroup = new ParameterGroup(stack, 'Params', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       description: 'desc',
       parameters: {
         key1: 'value1',
@@ -108,7 +139,7 @@ describe('parameter group', () => {
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBClusterParameterGroup', {
       Description: 'desc',
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         key1: 'value1',
         key2: 'value2',

@@ -44,7 +44,7 @@ export interface IntegTestRunOptions extends IntegTestOptions {
 /**
  * Run Integration tests.
  */
-export async function runIntegrationTests(options: IntegTestRunOptions): Promise<{ success: boolean, metrics: IntegRunnerMetrics[] }> {
+export async function runIntegrationTests(options: IntegTestRunOptions): Promise<{ success: boolean; metrics: IntegRunnerMetrics[] }> {
   logger.highlight('\nRunning integration tests for failed tests...\n');
   logger.print(
     'Running in parallel across %sregions: %s',
@@ -155,6 +155,8 @@ export async function runIntegrationTestsInParallel(
   }
 
   const workers = accountWorkers.map((worker) => runTest(worker));
+  // Workers are their own concurrency limits
+  // eslint-disable-next-line @cdklabs/promiseall-no-unbounded-parallelism
   await Promise.all(workers);
   return results;
 }

@@ -62,6 +62,22 @@ export interface DefaultStagingStackOptions {
   readonly stagingBucketName?: string;
 
   /**
+   * Encryption type for staging bucket
+   *
+   * In future versions of this package, the default will be BucketEncryption.S3_MANAGED.
+   *
+   * In previous versions of this package, the default was to use KMS encryption for the staging bucket. KMS keys cost
+   * $1/month, which could result in unexpected costs for users who are not aware of this. As we stabilize this module
+   * we intend to make the default S3-managed encryption, which is free. However, the migration path from KMS to S3
+   * managed encryption for existing buckets is not straightforward. Therefore, for now, this property is required.
+   *
+   * If you have an existing staging bucket encrypted with a KMS key, you will likely want to set this property to
+   * BucketEncryption.KMS. If you are creating a new staging bucket, you can set this property to
+   * BucketEncryption.S3_MANAGED to avoid the cost of a KMS key.
+   */
+  readonly stagingBucketEncryption: s3.BucketEncryption;
+
+  /**
    * Pass in an existing role to be used as the file publishing role.
    *
    * @default - a new role will be created
@@ -111,6 +127,16 @@ export interface DefaultStagingStackOptions {
    * @default true
    */
   readonly autoDeleteStagingAssets?: boolean;
+
+  /**
+   * Specify a custom prefix to be used as the staging stack name and
+   * construct ID. The prefix will be appended before the appId, which
+   * is required to be part of the stack name and construct ID to
+   * ensure uniqueness.
+   *
+   * @default 'StagingStack'
+   */
+  readonly stagingStackNamePrefix?: string;
 }
 
 /**
@@ -138,7 +164,8 @@ export interface DefaultStagingStackProps extends DefaultStagingStackOptions, St
  * A default Staging Stack that implements IStagingResources.
  *
  * @example
- * const defaultStagingStack = DefaultStagingStack.factory({ appId: 'my-app-id' });
+ * import { BucketEncryption } from 'aws-cdk-lib/aws-s3';
+ * const defaultStagingStack = DefaultStagingStack.factory({ appId: 'my-app-id', stagingBucketEncryption: BucketEncryption.S3_MANAGED });
  */
 export class DefaultStagingStack extends Stack implements IStagingResources {
   /**
@@ -159,12 +186,13 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
           new UsingAppStagingSynthesizer(stack, `UsingAppStagingSynthesizer/${stack.stackName}`);
         }
 
-        const stackId = `StagingStack-${appId}-${context.environmentString}`;
+        const stackPrefix = options.stagingStackNamePrefix ?? 'StagingStack';
+        // Stack name does not need to contain environment because appId is unique inside an env
+        const stackName = `${stackPrefix}-${appId}`;
+        const stackId = `${stackName}-${context.environmentString}`;
         return new DefaultStagingStack(app, stackId, {
           ...options,
-
-          // Does not need to contain environment because stack names are unique inside an env anyway
-          stackName: `StagingStack-${appId}`,
+          stackName,
           env: {
             account: stack.account,
             region: stack.region,
@@ -208,6 +236,7 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
 
   private readonly appId: string;
   private readonly stagingBucketName?: string;
+  private stagingBucketEncryption: s3.BucketEncryption;
 
   /**
    * File publish role ARN in asset manifest format
@@ -231,6 +260,7 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
     super(scope, id, {
       ...props,
       synthesizer: new BootstraplessSynthesizer(),
+      description: `This stack includes resources needed to deploy the AWS CDK app ${props.appId} into this environment`,
       analyticsReporting: false, // removing AWS::CDK::Metadata construct saves ~3KB
     });
     // removing path metadata saves ~2KB
@@ -247,6 +277,11 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
 
     this.deployRoleArn = props.deployRoleArn;
     this.stagingBucketName = props.stagingBucketName;
+
+    // FIXME: when stabilizing this module, we should make `stagingBucketEncryption` optional, defaulting to S3_MANAGED.
+    // See https://github.com/aws/aws-cdk/pull/28978#issuecomment-1930007176 for details on this decision.
+    this.stagingBucketEncryption = props.stagingBucketEncryption;
+
     const specializer = new StringSpecializer(this, props.qualifier);
 
     this.providedFileRole = props.fileAssetPublishingRole?._specialize(specializer);
@@ -346,7 +381,11 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
     }
 
     this.ensureFileRole();
-    const key = this.createBucketKey();
+
+    let key = undefined;
+    if (this.stagingBucketEncryption === s3.BucketEncryption.KMS) {
+      key = this.createBucketKey();
+    }
 
     // Create the bucket once the dependencies have been created
     const bucket = new s3.Bucket(this, bucketId, {
@@ -357,7 +396,7 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
       } : {
         removalPolicy: RemovalPolicy.RETAIN,
       }),
-      encryption: s3.BucketEncryption.KMS,
+      encryption: this.stagingBucketEncryption,
       encryptionKey: key,
 
       // Many AWS account safety checkers will complain when buckets aren't versioned
@@ -411,13 +450,14 @@ export class DefaultStagingStack extends Stack implements IStagingResources {
     if (this.stagingRepos[asset.assetName] === undefined) {
       this.stagingRepos[asset.assetName] = new ecr.Repository(this, repoName, {
         repositoryName: repoName,
+        imageTagMutability: ecr.TagMutability.IMMUTABLE,
         lifecycleRules: [{
-          description: 'Garbage collect old image versions and keep the specified number of latest versions',
+          description: 'Garbage collect old image versions',
           maxImageCount: this.props.imageAssetVersionCount ?? 3,
         }],
         ...(this.autoDeleteStagingAssets ? {
           removalPolicy: RemovalPolicy.DESTROY,
-          autoDeleteImages: true,
+          emptyOnDelete: true,
         } : {
           removalPolicy: RemovalPolicy.RETAIN,
         }),

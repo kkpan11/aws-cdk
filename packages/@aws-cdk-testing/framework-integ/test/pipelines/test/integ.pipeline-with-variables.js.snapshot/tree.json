@@ -50,7 +50,8 @@
                               "Action": [
                                 "s3:DeleteObject*",
                                 "s3:GetBucket*",
-                                "s3:List*"
+                                "s3:List*",
+                                "s3:PutBucketPolicy"
                               ],
                               "Effect": "Allow",
                               "Principal": {
@@ -124,9 +125,9 @@
               "version": "0.0.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "VariablePipelineStack/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "VariablePipelineStack/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -162,7 +163,7 @@
               }
             },
             "constructInfo": {
-              "fqn": "aws-cdk-lib.CustomResourceProvider",
+              "fqn": "aws-cdk-lib.CustomResourceProviderBase",
               "version": "0.0.0"
             }
           },
@@ -415,6 +416,14 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::CodePipeline::Pipeline",
                       "aws:cdk:cloudformation:props": {
+                        "artifactStore": {
+                          "type": "S3",
+                          "location": {
+                            "Ref": "PipelineArtifactsBucketAEA9A052"
+                          }
+                        },
+                        "pipelineType": "V1",
+                        "restartExecutionOnUpdate": true,
                         "roleArn": {
                           "Fn::GetAtt": [
                             "PipelineRoleB27FAA37",
@@ -551,14 +560,7 @@
                               }
                             ]
                           }
-                        ],
-                        "artifactStore": {
-                          "type": "S3",
-                          "location": {
-                            "Ref": "PipelineArtifactsBucketAEA9A052"
-                          }
-                        },
-                        "restartExecutionOnUpdate": true
+                        ]
                       }
                     },
                     "constructInfo": {
@@ -733,13 +735,13 @@
                         },
                         "constructInfo": {
                           "fqn": "constructs.Construct",
-                          "version": "10.2.54"
+                          "version": "10.3.0"
                         }
                       }
                     },
                     "constructInfo": {
                       "fqn": "constructs.Construct",
-                      "version": "10.2.54"
+                      "version": "10.3.0"
                     }
                   },
                   "Build": {
@@ -968,9 +970,14 @@
                                     "artifacts": {
                                       "type": "CODEPIPELINE"
                                     },
+                                    "cache": {
+                                      "type": "NO_CACHE"
+                                    },
+                                    "description": "Pipeline step VariablePipelineStack/Pipeline/Build/Synth",
+                                    "encryptionKey": "alias/aws/s3",
                                     "environment": {
                                       "type": "LINUX_CONTAINER",
-                                      "image": "aws/codebuild/standard:6.0",
+                                      "image": "aws/codebuild/standard:7.0",
                                       "imagePullCredentialsType": "CODEBUILD",
                                       "privilegedMode": false,
                                       "computeType": "BUILD_GENERAL1_SMALL"
@@ -984,12 +991,7 @@
                                     "source": {
                                       "type": "CODEPIPELINE",
                                       "buildSpec": "{\n  \"version\": \"0.2\",\n  \"phases\": {\n    \"build\": {\n      \"commands\": [\n        \"mkdir cdk.out\",\n        \"touch cdk.out/dummy\"\n      ]\n    }\n  },\n  \"artifacts\": {\n    \"base-directory\": \"cdk.out\",\n    \"files\": \"**/*\"\n  }\n}"
-                                    },
-                                    "cache": {
-                                      "type": "NO_CACHE"
-                                    },
-                                    "description": "Pipeline step VariablePipelineStack/Pipeline/Build/Synth",
-                                    "encryptionKey": "alias/aws/s3"
+                                    }
                                   }
                                 },
                                 "constructInfo": {
@@ -1006,13 +1008,13 @@
                         },
                         "constructInfo": {
                           "fqn": "constructs.Construct",
-                          "version": "10.2.54"
+                          "version": "10.3.0"
                         }
                       }
                     },
                     "constructInfo": {
                       "fqn": "constructs.Construct",
-                      "version": "10.2.54"
+                      "version": "10.3.0"
                     }
                   },
                   "MyWave": {
@@ -1271,23 +1273,6 @@
                                     "artifacts": {
                                       "type": "CODEPIPELINE"
                                     },
-                                    "environment": {
-                                      "type": "LINUX_CONTAINER",
-                                      "image": "aws/codebuild/standard:6.0",
-                                      "imagePullCredentialsType": "CODEBUILD",
-                                      "privilegedMode": false,
-                                      "computeType": "BUILD_GENERAL1_SMALL"
-                                    },
-                                    "serviceRole": {
-                                      "Fn::GetAtt": [
-                                        "PipelineMyWaveProduceRole24E3565D",
-                                        "Arn"
-                                      ]
-                                    },
-                                    "source": {
-                                      "type": "CODEPIPELINE",
-                                      "buildSpec": "{\n  \"version\": \"0.2\",\n  \"env\": {\n    \"exported-variables\": [\n      \"MY_VAR\"\n    ]\n  },\n  \"phases\": {\n    \"build\": {\n      \"commands\": [\n        \"export MY_VAR=hello\"\n      ]\n    }\n  }\n}"
-                                    },
                                     "cache": {
                                       "type": "S3",
                                       "location": {
@@ -1305,7 +1290,24 @@
                                       }
                                     },
                                     "description": "Pipeline step VariablePipelineStack/Pipeline/MyWave/Produce",
-                                    "encryptionKey": "alias/aws/s3"
+                                    "encryptionKey": "alias/aws/s3",
+                                    "environment": {
+                                      "type": "LINUX_CONTAINER",
+                                      "image": "aws/codebuild/standard:7.0",
+                                      "imagePullCredentialsType": "CODEBUILD",
+                                      "privilegedMode": false,
+                                      "computeType": "BUILD_GENERAL1_SMALL"
+                                    },
+                                    "serviceRole": {
+                                      "Fn::GetAtt": [
+                                        "PipelineMyWaveProduceRole24E3565D",
+                                        "Arn"
+                                      ]
+                                    },
+                                    "source": {
+                                      "type": "CODEPIPELINE",
+                                      "buildSpec": "{\n  \"version\": \"0.2\",\n  \"env\": {\n    \"exported-variables\": [\n      \"MY_VAR\"\n    ]\n  },\n  \"phases\": {\n    \"build\": {\n      \"commands\": [\n        \"export MY_VAR=hello\"\n      ]\n    }\n  }\n}"
+                                    }
                                   }
                                 },
                                 "constructInfo": {
@@ -1322,7 +1324,7 @@
                         },
                         "constructInfo": {
                           "fqn": "constructs.Construct",
-                          "version": "10.2.54"
+                          "version": "10.3.0"
                         }
                       },
                       "Consume": {
@@ -1577,23 +1579,6 @@
                                     "artifacts": {
                                       "type": "CODEPIPELINE"
                                     },
-                                    "environment": {
-                                      "type": "LINUX_CONTAINER",
-                                      "image": "aws/codebuild/standard:6.0",
-                                      "imagePullCredentialsType": "CODEBUILD",
-                                      "privilegedMode": false,
-                                      "computeType": "BUILD_GENERAL1_SMALL"
-                                    },
-                                    "serviceRole": {
-                                      "Fn::GetAtt": [
-                                        "PipelineMyWaveConsumeRole2A96FF33",
-                                        "Arn"
-                                      ]
-                                    },
-                                    "source": {
-                                      "type": "CODEPIPELINE",
-                                      "buildSpec": "{\n  \"version\": \"0.2\",\n  \"phases\": {\n    \"build\": {\n      \"commands\": [\n        \"echo \\\"The variable was: $THE_VAR\\\"\"\n      ]\n    }\n  }\n}"
-                                    },
                                     "cache": {
                                       "type": "S3",
                                       "location": {
@@ -1611,7 +1596,24 @@
                                       }
                                     },
                                     "description": "Pipeline step VariablePipelineStack/Pipeline/MyWave/Consume",
-                                    "encryptionKey": "alias/aws/s3"
+                                    "encryptionKey": "alias/aws/s3",
+                                    "environment": {
+                                      "type": "LINUX_CONTAINER",
+                                      "image": "aws/codebuild/standard:7.0",
+                                      "imagePullCredentialsType": "CODEBUILD",
+                                      "privilegedMode": false,
+                                      "computeType": "BUILD_GENERAL1_SMALL"
+                                    },
+                                    "serviceRole": {
+                                      "Fn::GetAtt": [
+                                        "PipelineMyWaveConsumeRole2A96FF33",
+                                        "Arn"
+                                      ]
+                                    },
+                                    "source": {
+                                      "type": "CODEPIPELINE",
+                                      "buildSpec": "{\n  \"version\": \"0.2\",\n  \"phases\": {\n    \"build\": {\n      \"commands\": [\n        \"echo \\\"The variable was: $THE_VAR\\\"\"\n      ]\n    }\n  }\n}"
+                                    }
                                   }
                                 },
                                 "constructInfo": {
@@ -1628,13 +1630,13 @@
                         },
                         "constructInfo": {
                           "fqn": "constructs.Construct",
-                          "version": "10.2.54"
+                          "version": "10.3.0"
                         }
                       }
                     },
                     "constructInfo": {
                       "fqn": "constructs.Construct",
-                      "version": "10.2.54"
+                      "version": "10.3.0"
                     }
                   }
                 },
@@ -1803,12 +1805,66 @@
           "version": "0.0.0"
         }
       },
+      "VariablePipelineTest": {
+        "id": "VariablePipelineTest",
+        "path": "VariablePipelineTest",
+        "children": {
+          "DefaultTest": {
+            "id": "DefaultTest",
+            "path": "VariablePipelineTest/DefaultTest",
+            "children": {
+              "Default": {
+                "id": "Default",
+                "path": "VariablePipelineTest/DefaultTest/Default",
+                "constructInfo": {
+                  "fqn": "constructs.Construct",
+                  "version": "10.3.0"
+                }
+              },
+              "DeployAssert": {
+                "id": "DeployAssert",
+                "path": "VariablePipelineTest/DefaultTest/DeployAssert",
+                "children": {
+                  "BootstrapVersion": {
+                    "id": "BootstrapVersion",
+                    "path": "VariablePipelineTest/DefaultTest/DeployAssert/BootstrapVersion",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnParameter",
+                      "version": "0.0.0"
+                    }
+                  },
+                  "CheckBootstrapVersion": {
+                    "id": "CheckBootstrapVersion",
+                    "path": "VariablePipelineTest/DefaultTest/DeployAssert/CheckBootstrapVersion",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnRule",
+                      "version": "0.0.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Stack",
+                  "version": "0.0.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "@aws-cdk/integ-tests-alpha.IntegTestCase",
+              "version": "0.0.0"
+            }
+          }
+        },
+        "constructInfo": {
+          "fqn": "@aws-cdk/integ-tests-alpha.IntegTest",
+          "version": "0.0.0"
+        }
+      },
       "Tree": {
         "id": "Tree",
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.2.54"
+          "version": "10.3.0"
         }
       }
     },

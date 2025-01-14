@@ -1,5 +1,4 @@
 import { EOL } from 'os';
-import * as path from 'path';
 import { IConstruct, Construct } from 'constructs';
 import { CfnRepository } from './ecr.generated';
 import { LifecycleRule, TagStatus } from './lifecycle';
@@ -18,13 +17,12 @@ import {
   Token,
   TokenComparison,
   CustomResource,
-  CustomResourceProvider,
-  builtInCustomResourceProviderNodeRuntime,
+  Aws,
 } from '../../core';
+import { AutoDeleteImagesProvider } from '../../custom-resource-handlers/dist/aws-ecr/auto-delete-images-provider.generated';
 
 const AUTO_DELETE_IMAGES_RESOURCE_TYPE = 'Custom::ECRAutoDeleteImages';
 const AUTO_DELETE_IMAGES_TAG = 'aws-cdk:auto-delete-images';
-const REPO_ARN_SYMBOL = Symbol.for('@aws-cdk/aws-ecr.RepoArns');
 
 /**
  * Represents an ECR repository.
@@ -50,6 +48,15 @@ export interface IRepository extends IResource {
    * @attribute
    */
   readonly repositoryUri: string;
+
+  /**
+   * The URI of this repository's registry:
+   *
+   *    ACCOUNT.dkr.ecr.REGION.amazonaws.com
+   *
+   * @attribute
+   */
+  readonly registryUri: string;
 
   /**
    * Returns the URI of the repository for a certain tag. Can be used in `docker push/pull`.
@@ -194,6 +201,17 @@ export abstract class RepositoryBase extends Resource implements IRepository {
   }
 
   /**
+   * The URI of this repository's registry:
+   *
+   *    ACCOUNT.dkr.ecr.REGION.amazonaws.com
+   *
+   */
+  public get registryUri(): string {
+    const parts = this.stack.splitArn(this.repositoryArn, ArnFormat.SLASH_RESOURCE_NAME);
+    return `${parts.account}.dkr.ecr.${parts.region}.${this.stack.urlSuffix}`;
+  }
+
+  /**
    * Returns the URL of the repository. Can be used in `docker push/pull`.
    *
    *    ACCOUNT.dkr.ecr.REGION.amazonaws.com/REPOSITORY[:TAG]
@@ -319,7 +337,9 @@ export abstract class RepositoryBase extends Resource implements IRepository {
     const rule = new events.Rule(this, id, options);
     rule.addEventPattern({
       source: ['aws.ecr'],
-      resources: [this.repositoryArn],
+      detail: {
+        'repository-name': [this.repositoryName],
+      },
     });
     rule.addTarget(options.target);
     return rule;
@@ -493,7 +513,11 @@ export interface OnImageScanCompletedOptions extends events.OnEventOptions {
 
 export interface RepositoryProps {
   /**
-   * Name for this repository
+   * Name for this repository.
+   *
+   * The repository name must start with a letter and can only contain lowercase letters, numbers, hyphens, underscores, and forward slashes.
+   *
+   * > If you specify a name, you cannot perform updates that require replacement of this resource. You can perform updates that require no or some interruption. If you must replace the resource, specify a new name.
    *
    * @default Automatically generated name.
    */
@@ -563,8 +587,16 @@ export interface RepositoryProps {
    * Requires the `removalPolicy` to be set to `RemovalPolicy.DESTROY`.
    *
    * @default false
+   * @deprecated Use `emptyOnDelete` instead.
    */
   readonly autoDeleteImages?: boolean;
+
+  /**
+   * If true, deleting the repository force deletes the contents of the repository. If false, the repository must be empty before attempting to delete it.
+   *
+   * @default false
+   */
+  readonly emptyOnDelete?: boolean;
 }
 
 export interface RepositoryAttributes {
@@ -672,7 +704,7 @@ export class Repository extends RepositoryBase {
     }
     const isPatternMatch = /^(?:[a-z0-9]+(?:[._-][a-z0-9]+)*\/)*[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(repositoryName);
     if (!isPatternMatch) {
-      errors.push('Repository name must follow the specified pattern: (?:[a-z0-9]+(?:[._-][a-z0-9]+)*/)*[a-z0-9]+(?:[._-][a-z0-9]+)*');
+      errors.push('Repository name must start with a letter and can only contain lowercase letters, numbers, hyphens, underscores, periods and forward slashes');
     }
 
     if (errors.length > 0) {
@@ -702,15 +734,9 @@ export class Repository extends RepositoryBase {
       imageScanningConfiguration: props.imageScanOnPush !== undefined ? { scanOnPush: props.imageScanOnPush } : undefined,
       imageTagMutability: props.imageTagMutability || undefined,
       encryptionConfiguration: this.parseEncryption(props),
+      emptyOnDelete: props.emptyOnDelete,
     });
     this._resource = resource;
-
-    if (props.autoDeleteImages) {
-      if (props.removalPolicy !== RemovalPolicy.DESTROY) {
-        throw new Error('Cannot use \'autoDeleteImages\' property on a repository without setting removal policy to \'DESTROY\'.');
-      }
-      this.enableAutoDeleteImages();
-    }
 
     resource.applyRemovalPolicy(props.removalPolicy);
 
@@ -726,6 +752,15 @@ export class Repository extends RepositoryBase {
       resourceName: this.physicalName,
     });
 
+    if (props.emptyOnDelete && props.removalPolicy !== RemovalPolicy.DESTROY) {
+      throw new Error('Cannot use \'emptyOnDelete\' property on a repository without setting removal policy to \'DESTROY\'.');
+    } else if (props.emptyOnDelete == undefined && props.autoDeleteImages) {
+      if (props.removalPolicy !== RemovalPolicy.DESTROY) {
+        throw new Error('Cannot use \'autoDeleteImages\' property on a repository without setting removal policy to \'DESTROY\'.');
+      }
+      this.enableAutoDeleteImages();
+    }
+
     this.node.addValidation({ validate: () => this.policyDocument?.validateForResourcePolicy() ?? [] });
   }
 
@@ -738,7 +773,7 @@ export class Repository extends RepositoryBase {
    */
   public addToResourcePolicy(statement: iam.PolicyStatement): iam.AddToResourcePolicyResult {
     if (statement.resources.length) {
-      Annotations.of(this).addWarning('ECR resource policy does not allow resource statements.');
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-ecr:noResourceStatements', 'ECR resource policy does not allow resource statements.');
     }
     if (this.policyDocument === undefined) {
       this.policyDocument = new iam.PolicyDocument();
@@ -756,14 +791,28 @@ export class Repository extends RepositoryBase {
   public addLifecycleRule(rule: LifecycleRule) {
     // Validate rule here so users get errors at the expected location
     if (rule.tagStatus === undefined) {
-      rule = { ...rule, tagStatus: rule.tagPrefixList === undefined ? TagStatus.ANY : TagStatus.TAGGED };
+      rule = { ...rule, tagStatus: rule.tagPrefixList === undefined && rule.tagPatternList === undefined ? TagStatus.ANY : TagStatus.TAGGED };
     }
 
-    if (rule.tagStatus === TagStatus.TAGGED && (rule.tagPrefixList === undefined || rule.tagPrefixList.length === 0)) {
-      throw new Error('TagStatus.Tagged requires the specification of a tagPrefixList');
+    if (rule.tagStatus === TagStatus.TAGGED
+      && (rule.tagPrefixList === undefined || rule.tagPrefixList.length === 0)
+      && (rule.tagPatternList === undefined || rule.tagPatternList.length === 0)
+    ) {
+      throw new Error('TagStatus.Tagged requires the specification of a tagPrefixList or a tagPatternList');
     }
-    if (rule.tagStatus !== TagStatus.TAGGED && rule.tagPrefixList !== undefined) {
-      throw new Error('tagPrefixList can only be specified when tagStatus is set to Tagged');
+    if (rule.tagStatus !== TagStatus.TAGGED && (rule.tagPrefixList !== undefined || rule.tagPatternList !== undefined)) {
+      throw new Error('tagPrefixList and tagPatternList can only be specified when tagStatus is set to Tagged');
+    }
+    if (rule.tagPrefixList !== undefined && rule.tagPatternList !== undefined) {
+      throw new Error('Both tagPrefixList and tagPatternList cannot be specified together in a rule');
+    }
+    if (rule.tagPatternList !== undefined) {
+      rule.tagPatternList.forEach((pattern) => {
+        const splitPatternLength = pattern.split('*').length;
+        if (splitPatternLength > 5) {
+          throw new Error(`A tag pattern cannot contain more than four wildcard characters (*), pattern: ${pattern}, counts: ${splitPatternLength - 1}`);
+        }
+      });
     }
     if ((rule.maxImageAge !== undefined) === (rule.maxImageCount !== undefined)) {
       throw new Error(`Life cycle rule must contain exactly one of 'maxImageAge' and 'maxImageCount', got: ${JSON.stringify(rule)}`);
@@ -859,20 +908,14 @@ export class Repository extends RepositoryBase {
 
   private enableAutoDeleteImages() {
     const firstTime = Stack.of(this).node.tryFindChild(`${AUTO_DELETE_IMAGES_RESOURCE_TYPE}CustomResourceProvider`) === undefined;
-    const provider = CustomResourceProvider.getOrCreateProvider(this, AUTO_DELETE_IMAGES_RESOURCE_TYPE, {
-      codeDirectory: path.join(__dirname, '..', '..', 'custom-resource-handlers', 'lib', 'aws-ecr', 'auto-delete-images-handler'),
+    const provider = AutoDeleteImagesProvider.getOrCreateProvider(this, AUTO_DELETE_IMAGES_RESOURCE_TYPE, {
       useCfnResponseWrapper: false,
-      runtime: builtInCustomResourceProviderNodeRuntime(this),
       description: `Lambda function for auto-deleting images in ${this.repositoryName} repository.`,
     });
 
     if (firstTime) {
-      const repoArns = [this._resource.attrArn];
-      (provider as any)[REPO_ARN_SYMBOL] = repoArns;
-
       // Use a iam policy to allow the custom resource to list & delete
       // images in the repository and the ability to get all repositories to find the arn needed on delete.
-      // We lazily produce a list of repositories associated with this custom resource provider.
       provider.addToRolePolicy({
         Effect: 'Allow',
         Action: [
@@ -881,17 +924,20 @@ export class Repository extends RepositoryBase {
           'ecr:ListImages',
           'ecr:ListTagsForResource',
         ],
-        Resource: Lazy.list({ produce: () => repoArns }),
+        Resource: [`arn:${Aws.PARTITION}:ecr:${Stack.of(this).region}:${Stack.of(this).account}:repository/*`],
+        Condition: {
+          StringEquals: {
+            ['ecr:ResourceTag/' + AUTO_DELETE_IMAGES_TAG]: 'true',
+          },
+        },
       });
-    } else {
-      (provider as any)[REPO_ARN_SYMBOL].push(this._resource.attrArn);
     }
 
     const customResource = new CustomResource(this, 'AutoDeleteImagesCustomResource', {
       resourceType: AUTO_DELETE_IMAGES_RESOURCE_TYPE,
       serviceToken: provider.serviceToken,
       properties: {
-        RepositoryName: Lazy.any({ produce: () => this.repositoryName }),
+        RepositoryName: this.repositoryName,
       },
     });
     customResource.node.addDependency(this);
@@ -925,6 +971,7 @@ function renderLifecycleRule(rule: LifecycleRule) {
     selection: {
       tagStatus: rule.tagStatus || TagStatus.ANY,
       tagPrefixList: rule.tagPrefixList,
+      tagPatternList: rule.tagPatternList,
       countType: rule.maxImageAge !== undefined ? CountType.SINCE_IMAGE_PUSHED : CountType.IMAGE_COUNT_MORE_THAN,
       countNumber: rule.maxImageAge?.toDays() ?? rule.maxImageCount,
       countUnit: rule.maxImageAge !== undefined ? 'days' : undefined,
@@ -938,7 +985,7 @@ function renderLifecycleRule(rule: LifecycleRule) {
 /**
  * Select images based on counts
  */
-const enum CountType {
+enum CountType {
   /**
    * Set a limit on the number of images in your repository
    */

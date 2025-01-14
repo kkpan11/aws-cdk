@@ -22,6 +22,7 @@ import { Asset } from 'aws-cdk-lib/aws-s3-assets';
 import { App, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as cpactions from 'aws-cdk-lib/aws-codepipeline-actions';
+import { IntegTest } from '@aws-cdk/integ-tests-alpha';
 
 export class StackSetPipelineStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -75,5 +76,13 @@ export class StackSetPipelineStack extends Stack {
   }
 }
 
-const app = new App();
-new StackSetPipelineStack(app, 'StackSetPipelineStack');
+const app = new App({
+  postCliContext: {
+    '@aws-cdk/aws-codepipeline:defaultPipelineTypeToV2': false,
+  },
+});
+const stack = new StackSetPipelineStack(app, 'StackSetPipelineStack');
+new IntegTest(app, 'StackSetPipelineStackInteg', {
+  testCases: [stack],
+  diffAssets: true,
+});

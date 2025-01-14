@@ -138,6 +138,17 @@ domain.mapSubDomain(main, 'www');
 domain.mapSubDomain(dev); // sub domain prefix defaults to branch name
 ```
 
+To specify a custom certificate for your custom domain use the `customCertificate` property:
+
+```ts
+declare const customCertificate: acm.Certificate;
+declare const amplifyApp: amplify.App;
+
+const domain = amplifyApp.addDomain('example.com', {
+  customCertificate, // set your custom certificate
+});
+```
+
 ## Restricting access
 
 Password protect the app with basic auth by specifying the `basicAuth` prop.
@@ -222,6 +233,30 @@ const amplifyApp = new amplify.App(this, 'App', {
       },
     },
   ],
+});
+```
+
+## Configure server side rendering when hosting app
+
+Setting the `platform` field on the Amplify `App` construct can be used to control whether the app will host only static assets or server side rendered assets in addition to static. By default, the value is set to `WEB` (static only), however, server side rendering can be turned on by setting to `WEB_COMPUTE` as follows:
+
+```ts
+const amplifyApp = new amplify.App(this, 'MyApp', {
+  platform: amplify.Platform.WEB_COMPUTE,
+});
+```
+
+## Cache Config
+
+Amplify uses Amazon CloudFront to manage the caching configuration for your hosted applications. A cache configuration is applied to each app to optimize for the best performance.
+
+Setting the `cacheConfigType` field on the Amplify `App` construct can be used to control cache configguration. By default, the value is set to `AMPLIFY_MANAGED`. If you want to exclude all cookies from the cache key, set `AMPLIFY_MANAGED_NO_COOKIES`.
+
+For more information, see [Managing the cache configuration for an app](https://docs.aws.amazon.com/amplify/latest/userguide/caching.html).
+
+```ts
+const amplifyApp = new amplify.App(this, 'MyApp', {
+  cacheConfigType: amplify.CacheConfigType.AMPLIFY_MANAGED_NO_COOKIES,
 });
 ```
 

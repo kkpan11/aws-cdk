@@ -1,7 +1,8 @@
 *.js
 *.js.map
 *.d.ts
-!lib/init-templates/**/javascript/**/*
+*.gz
+lib/init-templates/
 node_modules
 dist
 .jsii
@@ -24,4 +25,5 @@ npm-shrinkwrap.json
 
 junit.xml
 
-lib/*.wasm
+lib/**/*.wasm
+lib/**/*.yaml

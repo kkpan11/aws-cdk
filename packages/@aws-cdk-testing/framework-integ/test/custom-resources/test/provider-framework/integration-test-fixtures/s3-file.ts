@@ -6,6 +6,7 @@ import { CustomResource, Stack } from 'aws-cdk-lib';
 import { Construct, Node } from 'constructs';
 import * as api from './s3-file-handler/api';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import { STANDARD_NODEJS_RUNTIME } from '../../../../config';
 
 interface S3FileProps {
   /**
@@ -77,8 +78,8 @@ class S3FileProvider extends Construct {
 
     this.provider = new cr.Provider(this, 's3file-provider', {
       onEventHandler: new lambda.Function(this, 's3file-on-event', {
-        code: lambda.Code.fromAsset(path.join(__dirname, 's3-file-handler')),
-        runtime: lambda.Runtime.NODEJS_14_X,
+        code: lambda.Code.fromAsset(path.join(__dirname, 's3-file-handler'), { exclude: ['*.ts'] }),
+        runtime: STANDARD_NODEJS_RUNTIME,
         handler: 'index.onEvent',
         initialPolicy: [
           new iam.PolicyStatement({

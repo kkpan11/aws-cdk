@@ -69,7 +69,9 @@ describe('Metric Math', () => {
       expression: 'm1 + m2',
     });
 
-    expect(m.warnings).toContainEqual(expect.stringContaining("'m1 + m2' references unknown identifiers"));
+    expect(m.warningsV2).toMatchObject({
+      'CloudWatch:Math:UnknownIdentifier': expect.stringContaining("'m1 + m2' references unknown identifiers"),
+    });
   });
 
   test('metrics METRICS expression does not produce warning for unknown identifier', () => {
@@ -78,7 +80,7 @@ describe('Metric Math', () => {
       usingMetrics: {},
     });
 
-    expect(m.warnings).toBeUndefined();
+    expect(m.warningsV2).toBeUndefined();
   });
 
   test('metrics search expression does not produce warning for unknown identifier', () => {
@@ -87,7 +89,7 @@ describe('Metric Math', () => {
       usingMetrics: {},
     });
 
-    expect(m.warnings).toBeUndefined();
+    expect(m.warningsV2).toBeUndefined();
   });
 
   test('metrics insights expression does not produce warning for unknown identifier', () => {
@@ -95,7 +97,16 @@ describe('Metric Math', () => {
       expression: "SELECT AVG(CpuUsage) FROM EC2 WHERE Instance = '123456'",
     });
 
-    expect(m.warnings).toBeUndefined();
+    expect(m.warningsV2).toBeUndefined();
+  });
+
+  test('metrics INSIGHT_RULE_METRIC expression does not produce warning for unknown identifier', () => {
+    const m = new MathExpression({
+      expression: "INSIGHT_RULE_METRIC('RejectedConnectionsRule', 'Sum')",
+      usingMetrics: {},
+    });
+
+    expect(m.warningsV2).toBeUndefined();
   });
 
   test('math expression referring to unknown expressions produces a warning, even when nested', () => {
@@ -108,7 +119,93 @@ describe('Metric Math', () => {
       },
     });
 
-    expect(m.warnings).toContainEqual(expect.stringContaining("'m1 + m2' references unknown identifiers"));
+    expect(m.warningsV2).toMatchObject({
+      'CloudWatch:Math:UnknownIdentifier': expect.stringContaining("'m1 + m2' references unknown identifiers"),
+    });
+  });
+
+  test('warn if a period is specified in usingMetrics and not equal to the value of the period for MathExpression', () => {
+    const m = new MathExpression({
+      expression: 'm1',
+      usingMetrics: {
+        m1: new Metric({ namespace: 'Test', metricName: 'ACount', period: Duration.minutes(4) }),
+      },
+      period: Duration.minutes(3),
+    });
+
+    expect(m.warningsV2).toMatchObject({
+      'CloudWatch:Math:MetricsPeriodsOverridden': 'Periods of metrics in \'usingMetrics\' for Math expression \'m1\' have been overridden to 180 seconds.',
+    });
+  });
+
+  test('warn if periods are specified in usingMetrics and one is not equal to the value of the period for MathExpression', () => {
+    const m = new MathExpression({
+      expression: 'm1 + m2',
+      usingMetrics: {
+        m1: new Metric({ namespace: 'Test', metricName: 'ACount', period: Duration.minutes(4) }),
+        m2: new Metric({ namespace: 'Test', metricName: 'BCount', period: Duration.minutes(3) }),
+      },
+      period: Duration.minutes(3),
+    });
+
+    expect(m.warningsV2).toMatchObject({
+      'CloudWatch:Math:MetricsPeriodsOverridden': 'Periods of metrics in \'usingMetrics\' for Math expression \'m1 + m2\' have been overridden to 180 seconds.',
+    });
+  });
+
+  test('warn if a period is specified in usingMetrics and not equal to the default value of the period for MathExpression', () => {
+    const m = new MathExpression({
+      expression: 'm1',
+      usingMetrics: {
+        m1: new Metric({ namespace: 'Test', metricName: 'ACount', period: Duration.minutes(4) }),
+      },
+    });
+
+    expect(m.warningsV2).toMatchObject({
+      'CloudWatch:Math:MetricsPeriodsOverridden': 'Periods of metrics in \'usingMetrics\' for Math expression \'m1\' have been overridden to 300 seconds.',
+    });
+  });
+
+  test('can raise multiple warnings', () => {
+    const m = new MathExpression({
+      expression: 'e1 + m1',
+      usingMetrics: {
+        e1: new MathExpression({
+          expression: 'n1 + n2',
+        }),
+        m1: new Metric({ namespace: 'Test', metricName: 'ACount', period: Duration.minutes(4) }),
+      },
+      period: Duration.minutes(3),
+    });
+
+    expect(m.warningsV2).toMatchObject({
+      'CloudWatch:Math:MetricsPeriodsOverridden': 'Periods of metrics in \'usingMetrics\' for Math expression \'e1 + m1\' have been overridden to 180 seconds.',
+      'CloudWatch:Math:UnknownIdentifier': expect.stringContaining("'n1 + n2' references unknown identifiers"),
+    });
+  });
+
+  test('don\'t warn if a period is not specified in usingMetrics', () => {
+    const m = new MathExpression({
+      expression: 'm1',
+      usingMetrics: {
+        m1: new Metric({ namespace: 'Test', metricName: 'ACount' }),
+      },
+      period: Duration.minutes(3),
+    });
+
+    expect(m.warningsV2).toBeUndefined();
+  });
+
+  test('don\'t warn if a period is specified in usingMetrics but equal to the value of the period for MathExpression', () => {
+    const m = new MathExpression({
+      expression: 'm1',
+      usingMetrics: {
+        m1: new Metric({ namespace: 'Test', metricName: 'ACount', period: Duration.minutes(3) }),
+      },
+      period: Duration.minutes(3),
+    });
+
+    expect(m.warningsV2).toBeUndefined();
   });
 
   describe('in graphs', () => {

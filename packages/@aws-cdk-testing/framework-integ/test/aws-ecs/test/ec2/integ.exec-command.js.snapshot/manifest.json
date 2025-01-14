@@ -1,5 +1,5 @@
 {
-  "version": "31.0.0",
+  "version": "35.0.0",
   "artifacts": {
     "aws-ecs-integ-exec-command.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "aws-ecs-integ-exec-command.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/663a1d211c76a784592a344ef6571d14945ed9ba5d8f756ee6442e3a99fcb747.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/9b91986d8e19cea21ab8affdab660a99f2852c849fddc68040ac403e9988efda.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -219,10 +220,10 @@
             "data": "Ec2ClusterDefaultAutoScalingGroupInstanceProfileDB232471"
           }
         ],
-        "/aws-ecs-integ-exec-command/Ec2Cluster/DefaultAutoScalingGroup/LaunchConfig": [
+        "/aws-ecs-integ-exec-command/Ec2Cluster/DefaultAutoScalingGroup/LaunchTemplate/Resource": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "Ec2ClusterDefaultAutoScalingGroupLaunchConfig7B2FED3A"
+            "data": "Ec2ClusterDefaultAutoScalingGroupLaunchTemplate346F58BE"
           }
         ],
         "/aws-ecs-integ-exec-command/Ec2Cluster/DefaultAutoScalingGroup/ASG": [

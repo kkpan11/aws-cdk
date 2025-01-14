@@ -52,7 +52,6 @@
   "AppF1B96344": {
    "Type": "AWS::Amplify::App",
    "Properties": {
-    "Name": "App",
     "BasicAuthConfig": {
      "EnableBasicAuth": false
     },
@@ -62,6 +61,8 @@
       "Arn"
      ]
     },
+    "Name": "App",
+    "Platform": "WEB",
     "Repository": {
      "Fn::GetAtt": [
       "Repo02AC86CF",

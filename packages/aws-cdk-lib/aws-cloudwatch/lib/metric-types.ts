@@ -10,8 +10,18 @@ export interface IMetric {
    * Should be attached to the consuming construct.
    *
    * @default - None
+   * @deprecated - use warningsV2
    */
   readonly warnings?: string[];
+
+  /**
+   * Any warnings related to this metric
+   *
+   * Should be attached to the consuming construct.
+   *
+   * @default - None
+   */
+  readonly warningsV2?: { [id: string]: string };
 
   /**
    * Inspect the details of the metric object
@@ -313,6 +323,20 @@ export interface MetricStatConfig {
    * @default Deployment account.
    */
   readonly account?: string;
+
+  /**
+   * Region set directly on the metric, not inherited from the attached stack.
+   *
+   * @default No override.
+   */
+  readonly regionOverride?: string;
+
+  /**
+   * Account set directly on the metric, not inherited from the attached stack.
+   *
+   * @default No override.
+   */
+  readonly accountOverride?: string;
 }
 
 /**

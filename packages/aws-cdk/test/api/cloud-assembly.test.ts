@@ -2,9 +2,7 @@
 import * as cxschema from '@aws-cdk/cloud-assembly-schema';
 import { DefaultSelection } from '../../lib/api/cxapp/cloud-assembly';
 import { MockCloudExecutable } from '../util';
-
-// behave like v2
-process.env.CXAPI_DISABLE_SELECT_BY_ID = '1';
+import { cliAssemblyWithForcedVersion } from './assembly-versions';
 
 test('do not throw when selecting stack without errors', async () => {
   // GIVEN
@@ -156,7 +154,39 @@ test('select behavior with nested assemblies: repeat', async() => {
   expect(x.stackCount).toBe(2);
 });
 
-async function testCloudAssembly({ env }: { env?: string, versionReporting?: boolean } = {}) {
+test('select behavior with no stacks and ignore stacks option', async() => {
+  // GIVEN
+  const cxasm = await testCloudAssemblyNoStacks();
+
+  // WHEN
+  const x = await cxasm.selectStacks({ patterns: [] }, {
+    defaultBehavior: DefaultSelection.AllStacks,
+    ignoreNoStacks: true,
+  });
+
+  // THEN
+  expect(x.stackCount).toBe(0);
+});
+
+test('select behavior with no stacks and no ignore stacks option', async() => {
+  // GIVEN
+  const cxasm = await testCloudAssemblyNoStacks();
+
+  // WHEN & THEN
+  await expect(cxasm.selectStacks({ patterns: [] }, { defaultBehavior: DefaultSelection.AllStacks, ignoreNoStacks: false }))
+    .rejects.toThrow('This app contains no stacks');
+});
+
+test('select behavior with no stacks and default ignore stacks options (false)', async() => {
+  // GIVEN
+  const cxasm = await testCloudAssemblyNoStacks();
+
+  // WHEN & THEN
+  await expect(cxasm.selectStacks({ patterns: [] }, { defaultBehavior: DefaultSelection.AllStacks }))
+    .rejects.toThrow('This app contains no stacks');
+});
+
+async function testCloudAssembly({ env }: { env?: string; versionReporting?: boolean } = {}) {
   const cloudExec = new MockCloudExecutable({
     stacks: [{
       stackName: 'withouterrors',
@@ -182,7 +212,15 @@ async function testCloudAssembly({ env }: { env?: string, versionReporting?: boo
   return cloudExec.synthesize();
 }
 
-async function testNestedCloudAssembly({ env }: { env?: string, versionReporting?: boolean } = {}) {
+async function testCloudAssemblyNoStacks() {
+  const cloudExec = new MockCloudExecutable({
+    stacks: [],
+  });
+
+  return cloudExec.synthesize();
+}
+
+async function testNestedCloudAssembly({ env }: { env?: string; versionReporting?: boolean } = {}) {
   const cloudExec = new MockCloudExecutable({
     stacks: [{
       stackName: 'withouterrors',
@@ -221,5 +259,6 @@ async function testNestedCloudAssembly({ env }: { env?: string, versionReporting
     }],
   });
 
-  return cloudExec.synthesize();
+  const asm = await cloudExec.synthesize();
+  return cliAssemblyWithForcedVersion(asm, '30.0.0');
 }

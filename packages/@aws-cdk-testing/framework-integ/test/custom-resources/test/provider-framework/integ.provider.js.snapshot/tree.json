@@ -55,7 +55,7 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.2.52"
+              "version": "10.4.2"
             }
           },
           "com.amazonaws.cdk.custom-resources.s3file-provider": {
@@ -205,16 +205,16 @@
                           "s3Bucket": {
                             "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                           },
-                          "s3Key": "0aad228bf32d2d8751bf3c64468fd63177e1d0088a9b7114239e668c667d9674.zip"
+                          "s3Key": "4e48efd39ed107e3d109e81d320e0c66d56d3dbcb4c232e7b8e0ea5b62f911af.zip"
                         },
+                        "handler": "index.onEvent",
                         "role": {
                           "Fn::GetAtt": [
                             "comamazonawscdkcustomresourcess3fileproviders3fileoneventServiceRole999CEEB6",
                             "Arn"
                           ]
                         },
-                        "handler": "index.onEvent",
-                        "runtime": "nodejs14.x"
+                        "runtime": "nodejs18.x"
                       }
                     },
                     "constructInfo": {
@@ -389,13 +389,7 @@
                               "s3Bucket": {
                                 "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                               },
-                              "s3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-                            },
-                            "role": {
-                              "Fn::GetAtt": [
-                                "comamazonawscdkcustomresourcess3fileproviderframeworkonEventServiceRoleABFCDA11",
-                                "Arn"
-                              ]
+                              "s3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
                             },
                             "description": "AWS CDK resource provider framework - onEvent (integ-provider-framework/com.amazonaws.cdk.custom-resources.s3file-provider/s3file-provider)",
                             "environment": {
@@ -409,9 +403,15 @@
                               }
                             },
                             "handler": "framework.onEvent",
+                            "role": {
+                              "Fn::GetAtt": [
+                                "comamazonawscdkcustomresourcess3fileproviderframeworkonEventServiceRoleABFCDA11",
+                                "Arn"
+                              ]
+                            },
                             "runtime": {
                               "Fn::FindInMap": [
-                                "DefaultCrNodeVersionMap",
+                                "LatestNodeRuntimeMap",
                                 {
                                   "Ref": "AWS::Region"
                                 },
@@ -441,12 +441,12 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.2.52"
+              "version": "10.4.2"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "integ-provider-framework/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "integ-provider-framework/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -477,7 +477,7 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.2.52"
+              "version": "10.4.2"
             }
           },
           "file3Utf8": {
@@ -505,7 +505,7 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.2.52"
+              "version": "10.4.2"
             }
           },
           "assert-file": {
@@ -533,7 +533,7 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.2.52"
+              "version": "10.4.2"
             }
           },
           "com.amazonaws.cdk.custom-resources.s3assert-provider": {
@@ -639,14 +639,14 @@
                           },
                           "s3Key": "4bafad8d010ba693e235b77d2c6decfc2ac79a8208d4477cbb36d31caf7189e8.zip"
                         },
+                        "handler": "index.on_event",
                         "role": {
                           "Fn::GetAtt": [
                             "comamazonawscdkcustomresourcess3assertproviders3assertoneventServiceRole012C0033",
                             "Arn"
                           ]
                         },
-                        "handler": "index.on_event",
-                        "runtime": "python3.7"
+                        "runtime": "python3.10"
                       }
                     },
                     "constructInfo": {
@@ -802,14 +802,14 @@
                           },
                           "s3Key": "4bafad8d010ba693e235b77d2c6decfc2ac79a8208d4477cbb36d31caf7189e8.zip"
                         },
+                        "handler": "index.is_complete",
                         "role": {
                           "Fn::GetAtt": [
                             "comamazonawscdkcustomresourcess3assertproviders3assertiscompleteServiceRoleACAA755A",
                             "Arn"
                           ]
                         },
-                        "handler": "index.is_complete",
-                        "runtime": "python3.7"
+                        "runtime": "python3.10"
                       }
                     },
                     "constructInfo": {
@@ -1011,13 +1011,7 @@
                               "s3Bucket": {
                                 "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                               },
-                              "s3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-                            },
-                            "role": {
-                              "Fn::GetAtt": [
-                                "comamazonawscdkcustomresourcess3assertproviderframeworkonEventServiceRole34070F2C",
-                                "Arn"
-                              ]
+                              "s3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
                             },
                             "description": "AWS CDK resource provider framework - onEvent (integ-provider-framework/com.amazonaws.cdk.custom-resources.s3assert-provider/s3assert-provider)",
                             "environment": {
@@ -1040,9 +1034,15 @@
                               }
                             },
                             "handler": "framework.onEvent",
+                            "role": {
+                              "Fn::GetAtt": [
+                                "comamazonawscdkcustomresourcess3assertproviderframeworkonEventServiceRole34070F2C",
+                                "Arn"
+                              ]
+                            },
                             "runtime": {
                               "Fn::FindInMap": [
-                                "DefaultCrNodeVersionMap",
+                                "LatestNodeRuntimeMap",
                                 {
                                   "Ref": "AWS::Region"
                                 },
@@ -1240,13 +1240,7 @@
                               "s3Bucket": {
                                 "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                               },
-                              "s3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-                            },
-                            "role": {
-                              "Fn::GetAtt": [
-                                "comamazonawscdkcustomresourcess3assertproviderframeworkisCompleteServiceRole2C8C7983",
-                                "Arn"
-                              ]
+                              "s3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
                             },
                             "description": "AWS CDK resource provider framework - isComplete (integ-provider-framework/com.amazonaws.cdk.custom-resources.s3assert-provider/s3assert-provider)",
                             "environment": {
@@ -1266,9 +1260,15 @@
                               }
                             },
                             "handler": "framework.isComplete",
+                            "role": {
+                              "Fn::GetAtt": [
+                                "comamazonawscdkcustomresourcess3assertproviderframeworkisCompleteServiceRole2C8C7983",
+                                "Arn"
+                              ]
+                            },
                             "runtime": {
                               "Fn::FindInMap": [
-                                "DefaultCrNodeVersionMap",
+                                "LatestNodeRuntimeMap",
                                 {
                                   "Ref": "AWS::Region"
                                 },
@@ -1466,13 +1466,7 @@
                               "s3Bucket": {
                                 "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                               },
-                              "s3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-                            },
-                            "role": {
-                              "Fn::GetAtt": [
-                                "comamazonawscdkcustomresourcess3assertproviderframeworkonTimeoutServiceRole15F6DFA2",
-                                "Arn"
-                              ]
+                              "s3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
                             },
                             "description": "AWS CDK resource provider framework - onTimeout (integ-provider-framework/com.amazonaws.cdk.custom-resources.s3assert-provider/s3assert-provider)",
                             "environment": {
@@ -1492,9 +1486,15 @@
                               }
                             },
                             "handler": "framework.onTimeout",
+                            "role": {
+                              "Fn::GetAtt": [
+                                "comamazonawscdkcustomresourcess3assertproviderframeworkonTimeoutServiceRole15F6DFA2",
+                                "Arn"
+                              ]
+                            },
                             "runtime": {
                               "Fn::FindInMap": [
-                                "DefaultCrNodeVersionMap",
+                                "LatestNodeRuntimeMap",
                                 {
                                   "Ref": "AWS::Region"
                                 },
@@ -1613,6 +1613,22 @@
                                               ]
                                             }
                                           ]
+                                        },
+                                        {
+                                          "Action": [
+                                            "logs:CreateLogDelivery",
+                                            "logs:CreateLogStream",
+                                            "logs:DeleteLogDelivery",
+                                            "logs:DescribeLogGroups",
+                                            "logs:DescribeResourcePolicies",
+                                            "logs:GetLogDelivery",
+                                            "logs:ListLogDeliveries",
+                                            "logs:PutLogEvents",
+                                            "logs:PutResourcePolicy",
+                                            "logs:UpdateLogDelivery"
+                                          ],
+                                          "Effect": "Allow",
+                                          "Resource": "*"
                                         }
                                       ],
                                       "Version": "2012-10-17"
@@ -1642,18 +1658,103 @@
                           "version": "0.0.0"
                         }
                       },
+                      "LogGroup": {
+                        "id": "LogGroup",
+                        "path": "integ-provider-framework/com.amazonaws.cdk.custom-resources.s3assert-provider/s3assert-provider/waiter-state-machine/LogGroup",
+                        "children": {
+                          "Resource": {
+                            "id": "Resource",
+                            "path": "integ-provider-framework/com.amazonaws.cdk.custom-resources.s3assert-provider/s3assert-provider/waiter-state-machine/LogGroup/Resource",
+                            "attributes": {
+                              "aws:cdk:cloudformation:type": "AWS::Logs::LogGroup",
+                              "aws:cdk:cloudformation:props": {
+                                "logGroupName": {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      "/aws/vendedlogs/states/waiter-state-machine-",
+                                      {
+                                        "Ref": "comamazonawscdkcustomresourcess3assertproviderframeworkisComplete63829575"
+                                      },
+                                      "-c8f5fa432b7394919f18e8df23f7b79ef142420db6"
+                                    ]
+                                  ]
+                                },
+                                "retentionInDays": 731
+                              }
+                            },
+                            "constructInfo": {
+                              "fqn": "aws-cdk-lib.aws_logs.CfnLogGroup",
+                              "version": "0.0.0"
+                            }
+                          }
+                        },
+                        "constructInfo": {
+                          "fqn": "aws-cdk-lib.aws_logs.LogGroup",
+                          "version": "0.0.0"
+                        }
+                      },
                       "Resource": {
                         "id": "Resource",
                         "path": "integ-provider-framework/com.amazonaws.cdk.custom-resources.s3assert-provider/s3assert-provider/waiter-state-machine/Resource",
+                        "attributes": {
+                          "aws:cdk:cloudformation:type": "AWS::StepFunctions::StateMachine",
+                          "aws:cdk:cloudformation:props": {
+                            "definitionString": {
+                              "Fn::Join": [
+                                "",
+                                [
+                                  "{\"StartAt\":\"framework-isComplete-task\",\"States\":{\"framework-isComplete-task\":{\"End\":true,\"Retry\":[{\"ErrorEquals\":[\"States.ALL\"],\"IntervalSeconds\":5,\"MaxAttempts\":60,\"BackoffRate\":1}],\"Catch\":[{\"ErrorEquals\":[\"States.ALL\"],\"Next\":\"framework-onTimeout-task\"}],\"Type\":\"Task\",\"Resource\":\"",
+                                  {
+                                    "Fn::GetAtt": [
+                                      "comamazonawscdkcustomresourcess3assertproviderframeworkisComplete63829575",
+                                      "Arn"
+                                    ]
+                                  },
+                                  "\"},\"framework-onTimeout-task\":{\"End\":true,\"Type\":\"Task\",\"Resource\":\"",
+                                  {
+                                    "Fn::GetAtt": [
+                                      "comamazonawscdkcustomresourcess3assertproviderframeworkonTimeoutA1E1E5DC",
+                                      "Arn"
+                                    ]
+                                  },
+                                  "\"}}}"
+                                ]
+                              ]
+                            },
+                            "loggingConfiguration": {
+                              "destinations": [
+                                {
+                                  "cloudWatchLogsLogGroup": {
+                                    "logGroupArn": {
+                                      "Fn::GetAtt": [
+                                        "comamazonawscdkcustomresourcess3assertproviderwaiterstatemachineLogGroup7F17330A",
+                                        "Arn"
+                                      ]
+                                    }
+                                  }
+                                }
+                              ],
+                              "includeExecutionData": false,
+                              "level": "ERROR"
+                            },
+                            "roleArn": {
+                              "Fn::GetAtt": [
+                                "comamazonawscdkcustomresourcess3assertproviderwaiterstatemachineRole39E8529F",
+                                "Arn"
+                              ]
+                            }
+                          }
+                        },
                         "constructInfo": {
-                          "fqn": "aws-cdk-lib.CfnResource",
+                          "fqn": "aws-cdk-lib.aws_stepfunctions.CfnStateMachine",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "constructs.Construct",
-                      "version": "10.2.52"
+                      "fqn": "aws-cdk-lib.custom_resources.WaiterStateMachine",
+                      "version": "0.0.0"
                     }
                   }
                 },
@@ -1665,7 +1766,7 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.2.52"
+              "version": "10.4.2"
             }
           },
           "file1-url": {
@@ -1727,7 +1828,7 @@
                 "path": "IntegProviderFrameworkTest/DefaultTest/Default",
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.2.52"
+                  "version": "10.4.2"
                 }
               },
               "DeployAssert": {
@@ -1773,7 +1874,7 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.2.52"
+          "version": "10.4.2"
         }
       }
     },

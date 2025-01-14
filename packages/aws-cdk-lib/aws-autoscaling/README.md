@@ -16,14 +16,31 @@ new autoscaling.AutoScalingGroup(this, 'ASG', {
   vpc,
   instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.MICRO),
 
-  // The latest Amazon Linux image of a particular generation
-  machineImage: ec2.MachineImage.latestAmazonLinux({
-    generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
-  }),
+  // The latest Amazon Linux 2 image
+  machineImage: ec2.MachineImage.latestAmazonLinux2(),
 });
 ```
 
-NOTE: AutoScalingGroup has an property called `allowAllOutbound` (allowing the instances to contact the
+Creating an `AutoScalingGroup` from a Launch Configuration has been deprecated. All new accounts created after December 31, 2023 will no longer be able to create Launch Configurations. With the `@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig` feature flag set to true, `AutoScalingGroup` properties used to create a Launch Configuration will now be used to create a `LaunchTemplate` using a [Launch Configuration to `LaunchTemplate` mapping](https://docs.aws.amazon.com/autoscaling/ec2/userguide/migrate-launch-configurations-with-cloudformation.html#launch-configuration-mapping-reference). Specifically, the following `AutoScalingGroup` properties will be used to generate a `LaunchTemplate`:
+* machineImage
+* keyName (deprecated, prefer keyPair)
+* keyPair
+* instanceType
+* instanceMonitoring
+* securityGroup
+* role
+* userData
+* associatePublicIpAddress
+* spotPrice
+* blockDevices
+
+After the Launch Configuration is replaced with a `LaunchTemplate`, any new instances launched by the `AutoScalingGroup` will use the new `LaunchTemplate`. Existing instances are not affected. To update an existing instance, you can allow the `AutoScalingGroup` to gradually replace existing instances with new instances based on the `terminationPolicies` for the `AutoScalingGroup`. Alternatively, you can terminate them yourself and force the `AutoScalingGroup` to launch new instances to maintain the `desiredCapacity`.
+
+Support for creating an `AutoScalingGroup` from a `LaunchTemplate` was added in CDK version 2.21.0. Users on a CDK version earlier than version 2.21.0 that need to create an `AutoScalingGroup` with an account created after December 31, 2023 must update their CDK version to 2.21.0 or later. Users on CDK versions 2.21.0 up to, but not including 2.86.0, must use a manually created `LaunchTemplate` to create an `AutoScalingGroup` for accounts created after December 31, 2023. CDK version 2.86.0 or later will automatically generate a `LaunchTemplate` using the `AutoScalingGroup` properties mentioned above.
+
+For additional migration information, please see: [Migrating to a `LaunchTemplate` from a Launch Configuration](https://docs.aws.amazon.com/autoscaling/ec2/userguide/migrate-to-launch-templates.html)
+
+NOTE: AutoScalingGroup has a property called `allowAllOutbound` (allowing the instances to contact the
 internet) which is set to `true` by default. Be sure to set this to `false`  if you don't want
 your instances to be able to start arbitrary connections. Alternatively, you can specify an existing security
 group to attach to the instances that are launched, rather than have the group create a new one.
@@ -35,14 +52,12 @@ const mySecurityGroup = new ec2.SecurityGroup(this, 'SecurityGroup', { vpc });
 new autoscaling.AutoScalingGroup(this, 'ASG', {
   vpc,
   instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.MICRO),
-  machineImage: ec2.MachineImage.latestAmazonLinux({
-    generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
-  }),
+  machineImage: ec2.MachineImage.latestAmazonLinux2(),
   securityGroup: mySecurityGroup,
 });
 ```
 
-Alternatively you can create an `AutoScalingGroup` from a `LaunchTemplate`:
+Alternatively, to enable more advanced features, you can create an `AutoScalingGroup` from a supplied `LaunchTemplate`:
 
 ```ts
 declare const vpc: ec2.Vpc;
@@ -54,7 +69,7 @@ new autoscaling.AutoScalingGroup(this, 'ASG', {
 });
 ```
 
-To launch a mixture of Spot and on-demand instances, and/or with multiple instance types, you can create an `AutoScalingGroup` from a MixedInstancesPolicy:
+To launch a mixture of Spot and on-demand instances, and/or with multiple instance types, you can create an `AutoScalingGroup` from a `MixedInstancesPolicy`:
 
 ```ts
 declare const vpc: ec2.Vpc;
@@ -72,6 +87,29 @@ new autoscaling.AutoScalingGroup(this, 'ASG', {
       { instanceType: new ec2.InstanceType('t3.micro') },
       { instanceType: new ec2.InstanceType('t3a.micro') },
       { instanceType: new ec2.InstanceType('t4g.micro'), launchTemplate: launchTemplate2 },
+    ],
+  }
+});
+```
+
+You can specify instances requirements with the `instanceRequirements ` property:
+
+```ts
+declare const vpc: ec2.Vpc;
+declare const launchTemplate1: ec2.LaunchTemplate;
+
+new autoscaling.AutoScalingGroup(this, 'ASG', {
+  vpc,
+  mixedInstancesPolicy: {
+    launchTemplate: launchTemplate1,
+    launchTemplateOverrides: [
+      {
+        instanceRequirements: {
+          vCpuCount: { min: 4, max: 8 },
+          memoryMiB: { min: 16384 },
+          cpuManufacturers: ['intel'],
+        },
+      }
     ],
   }
 });
@@ -185,6 +223,8 @@ autoScalingGroup.scaleOnMetric('ScaleToCPU', {
     { lower: 50, change: +1 },
     { lower: 70, change: +3 },
   ],
+  evaluationPeriods: 10,
+  datapointsToAlarm: 5,
 
   // Change this to AdjustmentType.PERCENT_CHANGE_IN_CAPACITY to interpret the
   // 'change' numbers before as percentages instead of capacity counts.
@@ -273,6 +313,38 @@ autoScalingGroup.scaleOnSchedule('AllowDownscalingAtNight', {
   minCapacity: 1
 });
 ```
+
+### Instance Maintenance Policy
+
+You can configure an instance maintenance policy for your Auto Scaling group to
+meet specific capacity requirements during events that cause instances to be replaced,
+such as an instance refresh or the health check process.
+
+For example, suppose you have an Auto Scaling group that has a small number of instances.
+You want to avoid the potential disruptions from terminating and then replacing an instance
+when health checks indicate an impaired instance. With an instance maintenance policy, you
+can make sure that Amazon EC2 Auto Scaling first launches a new instance and then waits for
+it to be fully ready before terminating the unhealthy instance.
+
+An instance maintenance policy also helps you minimize any potential disruptions in cases where
+multiple instances are replaced at the same time. You set the `minHealthyPercentage`
+and the `maxHealthyPercentage` for the policy, and your Auto Scaling group can only
+increase and decrease capacity within that minimum-maximum range when replacing instances.
+A larger range increases the number of instances that can be replaced at the same time.
+
+```ts
+declare const vpc: ec2.Vpc;
+
+new autoscaling.AutoScalingGroup(this, 'ASG', {
+  vpc,
+  instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.MICRO),
+  machineImage: ec2.MachineImage.latestAmazonLinux2(),
+  maxHealthyPercentage: 200,
+  minHealthyPercentage: 100,
+});
+```
+
+> Visit [Instance maintenance policies](https://docs.aws.amazon.com/autoscaling/ec2/userguide/ec2-auto-scaling-instance-maintenance-policy.html) for more details.
 
 ### Block Devices
 
@@ -409,7 +481,7 @@ The following update policies are available:
 
 ## Allowing Connections
 
-See the documentation of the `@aws-cdk/aws-ec2` package for more information
+See the documentation of the `aws-cdk-lib/aws-ec2` package for more information
 about allowing connections between resources backed by instances.
 
 ## Max Instance Lifetime
@@ -468,10 +540,22 @@ to determine which instances it terminates first during scale-in events. You
 can specify one or more termination policies with the `terminationPolicies`
 property:
 
+[Custom termination policy](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lambda-custom-termination-policy.html) with lambda
+can be used to determine which instances to terminate based on custom logic.
+The custom termination policy can be specified using `TerminationPolicy.CUSTOM_LAMBDA_FUNCTION`. If this is
+specified, you must also supply a value of lambda arn in the `terminationPolicyCustomLambdaFunctionArn` property and
+attach necessary [permission](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lambda-custom-termination-policy.html#lambda-custom-termination-policy-create-function)
+to invoke the lambda function.
+
+If there are multiple termination policies specified,
+custom termination policy with lambda `TerminationPolicy.CUSTOM_LAMBDA_FUNCTION`
+must be specified first.
+
 ```ts
 declare const vpc: ec2.Vpc;
 declare const instanceType: ec2.InstanceType;
 declare const machineImage: ec2.IMachineImage;
+declare const arn: string;
 
 new autoscaling.AutoScalingGroup(this, 'ASG', {
   vpc,
@@ -481,9 +565,13 @@ new autoscaling.AutoScalingGroup(this, 'ASG', {
   // ...
 
   terminationPolicies: [
+    autoscaling.TerminationPolicy.CUSTOM_LAMBDA_FUNCTION,
     autoscaling.TerminationPolicy.OLDEST_INSTANCE,
     autoscaling.TerminationPolicy.DEFAULT,
   ],
+
+  //terminationPolicyCustomLambdaFunctionArn property must be specified if the TerminationPolicy.CUSTOM_LAMBDA_FUNCTION is used
+  terminationPolicyCustomLambdaFunctionArn: arn,
 });
 ```
 
@@ -559,9 +647,7 @@ new autoscaling.AutoScalingGroup(this, 'ASG', {
   instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
 
   // Amazon Linux 2 comes with SSM Agent by default
-  machineImage: ec2.MachineImage.latestAmazonLinux({
-    generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
-  }),
+  machineImage: ec2.MachineImage.latestAmazonLinux2(),
 
   // Turn on SSM
   ssmSessionPermissions: true,
@@ -650,6 +736,53 @@ new autoscaling.AutoScalingGroup(this, 'ASG', {
   // ...
 
   defaultInstanceWarmup: Duration.seconds(5),
+});
+```
+
+## Configuring KeyPair for instances
+
+You can use a keyPair to build your asg when you decide not to use a ready-made LanchTemplate.
+
+To configure KeyPair for an autoscaling group, pass the `keyPair` as a prop:
+
+```ts
+declare const vpc: ec2.Vpc;
+declare const instanceType: ec2.InstanceType;
+declare const machineImage: ec2.IMachineImage;
+
+const myKeyPair = new ec2.KeyPair(this, 'MyKeyPair');
+
+new autoscaling.AutoScalingGroup(this, 'ASG', {
+  vpc,
+  instanceType,
+  machineImage,
+
+  // ...
+
+  keyPair: myKeyPair,
+});
+```
+
+## Capacity Distribution Strategy
+
+If launches fail in an Availability Zone, the following strategies are available.
+
+* `BALANCED_BEST_EFFORT` (default) - If launches fail in an Availability Zone, Auto Scaling will attempt to launch in another healthy Availability Zone instead.
+* `BALANCED_ONLY` - If launches fail in an Availability Zone, Auto Scaling will continue to attempt to launch in the unhealthy zone to preserve a balanced distribution.
+
+```ts
+declare const vpc: ec2.Vpc;
+declare const instanceType: ec2.InstanceType;
+declare const machineImage: ec2.IMachineImage;
+
+new autoscaling.AutoScalingGroup(this, 'ASG', {
+  vpc,
+  instanceType,
+  machineImage,
+
+  // ...
+
+  azCapacityDistributionStrategy: autoscaling.CapacityDistributionStrategy.BALANCED_ONLY,
 });
 ```
 

@@ -9,6 +9,7 @@ import * as iam from '../../../aws-iam';
 import * as sqs from '../../../aws-sqs';
 import * as cdk from '../../../core';
 import * as targets from '../../lib';
+import { EcsTask } from '../../lib';
 
 let stack: cdk.Stack;
 let vpc: ec2.Vpc;
@@ -838,7 +839,7 @@ test('throws an error when trying to pass a disallowed value for propagateTags',
       }],
       propagateTags: ecs.PropagatedTagSource.SERVICE, // propagateTags must be TASK_DEFINITION or NONE
     }));
-  }).toThrowError('When propagateTags is passed, it must be set to TASK_DEFINITION or NONE.');
+  }).toThrow('When propagateTags is passed, it must be set to TASK_DEFINITION or NONE.');
 });
 
 test('set enableExecuteCommand', () => {
@@ -1025,7 +1026,7 @@ test('throw error when enable assignPublicIp for non-Fargate task', () => {
       subnetSelection: { subnetType: ec2.SubnetType.PUBLIC },
       assignPublicIp: true,
     }));
-  }).toThrowError('assignPublicIp is only supported for FARGATE tasks');
+  }).toThrow('assignPublicIp is only supported for FARGATE tasks');
 });
 
 test('throw an error when assignPublicIp is set to true for private subnets', () => {
@@ -1052,5 +1053,143 @@ test('throw an error when assignPublicIp is set to true for private subnets', ()
       subnetSelection: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       assignPublicIp: true,
     }));
-  }).toThrowError('assignPublicIp should be set to true only for PUBLIC subnets');
+  }).toThrow('assignPublicIp should be set to true only for PUBLIC subnets');
+});
+
+test.each([
+  ['EC2', ecs.LaunchType.EC2, ecs.Compatibility.EC2_AND_FARGATE],
+  ['FARGATE', ecs.LaunchType.FARGATE, ecs.Compatibility.EC2_AND_FARGATE],
+  ['EXTERNAL', ecs.LaunchType.EXTERNAL, ecs.Compatibility.EC2_AND_FARGATE],
+  ['EC2', undefined, ecs.Compatibility.EC2_AND_FARGATE],
+  ['FARGATE', undefined, ecs.Compatibility.FARGATE],
+])('launch type %s is set by %s type specified', (expected, launchType, compatibility) => {
+  // GIVEN
+  const taskDefinition = new ecs.TaskDefinition(stack, 'TaskDef', {
+    networkMode: ecs.NetworkMode.AWS_VPC,
+    compatibility,
+    cpu: '256',
+    memoryMiB: '512',
+  });
+  taskDefinition.addContainer('TheContainer', {
+    image: ecs.ContainerImage.fromRegistry('henk'),
+  });
+
+  const rule = new events.Rule(stack, 'Rule', {
+    schedule: events.Schedule.expression('rate(1 min)'),
+  });
+
+  // WHEN
+  rule.addTarget(new targets.EcsTask({
+    cluster,
+    taskDefinition,
+    launchType,
+  }));
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::Events::Rule', {
+    Targets: [
+      {
+        EcsParameters: {
+          LaunchType: expected,
+        },
+      },
+    ],
+  });
+});
+
+test('When using non-imported TaskDefinition, the IAM policy `Resource` should use `Ref` to reference the TaskDefinition', () => {
+  const taskDefinition = new ecs.FargateTaskDefinition(stack, 'TaskDef');
+  taskDefinition.addContainer('TheContainer', {
+    image: ecs.ContainerImage.fromRegistry('henk'),
+  });
+
+  const rule = new events.Rule(stack, 'Rule', {
+    schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+  });
+
+  rule.addTarget(
+    new EcsTask({
+      cluster: cluster,
+      taskDefinition: taskDefinition,
+    }),
+  );
+
+  const policyMatch = Match.objectLike({
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({
+          Action: 'ecs:RunTask',
+          Resource: {
+            Ref: 'TaskDef54694570',
+          },
+        }),
+      ]),
+    },
+  });
+  const template = Template.fromStack(stack);
+  template.hasResource('AWS::IAM::Policy', { Properties: policyMatch });
+});
+
+test('Imported task definition without revision adds wildcard to policy resource', () => {
+  const taskDefinition = ecs.FargateTaskDefinition.fromFargateTaskDefinitionAttributes(stack, 'TaskDefImport', {
+    taskDefinitionArn: 'arn:aws:ecs:us-west-2:012345678901:task-definition/MyTask',
+    taskRole: iam.Role.fromRoleArn(stack, 'RoleImport', 'arn:aws:iam::012345678901:role/MyTaskRole'),
+    networkMode: ecs.NetworkMode.AWS_VPC,
+  });
+
+  const rule = new events.Rule(stack, 'Rule', {
+    schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+  });
+
+  rule.addTarget(
+    new EcsTask({
+      cluster: cluster,
+      taskDefinition: taskDefinition,
+    }),
+  );
+
+  const policyMatch = Match.objectLike({
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({
+          Action: 'ecs:RunTask',
+          Resource: `${taskDefinition.taskDefinitionArn}:*`,
+        }),
+      ]),
+    },
+  });
+  const template = Template.fromStack(stack);
+  template.hasResource('AWS::IAM::Policy', { Properties: policyMatch });
+});
+
+test('Imported task definition with revision uses original arn for policy resource', () => {
+  const taskDefinition = ecs.FargateTaskDefinition.fromFargateTaskDefinitionAttributes(stack, 'TaskDefImport', {
+    taskDefinitionArn: 'arn:aws:ecs:us-west-2:012345678901:task-definition/MyTask:1',
+    taskRole: iam.Role.fromRoleArn(stack, 'RoleImport', 'arn:aws:iam::012345678901:role/MyTaskRole'),
+    networkMode: ecs.NetworkMode.AWS_VPC,
+  });
+
+  const rule = new events.Rule(stack, 'Rule', {
+    schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+  });
+
+  rule.addTarget(
+    new EcsTask({
+      cluster: cluster,
+      taskDefinition: taskDefinition,
+    }),
+  );
+
+  const policyMatch = Match.objectLike({
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({
+          Action: 'ecs:RunTask',
+          Resource: taskDefinition.taskDefinitionArn,
+        }),
+      ]),
+    },
+  });
+  const template = Template.fromStack(stack);
+  template.hasResource('AWS::IAM::Policy', { Properties: policyMatch });
 });

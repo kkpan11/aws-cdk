@@ -40,8 +40,8 @@ describe('AwsApiCall', () => {
       service: 'MyService',
       api: 'MyApi',
       parameters: {
-        param1: 'val1',
-        param2: 2,
+        param1: '"val1"',
+        param2: '2',
       },
     });
 
@@ -65,8 +65,8 @@ describe('AwsApiCall', () => {
       service: 'MyService',
       api: 'MyApi',
       parameters: {
-        param1: 'val1',
-        param2: 2,
+        param1: '"val1"',
+        param2: '2',
       },
       outputPaths: [
         'path1',
@@ -93,8 +93,8 @@ describe('AwsApiCall', () => {
       service: 'MyService',
       api: 'MyApi',
       parameters: {
-        param1: 'val1',
-        param2: 2,
+        param1: '"val1"',
+        param2: '2',
       },
       flattenResponse: 'true',
       outputPaths: [
@@ -175,8 +175,8 @@ describe('AwsApiCall', () => {
       service: 'MyService',
       api: 'MyApi',
       parameters: {
-        param1: 'val1',
-        param2: 2,
+        param1: '"val1"',
+        param2: '2',
       },
       expected: JSON.stringify({ $ObjectLike: { Key: 'Value' } }),
     });
@@ -396,10 +396,10 @@ describe('AwsApiCall', () => {
         service: 'Lambda',
         api: 'invoke',
         parameters: {
-          FunctionName: 'my-func',
-          InvocationType: 'Event',
-          LogType: 'Tail',
-          Payload: '{"key":"val"}',
+          FunctionName: '"my-func"',
+          InvocationType: '"Event"',
+          LogType: '"Tail"',
+          Payload: '"{\\"key\\":\\"val\\"}"',
         },
       });
       template.hasResourceProperties('AWS::Lambda::Permission', {
@@ -477,6 +477,89 @@ describe('AwsApiCall', () => {
             },
           },
         ],
+      });
+    });
+
+    test('invokeFunction with waitForAssertions applies correct IAM policy to waiterProvider', () => {
+      // GIVEN
+      const app = new App();
+      const deployAssert = new DeployAssert(app);
+
+      // WHEN
+      deployAssert.invokeFunction({
+        functionName: 'my-func',
+        invocationType: InvocationType.EVENT,
+        payload: JSON.stringify({ days: 1 }),
+      }).expect(
+        ExpectedResult.objectLike({ Key: 'Value' }),
+      ).waitForAssertions({
+        interval: Duration.seconds(30),
+        totalTimeout: Duration.minutes(90),
+      });
+
+      // THEN
+      const waiterProviderRole = Template.fromStack(
+        deployAssert.scope,
+      ).findResources(
+        'AWS::IAM::Role',
+      ).SingletonFunction76b3e830a873425f8453eddd85c86925Role918961BB;
+      expect(waiterProviderRole).toEqual({
+        Type: 'AWS::IAM::Role',
+        Properties: {
+          AssumeRolePolicyDocument: {
+            Version: '2012-10-17',
+            Statement: [
+              {
+                Action: 'sts:AssumeRole',
+                Effect: 'Allow',
+                Principal: {
+                  Service: 'lambda.amazonaws.com',
+                },
+              },
+            ],
+          },
+          ManagedPolicyArns: [
+            {
+              'Fn::Sub': 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
+            },
+          ],
+          Policies: expect.arrayContaining([
+            {
+              PolicyName: 'Inline',
+              PolicyDocument: {
+                Version: '2012-10-17',
+                Statement: expect.arrayContaining([
+                  {
+                    Action: ['lambda:InvokeFunction'],
+                    Effect: 'Allow',
+                    Resource: [
+                      {
+                        'Fn::Join': [
+                          '',
+                          [
+                            'arn:',
+                            {
+                              Ref: 'AWS::Partition',
+                            },
+                            ':lambda:',
+                            {
+                              Ref: 'AWS::Region',
+                            },
+                            ':',
+                            {
+                              Ref: 'AWS::AccountId',
+                            },
+                            ':function:my-func',
+                          ],
+                        ],
+                      },
+                    ],
+                  },
+                ]),
+              },
+            },
+          ]),
+        },
       });
     });
   });

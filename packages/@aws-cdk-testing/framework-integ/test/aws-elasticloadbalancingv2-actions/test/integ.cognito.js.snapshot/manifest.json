@@ -1,5 +1,5 @@
 {
-  "version": "31.0.0",
+  "version": "36.0.5",
   "artifacts": {
     "integ-cognito.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "integ-cognito.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/93a95925d84976f569101a57c8168f573c9082576c798f93def25e662e00852d.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/9bfc273ff5f3d11ae42311329f5d6510ec32535870e107f8ab9127599b93c1bf.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -255,10 +256,28 @@
             "data": "UserSetUserPasswordCustomResourcePolicy7B250C76"
           }
         ],
-        "/integ-cognito/DefaultCrNodeVersionMap": [
+        "/integ-cognito/LatestNodeRuntimeMap": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "DefaultCrNodeVersionMap"
+            "data": "LatestNodeRuntimeMap"
+          }
+        ],
+        "/integ-cognito/AWS679f53fac002430cb0da5b7982bd2287": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-singleton",
+            "data": true
+          },
+          {
+            "type": "aws:cdk:is-custom-resource-handler-runtime-family",
+            "data": 0
+          },
+          {
+            "type": "aws:cdk:is-custom-resource-handler-singleton",
+            "data": true
+          },
+          {
+            "type": "aws:cdk:is-custom-resource-handler-runtime-family",
+            "data": 0
           }
         ],
         "/integ-cognito/AWS679f53fac002430cb0da5b7982bd2287/ServiceRole/Resource": [
@@ -291,6 +310,12 @@
             "data": "ExportsOutputRefSignin352C80E64BA58F71"
           }
         ],
+        "/integ-cognito/Exports/Output{\"Ref\":\"UserPool6BA7E5F2\"}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputRefUserPool6BA7E5F296FD7236"
+          }
+        ],
         "/integ-cognito/BootstrapVersion": [
           {
             "type": "aws:cdk:logicalId",
@@ -319,10 +344,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "integtestcognitoDefaultTestDeployAssert6F2623C9.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/75262cd26d1fd97ddeebfb8c87fca618b3702c38903dcb56c597df6865739b49.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/71d67ac53e892b352187622a36923ea248d915374c2de3150f6099ba6262cdf9.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -367,6 +393,24 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "SingletonFunction1488541a7b23466481b69b4408076b81HandlerCD40AE9F"
+          }
+        ],
+        "/integ-test-cognito/DefaultTest/DeployAssert/LatestNodeRuntimeMap": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "LatestNodeRuntimeMap"
+          }
+        ],
+        "/integ-test-cognito/DefaultTest/DeployAssert/AwsApiCallCognitoIdentityServiceProvideradminGetUsercd0af199640a9a7c74928b3c52106837/Default/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AwsApiCallCognitoIdentityServiceProvideradminGetUsercd0af199640a9a7c74928b3c52106837"
+          }
+        ],
+        "/integ-test-cognito/DefaultTest/DeployAssert/AwsApiCallCognitoIdentityServiceProvideradminGetUsercd0af199640a9a7c74928b3c52106837/AssertionResults": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AssertionResultsAwsApiCallCognitoIdentityServiceProvideradminGetUsercd0af199640a9a7c74928b3c52106837"
           }
         ],
         "/integ-test-cognito/DefaultTest/DeployAssert/BootstrapVersion": [

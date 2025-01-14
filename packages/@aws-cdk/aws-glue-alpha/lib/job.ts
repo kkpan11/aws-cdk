@@ -1,3 +1,4 @@
+import { EOL } from 'os';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -5,7 +6,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cdk from 'aws-cdk-lib/core';
 import * as constructs from 'constructs';
-import { Code, JobExecutable, JobExecutableConfig, JobType } from '.';
+import { Code, GlueVersion, JobExecutable, JobExecutableConfig, JobType } from '.';
 import { IConnection } from './connection';
 import { CfnJob } from 'aws-cdk-lib/aws-glue';
 import { ISecurityConfiguration } from './security-configuration';
@@ -73,7 +74,7 @@ export class WorkerType {
 /**
  * Job states emitted by Glue to CloudWatch Events.
  *
- * @see https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/EventTypes.html#glue-event-types for more information.
+ * @see https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/EventTypes.html#glue-event-types
  */
 export enum JobState {
   /**
@@ -127,6 +128,26 @@ export enum MetricType {
    * An aggregate number.
    */
   COUNT = 'count',
+}
+
+/**
+ * The ExecutionClass whether the job is run with a standard or flexible execution class.
+ *
+ * @see https://docs.aws.amazon.com/glue/latest/dg/aws-glue-api-jobs-job.html#aws-glue-api-jobs-job-Job
+ * @see https://docs.aws.amazon.com/glue/latest/dg/add-job.html
+ */
+export enum ExecutionClass {
+  /**
+   * The flexible execution class is appropriate for time-insensitive jobs whose start
+   * and completion times may vary.
+   */
+  FLEX = 'FLEX',
+
+  /**
+   * The standard execution class is ideal for time-sensitive workloads that require fast job
+   * startup and dedicated resources.
+   */
+  STANDARD = 'STANDARD',
 }
 
 /**
@@ -358,19 +379,20 @@ export interface SparkUIProps {
   /**
    * Enable Spark UI.
    */
-  readonly enabled: boolean
+  readonly enabled: boolean;
 
   /**
    * The bucket where the Glue job stores the logs.
    *
-   * @default a new bucket will be created.
+   * @default - a new bucket will be created.
    */
   readonly bucket?: s3.IBucket;
 
   /**
    * The path inside the bucket (objects prefix) where the Glue job stores the logs.
+   * Use format `'foo/bar/'`
    *
-   * @default '/' - the logs will be written at the root of the bucket
+   * @default - the logs will be written at the root of the bucket
    */
   readonly prefix?: string;
 }
@@ -384,13 +406,15 @@ export interface SparkUIProps {
 export interface SparkUILoggingLocation {
   /**
    * The bucket where the Glue job stores the logs.
+   *
+   * @default - a new bucket will be created.
    */
   readonly bucket: s3.IBucket;
 
   /**
    * The path inside the bucket (objects prefix) where the Glue job stores the logs.
    *
-   * @default '/' - the logs will be written at the root of the bucket
+   * @default - the logs will be written at the root of the bucket
    */
   readonly prefix?: string;
 }
@@ -403,7 +427,7 @@ export interface SparkUILoggingLocation {
  */
 export interface ContinuousLoggingProps {
   /**
-   * Enable continouous logging.
+   * Enable continuous logging.
    */
   readonly enabled: boolean;
 
@@ -479,6 +503,16 @@ export interface JobProps {
   readonly description?: string;
 
   /**
+   * Specifies whether job run queuing is enabled for the job runs for this job.
+   * A value of true means job run queuing is enabled for the job runs.
+   * If false or not populated, the job runs will not be considered for queueing.
+   * If this field does not match the value set in the job run, then the value from the job run field will be used.
+   *
+   * @default - no job run queuing
+   */
+  readonly jobRunQueuingEnabled?: boolean;
+
+  /**
    * The number of AWS Glue data processing units (DPUs) that can be allocated when this job runs.
    * Cannot be used for Glue version 2.0 and later - workerType and workerCount should be used instead.
    *
@@ -549,7 +583,8 @@ export interface JobProps {
   /**
    * The default arguments for this job, specified as name-value pairs.
    *
-   * @see https://docs.aws.amazon.com/glue/latest/dg/aws-glue-programming-etl-glue-arguments.html for a list of reserved parameters
+   * @see https://docs.aws.amazon.com/glue/latest/dg/aws-glue-programming-etl-glue-arguments.html
+   *
    * @default - no arguments
    */
   readonly defaultArguments?: { [key: string]: string };
@@ -574,10 +609,11 @@ export interface JobProps {
 
   /**
    * Enables the collection of metrics for job profiling.
+   * Equivalent to a job parameter `--enable-metrics`.
    *
    * @default - no profiling metrics emitted.
    *
-   * @see `--enable-metrics` at https://docs.aws.amazon.com/glue/latest/dg/aws-glue-programming-etl-glue-arguments.html
+   * @see https://docs.aws.amazon.com/glue/latest/dg/aws-glue-programming-etl-glue-arguments.html
    */
   readonly enableProfilingMetrics? :boolean;
 
@@ -589,7 +625,7 @@ export interface JobProps {
    * @see https://docs.aws.amazon.com/glue/latest/dg/monitor-spark-ui-jobs.html
    * @see https://docs.aws.amazon.com/glue/latest/dg/aws-glue-programming-etl-glue-arguments.html
    */
-  readonly sparkUI?: SparkUIProps,
+  readonly sparkUI?: SparkUIProps;
 
   /**
    * Enables continuous logging with the specified props.
@@ -599,7 +635,17 @@ export interface JobProps {
    * @see https://docs.aws.amazon.com/glue/latest/dg/monitor-continuous-logging-enable.html
    * @see https://docs.aws.amazon.com/glue/latest/dg/aws-glue-programming-etl-glue-arguments.html
    */
-  readonly continuousLogging?: ContinuousLoggingProps,
+  readonly continuousLogging?: ContinuousLoggingProps;
+
+  /**
+   * The ExecutionClass whether the job is run with a standard or flexible execution class.
+   *
+   * @default - STANDARD
+   *
+   * @see https://docs.aws.amazon.com/glue/latest/dg/aws-glue-api-jobs-job.html#aws-glue-api-jobs-job-Job
+   * @see https://docs.aws.amazon.com/glue/latest/dg/add-job.html
+   */
+  readonly executionClass?: ExecutionClass;
 }
 
 /**
@@ -677,6 +723,55 @@ export class Job extends JobBase {
       ...this.checkNoReservedArgs(props.defaultArguments),
     };
 
+    if (props.executionClass === ExecutionClass.FLEX) {
+      if (executable.type !== JobType.ETL) {
+        throw new Error('FLEX ExecutionClass is only available for JobType.ETL jobs');
+      }
+      if ([GlueVersion.V0_9, GlueVersion.V1_0, GlueVersion.V2_0].includes(executable.glueVersion)) {
+        throw new Error('FLEX ExecutionClass is only available for GlueVersion 3.0 or later');
+      }
+      if (props.workerType && (props.workerType !== WorkerType.G_1X && props.workerType !== WorkerType.G_2X)) {
+        throw new Error('FLEX ExecutionClass is only available for WorkerType G_1X or G_2X');
+      }
+      if (props.jobRunQueuingEnabled === true) {
+        throw new Error('FLEX ExecutionClass is only available if job run queuing is disabled');
+      }
+    }
+
+    // Validate Ray job properties
+    // See https://github.com/aws/aws-cdk/issues/29612
+    if (executable.type.name === JobType.RAY.name) {
+      if (props.workerType !== WorkerType.Z_2X) {
+        throw new Error(`WorkerType must be Z_2X for Ray jobs, got: ${props.workerType}`);
+      }
+      if (props.timeout !== undefined) {
+        throw new Error('Timeout cannot be set for Ray jobs');
+      }
+    }
+
+    let maxCapacity = props.maxCapacity;
+    if (maxCapacity !== undefined && (props.workerType && props.workerCount !== undefined)) {
+      throw new Error('maxCapacity cannot be used when setting workerType and workerCount');
+    }
+    if (executable.type !== JobType.PYTHON_SHELL) {
+      if (maxCapacity !== undefined && ![GlueVersion.V0_9, GlueVersion.V1_0].includes(executable.glueVersion)) {
+        throw new Error('maxCapacity cannot be used when GlueVersion 2.0 or later');
+      }
+    } else {
+      // max capacity validation for python shell jobs (defaults to 0.0625)
+      maxCapacity = maxCapacity ?? 0.0625;
+      if (maxCapacity !== 0.0625 && maxCapacity !== 1) {
+        throw new Error(`maxCapacity value must be either 0.0625 or 1 for JobType.PYTHON_SHELL jobs, received ${maxCapacity}`);
+      }
+    }
+    if ((!props.workerType && props.workerCount !== undefined) || (props.workerType && props.workerCount === undefined)) {
+      throw new Error('Both workerType and workerCount must be set');
+    }
+
+    if (props.jobRunQueuingEnabled === true && props.maxRetries !== undefined && !cdk.Token.isUnresolved(props.maxRetries) && props.maxRetries > 0) {
+      throw new Error(`Maximum retries was set to ${props.maxRetries}, must be set to 0 with job run queuing enabled`);
+    }
+
     const jobResource = new CfnJob(this, 'Resource', {
       name: props.jobName,
       description: props.description,
@@ -685,12 +780,15 @@ export class Job extends JobBase {
         name: executable.type.name,
         scriptLocation: this.codeS3ObjectUrl(executable.script),
         pythonVersion: executable.pythonVersion,
+        runtime: executable.runtime ? executable.runtime.name : undefined,
       },
       glueVersion: executable.glueVersion.name,
       workerType: props.workerType?.name,
       numberOfWorkers: props.workerCount,
+      jobRunQueuingEnabled: props.jobRunQueuingEnabled,
       maxCapacity: props.maxCapacity,
       maxRetries: props.maxRetries,
+      executionClass: props.executionClass,
       executionProperty: props.maxConcurrentRuns ? { maxConcurrentRuns: props.maxConcurrentRuns } : undefined,
       notificationProperty: props.notifyDelayAfter ? { notifyDelayAfter: props.notifyDelayAfter.toMinutes() } : undefined,
       timeout: props.timeout?.toMinutes(),
@@ -734,6 +832,9 @@ export class Job extends JobBase {
     if (config.extraPythonFiles && config.extraPythonFiles.length > 0) {
       args['--extra-py-files'] = config.extraPythonFiles.map(code => this.codeS3ObjectUrl(code)).join(',');
     }
+    if (config.s3PythonModules && config.s3PythonModules.length > 0) {
+      args['--s3-py-modules'] = config.s3PythonModules.map(code => this.codeS3ObjectUrl(code)).join(',');
+    }
     if (config.extraFiles && config.extraFiles.length > 0) {
       args['--extra-files'] = config.extraFiles.map(code => this.codeS3ObjectUrl(code)).join(',');
     }
@@ -750,11 +851,12 @@ export class Job extends JobBase {
       throw new Error('Spark UI is not available for JobType.RAY jobs');
     }
 
+    this.validatePrefix(props.prefix);
     const bucket = props.bucket ?? new s3.Bucket(this, 'SparkUIBucket');
-    bucket.grantReadWrite(role);
+    bucket.grantReadWrite(role, this.cleanPrefixForGrant(props.prefix));
     const args = {
       '--enable-spark-ui': 'true',
-      '--spark-event-logs-path': bucket.s3UrlForObject(props.prefix),
+      '--spark-event-logs-path': bucket.s3UrlForObject(props.prefix).replace(/\/?$/, '/'), // path will always end with a slash
     };
 
     return {
@@ -764,6 +866,31 @@ export class Job extends JobBase {
       },
       args,
     };
+  }
+
+  private validatePrefix(prefix?: string): void {
+    if (!prefix || cdk.Token.isUnresolved(prefix)) {
+      // skip validation if prefix is not specified or is a token
+      return;
+    }
+
+    const errors: string[] = [];
+
+    if (prefix.startsWith('/')) {
+      errors.push('Prefix must not begin with \'/\'');
+    }
+
+    if (!prefix.endsWith('/')) {
+      errors.push('Prefix must end with \'/\'');
+    }
+
+    if (errors.length > 0) {
+      throw new Error(`Invalid prefix format (value: ${prefix})${EOL}${errors.join(EOL)}`);
+    }
+  }
+
+  private cleanPrefixForGrant(prefix?: string): string | undefined {
+    return prefix !== undefined ? `${prefix}*` : undefined;
   }
 
   private setupContinuousLogging(role: iam.IRole, props: ContinuousLoggingProps) {
@@ -793,8 +920,8 @@ export class Job extends JobBase {
 }
 
 /**
- * Create a CloudWatch Metric that's based on Glue Job events
- * {@see https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/EventTypes.html#glue-event-types}
+ * Create a CloudWatch Metric that's based on Glue Job events.
+ * @see https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/EventTypes.html#glue-event-types
  * The metric has namespace = 'AWS/Events', metricName = 'TriggeredRules' and RuleName = rule.ruleName dimension.
  *
  * @param rule for use in setting RuleName dimension value

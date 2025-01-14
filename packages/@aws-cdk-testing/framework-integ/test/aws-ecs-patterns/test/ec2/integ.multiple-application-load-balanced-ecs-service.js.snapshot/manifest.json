@@ -1,12 +1,6 @@
 {
-  "version": "21.0.0",
+  "version": "35.0.0",
   "artifacts": {
-    "Tree": {
-      "type": "cdk:tree",
-      "properties": {
-        "file": "tree.json"
-      }
-    },
     "aws-ecs-integ-multiple-alb.assets": {
       "type": "cdk:asset-manifest",
       "properties": {
@@ -20,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "aws-ecs-integ-multiple-alb.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/594820cef16f2866d73559ae32ca85ced28d05d7a1e0c168e23e422b630b3422.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/8b890d97c3cbf756b1557bcbd7797001fd3ce8a3f30d26704ab0cd3f1708bc28.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -409,6 +404,7 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "applicationMultipleTargetGroupsEc2ServiceTestDefaultTestDeployAssert1194B50F.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
@@ -442,6 +438,12 @@
         ]
       },
       "displayName": "applicationMultipleTargetGroupsEc2ServiceTest/DefaultTest/DeployAssert"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
     }
   }
 }

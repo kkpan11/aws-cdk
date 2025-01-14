@@ -1,5 +1,5 @@
 {
-  "version": "32.0.0",
+  "version": "38.0.1",
   "artifacts": {
     "cdk-dynamodb-global-20191121.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/eu-west-1",
       "properties": {
         "templateFile": "cdk-dynamodb-global-20191121.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-eu-west-1",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-eu-west-1",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-eu-west-1/00b9d656b4449d86b041722f175a25f0c6ad74354989d9502bb072fbd600a420.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-eu-west-1/ec56f75e99fdad3fc57d97dd801c0407cf59d417ca10eed91a89137df3c9fe4e.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -63,6 +64,12 @@
             "data": "TableReplicaeucentral100A6A6E0"
           }
         ],
+        "/cdk-dynamodb-global-20191121/@aws-cdk--aws-dynamodb.ReplicaProvider/OnEventHandler": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-runtime-family",
+            "data": 0
+          }
+        ],
         "/cdk-dynamodb-global-20191121/@aws-cdk--aws-dynamodb.ReplicaProvider/OnEventHandler/ServiceRole/Resource": [
           {
             "type": "aws:cdk:logicalId",
@@ -79,6 +86,12 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "OnEventHandler42BEBAE0"
+          }
+        ],
+        "/cdk-dynamodb-global-20191121/@aws-cdk--aws-dynamodb.ReplicaProvider/IsCompleteHandler": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-runtime-family",
+            "data": 0
           }
         ],
         "/cdk-dynamodb-global-20191121/@aws-cdk--aws-dynamodb.ReplicaProvider/IsCompleteHandler/ServiceRole/Resource": [
@@ -159,6 +172,12 @@
             "data": "ProviderwaiterstatemachineRoleDefaultPolicyD3C3DA1A"
           }
         ],
+        "/cdk-dynamodb-global-20191121/@aws-cdk--aws-dynamodb.ReplicaProvider/Provider/waiter-state-machine/LogGroup/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ProviderwaiterstatemachineLogGroupDD693A98"
+          }
+        ],
         "/cdk-dynamodb-global-20191121/@aws-cdk--aws-dynamodb.ReplicaProvider/Provider/waiter-state-machine/Resource": [
           {
             "type": "aws:cdk:logicalId",
@@ -223,6 +242,7 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "cdkdynamodbglobal20191121testDefaultTestDeployAssert469C3611.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",

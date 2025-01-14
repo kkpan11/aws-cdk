@@ -72,7 +72,6 @@ export const SNS_SUBSCRIPTIONS_SQS_DECRYPTION_POLICY = '@aws-cdk/aws-sns-subscri
 export const APIGATEWAY_DISABLE_CLOUDWATCH_ROLE = '@aws-cdk/aws-apigateway:disableCloudWatchRole';
 export const ENABLE_PARTITION_LITERALS = '@aws-cdk/core:enablePartitionLiterals';
 export const EVENTS_TARGET_QUEUE_SAME_ACCOUNT = '@aws-cdk/aws-events:eventsTargetQueueSameAccount';
-export const IAM_STANDARDIZED_SERVICE_PRINCIPALS = '@aws-cdk/aws-iam:standardizedServicePrincipals';
 export const ECS_DISABLE_EXPLICIT_DEPLOYMENT_CONTROLLER_FOR_CIRCUIT_BREAKER = '@aws-cdk/aws-ecs:disableExplicitDeploymentControllerForCircuitBreaker';
 export const S3_SERVER_ACCESS_LOGS_USE_BUCKET_POLICY = '@aws-cdk/aws-s3:serverAccessLogsUseBucketPolicy';
 export const ROUTE53_PATTERNS_USE_CERTIFICATE = '@aws-cdk/aws-route53-patters:useCertificate';
@@ -88,6 +87,40 @@ export const EC2_RESTRICT_DEFAULT_SECURITY_GROUP = '@aws-cdk/aws-ec2:restrictDef
 export const APIGATEWAY_REQUEST_VALIDATOR_UNIQUE_ID = '@aws-cdk/aws-apigateway:requestValidatorUniqueId';
 export const INCLUDE_PREFIX_IN_UNIQUE_NAME_GENERATION = '@aws-cdk/core:includePrefixInUniqueNameGeneration';
 export const KMS_ALIAS_NAME_REF = '@aws-cdk/aws-kms:aliasNameRef';
+export const EFS_DENY_ANONYMOUS_ACCESS = '@aws-cdk/aws-efs:denyAnonymousAccess';
+export const EFS_MOUNTTARGET_ORDERINSENSITIVE_LOGICAL_ID = '@aws-cdk/aws-efs:mountTargetOrderInsensitiveLogicalId';
+export const AUTOSCALING_GENERATE_LAUNCH_TEMPLATE = '@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig';
+export const ENABLE_OPENSEARCH_MULTIAZ_WITH_STANDBY = '@aws-cdk/aws-opensearchservice:enableOpensearchMultiAzWithStandby';
+export const LAMBDA_NODEJS_USE_LATEST_RUNTIME = '@aws-cdk/aws-lambda-nodejs:useLatestRuntimeVersion';
+export const RDS_PREVENT_RENDERING_DEPRECATED_CREDENTIALS = '@aws-cdk/aws-rds:preventRenderingDeprecatedCredentials';
+export const AURORA_CLUSTER_CHANGE_SCOPE_OF_INSTANCE_PARAMETER_GROUP_WITH_EACH_PARAMETERS = '@aws-cdk/aws-rds:auroraClusterChangeScopeOfInstanceParameterGroupWithEachParameters';
+export const APPSYNC_ENABLE_USE_ARN_IDENTIFIER_SOURCE_API_ASSOCIATION = '@aws-cdk/aws-appsync:useArnForSourceApiAssociationIdentifier';
+export const CODECOMMIT_SOURCE_ACTION_DEFAULT_BRANCH_NAME = '@aws-cdk/aws-codepipeline-actions:useNewDefaultBranchForCodeCommitSource';
+export const LAMBDA_PERMISSION_LOGICAL_ID_FOR_LAMBDA_ACTION = '@aws-cdk/aws-cloudwatch-actions:changeLambdaPermissionLogicalIdForLambdaAction';
+export const CODEPIPELINE_CROSS_ACCOUNT_KEYS_DEFAULT_VALUE_TO_FALSE = '@aws-cdk/aws-codepipeline:crossAccountKeysDefaultValueToFalse';
+export const CODEPIPELINE_DEFAULT_PIPELINE_TYPE_TO_V2 = '@aws-cdk/aws-codepipeline:defaultPipelineTypeToV2';
+export const KMS_REDUCE_CROSS_ACCOUNT_REGION_POLICY_SCOPE = '@aws-cdk/aws-kms:reduceCrossAccountRegionPolicyScope';
+export const PIPELINE_REDUCE_ASSET_ROLE_TRUST_SCOPE = '@aws-cdk/pipelines:reduceAssetRoleTrustScope';
+export const EKS_NODEGROUP_NAME = '@aws-cdk/aws-eks:nodegroupNameAttribute';
+export const EBS_DEFAULT_GP3 = '@aws-cdk/aws-ec2:ebsDefaultGp3Volume';
+export const ECS_REMOVE_DEFAULT_DEPLOYMENT_ALARM = '@aws-cdk/aws-ecs:removeDefaultDeploymentAlarm';
+export const LOG_API_RESPONSE_DATA_PROPERTY_TRUE_DEFAULT = '@aws-cdk/custom-resources:logApiResponseDataPropertyTrueDefault';
+export const S3_KEEP_NOTIFICATION_IN_IMPORTED_BUCKET = '@aws-cdk/aws-s3:keepNotificationInImportedBucket';
+export const USE_NEW_S3URI_PARAMETERS_FOR_BEDROCK_INVOKE_MODEL_TASK = '@aws-cdk/aws-stepfunctions-tasks:useNewS3UriParametersForBedrockInvokeModelTask';
+export const REDUCE_EC2_FARGATE_CLOUDWATCH_PERMISSIONS = '@aws-cdk/aws-ecs:reduceEc2FargateCloudWatchPermissions';
+export const DYNAMODB_TABLEV2_RESOURCE_POLICY_PER_REPLICA = '@aws-cdk/aws-dynamodb:resourcePolicyPerReplica';
+export const EC2_SUM_TIMEOUT_ENABLED = '@aws-cdk/aws-ec2:ec2SumTImeoutEnabled';
+export const APPSYNC_GRAPHQLAPI_SCOPE_LAMBDA_FUNCTION_PERMISSION = '@aws-cdk/aws-appsync:appSyncGraphQLAPIScopeLambdaPermission';
+export const USE_CORRECT_VALUE_FOR_INSTANCE_RESOURCE_ID_PROPERTY = '@aws-cdk/aws-rds:setCorrectValueForDatabaseInstanceReadReplicaInstanceResourceId';
+export const CFN_INCLUDE_REJECT_COMPLEX_RESOURCE_UPDATE_CREATE_POLICY_INTRINSICS = '@aws-cdk/core:cfnIncludeRejectComplexResourceUpdateCreatePolicyIntrinsics';
+export const LAMBDA_NODEJS_SDK_V3_EXCLUDE_SMITHY_PACKAGES = '@aws-cdk/aws-lambda-nodejs:sdkV3ExcludeSmithyPackages';
+export const STEPFUNCTIONS_TASKS_FIX_RUN_ECS_TASK_POLICY = '@aws-cdk/aws-stepfunctions-tasks:fixRunEcsTaskPolicy';
+export const BASTION_HOST_USE_AMAZON_LINUX_2023_BY_DEFAULT = '@aws-cdk/aws-ec2:bastionHostUseAmazonLinux2023ByDefault';
+export const ASPECT_STABILIZATION = '@aws-cdk/core:aspectStabilization';
+export const USER_POOL_DOMAIN_NAME_METHOD_WITHOUT_CUSTOM_RESOURCE = '@aws-cdk/aws-route53-targets:userPoolDomainNameMethodWithoutCustomResource';
+export const Enable_IMDS_Blocking_Deprecated_Feature = '@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature';
+export const Disable_ECS_IMDS_Blocking = '@aws-cdk/aws-ecs:disableEcsImdsBlocking';
+export const ALB_DUALSTACK_WITHOUT_PUBLIC_IPV4_SECURITY_GROUP_RULES_DEFAULT = '@aws-cdk/aws-elasticloadbalancingV2:albDualstackWithoutPublicIpv4SecurityGroupRulesDefault';
 
 export const FLAGS: Record<string, FlagInfo> = {
   //////////////////////////////////////////////////////////////////////
@@ -502,7 +535,7 @@ export const FLAGS: Record<string, FlagInfo> = {
   [ENABLE_PARTITION_LITERALS]: {
     type: FlagType.BugFix,
     summary: 'Make ARNs concrete if AWS partition is known',
-    // eslint-disable-next-line @aws-cdk/no-literal-partition
+    // eslint-disable-next-line @cdklabs/no-literal-partition
     detailsMd: `
       Enable this feature flag to get partition names as string literals in Stacks with known regions defined in
       their environment, such as "aws" or "aws-cn".  Previously the CloudFormation intrinsic function
@@ -540,20 +573,6 @@ export const FLAGS: Record<string, FlagInfo> = {
       This flag applies to SQS Queues that are used as the target of event Rules. When enabled, only principals
       from the same account as the Rule can send messages. If a queue is unencrypted, this restriction will
       always apply, regardless of the value of this flag.
-      `,
-    introducedIn: { v2: '2.51.0' },
-    recommendedValue: true,
-  },
-
-  //////////////////////////////////////////////////////////////////////
-  [IAM_STANDARDIZED_SERVICE_PRINCIPALS]: {
-    type: FlagType.BugFix,
-    summary: 'Use standardized (global) service principals everywhere',
-    detailsMd: `
-      We used to maintain a database of exceptions to Service Principal names in various regions. This database
-      is no longer necessary: all service principals names have been standardized to their global form (\`SERVICE.amazonaws.com\`).
-
-      This flag disables use of that exceptions database and always uses the global service principal.
       `,
     introducedIn: { v2: '2.51.0' },
     recommendedValue: true,
@@ -807,6 +826,27 @@ export const FLAGS: Record<string, FlagInfo> = {
   },
 
   //////////////////////////////////////////////////////////////////////
+  [AUTOSCALING_GENERATE_LAUNCH_TEMPLATE]: {
+    type: FlagType.BugFix,
+    summary: 'Generate a launch template when creating an AutoScalingGroup',
+    detailsMd: `
+      Enable this flag to allow AutoScalingGroups to generate a launch template when being created.
+      Launch configurations have been deprecated and cannot be created in AWS Accounts created after
+      December 31, 2023. Existing 'AutoScalingGroup' properties used for creating a launch configuration
+      will now create an equivalent 'launchTemplate'. Alternatively, users can provide an explicit
+      'launchTemplate' or 'mixedInstancesPolicy'. When this flag is enabled a 'launchTemplate' will
+      attempt to set user data according to the OS of the machine image if explicit user data is not
+      provided.
+    `,
+    introducedIn: { v2: '2.88.0' },
+    compatibilityWithOldBehaviorMd: `
+      If backwards compatibility needs to be maintained due to an existing autoscaling group
+      using a launch config, set this flag to false.
+    `,
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
   [INCLUDE_PREFIX_IN_UNIQUE_NAME_GENERATION]: {
     type: FlagType.BugFix,
     summary: 'Include the stack prefix in the stack name generation process',
@@ -824,6 +864,497 @@ export const FLAGS: Record<string, FlagInfo> = {
     recommendedValue: true,
   },
 
+  //////////////////////////////////////////////////////////////////////
+  [EFS_DENY_ANONYMOUS_ACCESS]: {
+    type: FlagType.ApiDefault,
+    summary: 'EFS denies anonymous clients accesses',
+    detailsMd: `
+      This flag adds the file system policy that denies anonymous clients
+      access to \`efs.FileSystem\`.
+
+      If this flag is not set, \`efs.FileSystem\` will allow all anonymous clients
+      that can access over the network.`,
+    introducedIn: { v2: '2.93.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'You can pass `allowAnonymousAccess: true` so allow anonymous clients access.',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [ENABLE_OPENSEARCH_MULTIAZ_WITH_STANDBY]: {
+    type: FlagType.ApiDefault,
+    summary: 'Enables support for Multi-AZ with Standby deployment for opensearch domains',
+    detailsMd: `
+      If this is set, an opensearch domain will automatically be created with
+      multi-az with standby enabled.
+    `,
+    introducedIn: { v2: '2.88.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Pass `capacity.multiAzWithStandbyEnabled: false` to `Domain` construct to restore the old behavior.',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [LAMBDA_NODEJS_USE_LATEST_RUNTIME]: {
+    type: FlagType.ApiDefault,
+    summary: 'Enables aws-lambda-nodejs.Function to use the latest available NodeJs runtime as the default',
+    detailsMd: `
+      If this is set, and a \`runtime\` prop is not passed to, Lambda NodeJs
+      functions will us the latest version of the runtime provided by the Lambda
+      service. Do not use this if you your lambda function is reliant on dependencies
+      shipped as part of the runtime environment.
+    `,
+    introducedIn: { v2: '2.93.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Pass `runtime: lambda.Runtime.NODEJS_16_X` to `Function` construct to restore the previous behavior.',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [EFS_MOUNTTARGET_ORDERINSENSITIVE_LOGICAL_ID]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, mount targets will have a stable logicalId that is linked to the associated subnet.',
+    detailsMd: `
+      When this feature flag is enabled, each mount target will have a stable
+      logicalId that is linked to the associated subnet. If the flag is set to
+      false then the logicalIds of the mount targets can change if the number of
+      subnets changes.
+
+      Set this flag to false for existing mount targets.
+    `,
+    introducedIn: { v2: '2.93.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [AURORA_CLUSTER_CHANGE_SCOPE_OF_INSTANCE_PARAMETER_GROUP_WITH_EACH_PARAMETERS]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, a scope of InstanceParameterGroup for AuroraClusterInstance with each parameters will change.',
+    detailsMd: `
+      When this feature flag is enabled, a scope of \`InstanceParameterGroup\` for
+      \`AuroraClusterInstance\` with each parameters will change to AuroraClusterInstance
+      from AuroraCluster.
+
+      If the flag is set to false then it can only make one \`AuroraClusterInstance\`
+      with each \`InstanceParameterGroup\` in the AuroraCluster.
+    `,
+    introducedIn: { v2: '2.97.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [APPSYNC_ENABLE_USE_ARN_IDENTIFIER_SOURCE_API_ASSOCIATION]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, will always use the arn for identifiers for CfnSourceApiAssociation in the GraphqlApi construct rather than id.',
+    detailsMd: `
+      When this feature flag is enabled, we use the IGraphqlApi ARN rather than ID when creating or updating CfnSourceApiAssociation in
+      the GraphqlApi construct. Using the ARN allows the association to support an association with a source api or merged api in another account.
+      Note that for existing source api associations created with this flag disabled, enabling the flag will lead to a resource replacement.
+    `,
+    introducedIn: { v2: '2.97.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [RDS_PREVENT_RENDERING_DEPRECATED_CREDENTIALS]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, creating an RDS database cluster from a snapshot will only render credentials for snapshot credentials.',
+    detailsMd: `
+      The \`credentials\` property on the \`DatabaseClusterFromSnapshotProps\`
+      interface was deprecated with the new \`snapshotCredentials\` property being
+      recommended. Before deprecating \`credentials\`, a secret would be generated
+      while rendering credentials if the \`credentials\` property was undefined or
+      if a secret wasn't provided via the \`credentials\` property. This behavior
+      is replicated with the new \`snapshotCredentials\` property, but the original
+      \`credentials\` secret can still be created resulting in an extra database
+      secret.
+
+      Set this flag to prevent rendering deprecated \`credentials\` and creating an
+      extra database secret when only using \`snapshotCredentials\` to create an RDS
+      database cluster from a snapshot.
+    `,
+    introducedIn: { v2: '2.98.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [CODECOMMIT_SOURCE_ACTION_DEFAULT_BRANCH_NAME]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, the CodeCommit source action is using the default branch name \'main\'.',
+    detailsMd: `
+      When setting up a CodeCommit source action for the source stage of a pipeline, please note that the
+      default branch is \'master\'.
+      However, with the activation of this feature flag, the default branch is updated to \'main\'.
+    `,
+    introducedIn: { v2: '2.103.1' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [LAMBDA_PERMISSION_LOGICAL_ID_FOR_LAMBDA_ACTION]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, the logical ID of a Lambda permission for a Lambda action includes an alarm ID.',
+    detailsMd: `
+      When this feature flag is enabled, a logical ID of \`LambdaPermission\` for a
+      \`LambdaAction\` will include an alarm ID. Therefore multiple alarms for the same Lambda
+      can be created with \`LambdaAction\`.
+
+      If the flag is set to false then it can only make one alarm for the Lambda with
+      \`LambdaAction\`.
+    `,
+    introducedIn: { v2: '2.124.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [CODEPIPELINE_CROSS_ACCOUNT_KEYS_DEFAULT_VALUE_TO_FALSE]: {
+    type: FlagType.ApiDefault,
+    summary: 'Enables Pipeline to set the default value for crossAccountKeys to false.',
+    detailsMd: `
+      When this feature flag is enabled, and the \`crossAccountKeys\` property is not provided in a \`Pipeline\`
+      construct, the construct automatically defaults the value of this property to false.
+    `,
+    introducedIn: { v2: '2.127.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Pass `crossAccountKeys: true` to `Pipeline` construct to restore the previous behavior.',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [CODEPIPELINE_DEFAULT_PIPELINE_TYPE_TO_V2]: {
+    type: FlagType.ApiDefault,
+    summary: 'Enables Pipeline to set the default pipeline type to V2.',
+    detailsMd: `
+      When this feature flag is enabled, and the \`pipelineType\` property is not provided in a \`Pipeline\`
+      construct, the construct automatically defaults the value of this property to \`PipelineType.V2\`.
+    `,
+    introducedIn: { v2: '2.133.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Pass `pipelineType: PipelineType.V1` to `Pipeline` construct to restore the previous behavior.',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [KMS_REDUCE_CROSS_ACCOUNT_REGION_POLICY_SCOPE]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, IAM Policy created from KMS key grant will reduce the resource scope to this key only.',
+    detailsMd: `
+      When this feature flag is enabled and calling KMS key grant method, the created IAM policy will reduce the resource scope from
+      '*' to this specific granting KMS key.
+    `,
+    introducedIn: { v2: '2.134.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [PIPELINE_REDUCE_ASSET_ROLE_TRUST_SCOPE]: {
+    type: FlagType.ApiDefault,
+    summary: 'Remove the root account principal from PipelineAssetsFileRole trust policy',
+    detailsMd: `
+      When this feature flag is enabled, the root account principal will not be added to the trust policy of asset role.
+      When this feature flag is disabled, it will keep the root account principal in the trust policy.
+    `,
+    introducedIn: { v2: '2.141.0' },
+    defaults: { v2: true },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Disable the feature flag to add the root account principal back',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [EKS_NODEGROUP_NAME]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, nodegroupName attribute of the provisioned EKS NodeGroup will not have the cluster name prefix.',
+    detailsMd: `
+      When this feature flag is enabled, the nodegroupName attribute will be exactly the name of the nodegroup without
+      any prefix.
+    `,
+    introducedIn: { v2: '2.139.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [EBS_DEFAULT_GP3]: {
+    type: FlagType.ApiDefault,
+    summary: 'When enabled, the default volume type of the EBS volume will be GP3',
+    detailsMd: `
+      When this featuer flag is enabled, the default volume type of the EBS volume will be \`EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3\`.
+    `,
+    introducedIn: { v2: '2.140.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Pass `volumeType: EbsDeviceVolumeType.GENERAL_PURPOSE_SSD` to `Volume` construct to restore the previous behavior.',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [ECS_REMOVE_DEFAULT_DEPLOYMENT_ALARM]: {
+    type: FlagType.ApiDefault,
+    summary: 'When enabled, remove default deployment alarm settings',
+    detailsMd: `
+      When this featuer flag is enabled, remove the default deployment alarm settings when creating a AWS ECS service.
+    `,
+    introducedIn: { v2: '2.143.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Set AWS::ECS::Service \'DeploymentAlarms\' manually to restore the previous behavior.',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [LOG_API_RESPONSE_DATA_PROPERTY_TRUE_DEFAULT]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, the custom resource used for `AwsCustomResource` will configure the `logApiResponseData` property as true by default',
+    detailsMd: `
+      This results in 'logApiResponseData' being passed as true to the custom resource provider. This will cause the custom resource handler to receive an 'Update' event. If you don't
+      have an SDK call configured for the 'Update' event and you're dependent on specific SDK call response data, you will see this error from CFN:
+
+      CustomResource attribute error: Vendor response doesn't contain <attribute-name> attribute in object. See https://github.com/aws/aws-cdk/issues/29949) for more details.
+
+      Unlike most feature flags, we don't recommend setting this feature flag to true. However, if you're using the 'AwsCustomResource' construct with 'logApiResponseData' as true in
+      the event object, then setting this feature flag will keep this behavior. Otherwise, setting this feature flag to false will trigger an 'Update' event by removing the 'logApiResponseData'
+      property from the event object.
+    `,
+    introducedIn: { v2: '2.145.0' },
+    recommendedValue: false,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [S3_KEEP_NOTIFICATION_IN_IMPORTED_BUCKET]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, Adding notifications to a bucket in the current stack will not remove notification from imported stack.',
+    detailsMd: `
+      Currently, adding notifications to a bucket where it was created by ourselves will override notification added where it is imported.
+
+      When this feature flag is enabled, adding notifications to a bucket in the current stack will only update notification defined in this stack.
+      Other notifications that are not managed by this stack will be kept.
+    `,
+    introducedIn: { v2: '2.155.0' },
+    recommendedValue: false,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [USE_NEW_S3URI_PARAMETERS_FOR_BEDROCK_INVOKE_MODEL_TASK]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, use new props for S3 URI field in task definition of state machine for bedrock invoke model.',
+    detailsMd: `
+    Currently, 'inputPath' and 'outputPath' from the TaskStateBase Props is being used under BedrockInvokeModelProps to define S3URI under 'input' and 'output' fields
+    of State Machine Task definition.
+
+    When this feature flag is enabled, specify newly introduced props 's3InputUri' and
+    's3OutputUri' to populate S3 uri under input and output fields in state machine task definition for Bedrock invoke model.
+
+    `,
+    introducedIn: { v2: '2.156.0' },
+    defaults: { v2: true },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Disable the feature flag to use input and output path fields for s3 URI',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [Enable_IMDS_Blocking_Deprecated_Feature]: {
+    type: FlagType.Temporary,
+    summary: 'When set to true along with canContainersAccessInstanceRole=false in ECS cluster, new updated ' +
+      'commands will be added to UserData to block container accessing IMDS. ' +
+      '**Applicable to Linux only. IMPORTANT: See [details.](#aws-cdkaws-ecsenableImdsBlockingDeprecatedFeature)**',
+    detailsMd: `
+    In an ECS Cluster with \`MachineImageType.AMAZON_LINUX_2\`, the canContainersAccessInstanceRole=false option attempts to add commands to block containers from
+    accessing IMDS. Set this flag to true in order to use new and updated commands. Please note that this 
+    feature alone with this feature flag will be deprecated by <ins>**end of 2025**</ins> as CDK cannot 
+    guarantee the correct execution of the feature in all platforms. See [Github discussion](https://github.com/aws/aws-cdk/discussions/32609) for more information.
+    It is recommended to follow ECS documentation to block IMDS for your specific platform and cluster configuration.
+    `,
+    introducedIn: { v2: '2.175.0' },
+    recommendedValue: false,
+    compatibilityWithOldBehaviorMd: 'Set this flag to false in order to continue using old and outdated commands. ' +
+      'However, it is **not** recommended.',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [Disable_ECS_IMDS_Blocking]: {
+    type: FlagType.Temporary,
+    summary: 'When set to true, CDK synth will throw exception if canContainersAccessInstanceRole is false.' +
+      ' **IMPORTANT: See [details.](#aws-cdkaws-ecsdisableEcsImdsBlocking)**',
+    detailsMd: `
+    In an ECS Cluster with \`MachineImageType.AMAZON_LINUX_2\`, the canContainersAccessInstanceRole=false option attempts to add commands to block containers from
+    accessing IMDS. CDK cannot guarantee the correct execution of the feature in all platforms. Setting this feature flag
+    to true will ensure CDK does not attempt to implement IMDS blocking. By <ins>**end of 2025**</ins>, CDK will remove the 
+    IMDS blocking feature. See [Github discussion](https://github.com/aws/aws-cdk/discussions/32609) for more information.
+    
+    It is recommended to follow ECS documentation to block IMDS for your specific platform and cluster configuration.
+    `,
+    introducedIn: { v2: '2.175.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'It is strongly recommended to set this flag to true. However, if necessary, set ' +
+      'this flag to false to continue using the old implementation.',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [REDUCE_EC2_FARGATE_CLOUDWATCH_PERMISSIONS]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, we will only grant the necessary permissions when users specify cloudwatch log group through logConfiguration',
+    detailsMd: `
+    Currently, we automatically add a number of cloudwatch permissions to the task role when no cloudwatch log group is
+    specified as logConfiguration and it will grant 'Resources': ['*'] to the task role.
+
+    When this feature flag is enabled, we will only grant the necessary permissions when users specify cloudwatch log group.
+    `,
+    introducedIn: { v2: '2.159.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Disable the feature flag to continue grant permissions to log group when no log group is specified',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [DYNAMODB_TABLEV2_RESOURCE_POLICY_PER_REPLICA]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled will allow you to specify a resource policy per replica, and not copy the source table policy to all replicas',
+    detailsMd: `
+      If this flag is not set, the default behavior for \`TableV2\` is to use a different \`resourcePolicy\` for each replica.
+
+      If this flag is set to false, the behavior is that each replica shares the same \`resourcePolicy\` as the source table.
+      This will prevent you from creating a new table which has an additional replica and a resource policy.
+
+      This is a feature flag as the old behavior was technically incorrect but users may have come to depend on it.`,
+    introducedIn: { v2: '2.164.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [EC2_SUM_TIMEOUT_ENABLED]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, initOptions.timeout and resourceSignalTimeout values will be summed together.',
+    detailsMd: `
+      Currently is both initOptions.timeout and resourceSignalTimeout are both specified in the options for creating an EC2 Instance,
+      only the value from 'resourceSignalTimeout' will be used.
+
+      When this feature flag is enabled, if both initOptions.timeout and resourceSignalTimeout are specified, the values will to be summed together.
+      `,
+    recommendedValue: true,
+    introducedIn: { v2: '2.160.0' },
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [APPSYNC_GRAPHQLAPI_SCOPE_LAMBDA_FUNCTION_PERMISSION]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, a Lambda authorizer Permission created when using GraphqlApi will be properly scoped with a SourceArn.',
+    detailsMd: `
+        Currently, when using a Lambda authorizer with an AppSync GraphQL API, the AWS CDK automatically generates the necessary AWS::Lambda::Permission
+        to allow the AppSync API to invoke the Lambda authorizer. This permission is overly permissive because it lacks a SourceArn, meaning
+        it allows invocations from any source.
+
+        When this feature flag is enabled, the AWS::Lambda::Permission will be properly scoped with the SourceArn corresponding to the
+        specific AppSync GraphQL API.
+        `,
+    recommendedValue: true,
+    introducedIn: { v2: '2.161.0' },
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [USE_CORRECT_VALUE_FOR_INSTANCE_RESOURCE_ID_PROPERTY]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, the value of property `instanceResourceId` in construct `DatabaseInstanceReadReplica` will be set to the correct value which is `DbiResourceId` instead of currently `DbInstanceArn`',
+    detailsMd: `
+      Currently, the value of the property 'instanceResourceId' in construct 'DatabaseInstanceReadReplica' is not correct, and set to 'DbInstanceArn' which is not correct when it is used to create the IAM Policy in the grantConnect method.
+
+      When this feature flag is enabled, the value of that property will be as expected set to 'DbiResourceId' attribute, and that will fix the grantConnect method.
+    `,
+    introducedIn: { v2: '2.161.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Disable the feature flag to use `DbInstanceArn` as value for property `instanceResourceId`',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [CFN_INCLUDE_REJECT_COMPLEX_RESOURCE_UPDATE_CREATE_POLICY_INTRINSICS]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, CFN templates added with `cfn-include` will error if the template contains Resource Update or Create policies with CFN Intrinsics that include non-primitive values.',
+    detailsMd: `
+    Without enabling this feature flag, \`cfn-include\` will silently drop resource update or create policies that contain CFN Intrinsics if they include non-primitive values.
+
+    Enabling this feature flag will make \`cfn-include\` throw on these templates, unless you specify the logical ID of the resource in the 'unhydratedResources' property.
+    `,
+    recommendedValue: true,
+    introducedIn: { v2: '2.161.0' },
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [LAMBDA_NODEJS_SDK_V3_EXCLUDE_SMITHY_PACKAGES]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, both `@aws-sdk` and `@smithy` packages will be excluded from the Lambda Node.js 18.x runtime to prevent version mismatches in bundled applications.',
+    detailsMd: `
+      Currently, when bundling Lambda functions with the non-latest runtime that supports AWS SDK JavaScript (v3), only the '@aws-sdk/*' packages are excluded by default.
+      However, this can cause version mismatches between the '@aws-sdk/*' and '@smithy/*' packages, as they are tightly coupled dependencies in AWS SDK v3.
+
+      When this feature flag is enabled, both '@aws-sdk/*' and '@smithy/*' packages will be excluded during the bundling process. This ensures that no mismatches
+      occur between these tightly coupled dependencies when using the AWS SDK v3 in Lambda functions.
+    `,
+    introducedIn: { v2: '2.161.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [STEPFUNCTIONS_TASKS_FIX_RUN_ECS_TASK_POLICY]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, the resource of IAM Run Ecs policy generated by SFN EcsRunTask will reference the definition, instead of constructing ARN.',
+    detailsMd: `
+      Currently, in the IAM Run Ecs policy generated by SFN EcsRunTask(), CDK will construct the ARN with wildcard attached at the end.
+      The revision number at the end will be replaced with a wildcard which it shouldn't.
+
+      When this feature flag is enabled, if the task definition is created in the stack, the 'Resource' section will 'Ref' the taskDefinition.
+    `,
+    introducedIn: { v2: '2.163.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [BASTION_HOST_USE_AMAZON_LINUX_2023_BY_DEFAULT]: {
+    type: FlagType.ApiDefault,
+    summary: 'When enabled, the BastionHost construct will use the latest Amazon Linux 2023 AMI, instead of Amazon Linux 2.',
+    detailsMd: `
+      Currently, if the machineImage property of the BastionHost construct defaults to using the latest Amazon Linux 2
+      AMI. Amazon Linux 2 hits end-of-life in June 2025, so using Amazon Linux 2023 by default is a more future-proof
+      and secure option.
+
+      When this feature flag is enabled, if you do not pass the machineImage property to the BastionHost construct,
+      the latest Amazon Linux 2023 version will be used instead of Amazon Linux 2.
+    `,
+    introducedIn: { v2: '2.172.0' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Disable the feature flag or explicitly pass an Amazon Linux 2 machine image to the BastionHost construct.',
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [ASPECT_STABILIZATION]: {
+    type: FlagType.VisibleContext,
+    summary: 'When enabled, a stabilization loop will be run when invoking Aspects during synthesis.',
+    detailsMd: `
+      Currently, when Aspects are invoked in one single pass of the construct tree.
+      This means that the Aspects that create other Aspects are not run and Aspects that create new nodes of the tree sometimes do not inherit their parent Aspects.
+
+      When this feature flag is enabled, a stabilization loop is run to recurse the construct tree multiple times when invoking Aspects.
+    `,
+    defaults: { v2: true },
+    introducedIn: { v2: '2.172.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [USER_POOL_DOMAIN_NAME_METHOD_WITHOUT_CUSTOM_RESOURCE]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, use a new method for DNS Name of user pool domain target without creating a custom resource.',
+    detailsMd: `
+    When this feature flag is enabled, a new method will be used to get the DNS Name of the user pool domain target. The old method
+    creates a custom resource internally, but the new method doesn't need a custom resource.
+
+    If the flag is set to false then a custom resource will be created when using \`UserPoolDomainTarget\`.
+    `,
+    introducedIn: { v2: '2.174.0' },
+    recommendedValue: true,
+  },
+
+  //////////////////////////////////////////////////////////////////////
+  [ALB_DUALSTACK_WITHOUT_PUBLIC_IPV4_SECURITY_GROUP_RULES_DEFAULT]: {
+    type: FlagType.BugFix,
+    summary: 'When enabled, the default security group ingress rules will allow IPv6 ingress from anywhere',
+    detailsMd: `
+      For internet facing ALBs with 'dualstack-without-public-ipv4' IP address type, the default security group rules
+      will allow IPv6 ingress from anywhere (::/0). Previously, the default security group rules would only allow IPv4 ingress.
+
+      Using a feature flag to make sure existing customers who might be relying
+      on the overly restrictive permissions are not broken.`,
+    introducedIn: { v2: 'V2NEXT' },
+    recommendedValue: true,
+    compatibilityWithOldBehaviorMd: 'Disable the feature flag to only allow IPv4 ingress in the default security group rules.',
+  },
 };
 
 const CURRENT_MV = 'v2';
@@ -842,10 +1373,13 @@ export const CURRENT_VERSION_EXPIRED_FLAGS: string[] = Object.entries(FLAGS)
  * Add a flag in here (typically with the value `true`), to enable
  * backwards-breaking behavior changes only for new projects.  New projects
  * generated through `cdk init` will include these flags in their generated
+ * project config.
  *
  * Tests must cover the default (disabled) case and the future (enabled) case.
+ *
+ * Going forward, this should *NOT* be consumed directly anymore.
  */
-export const NEW_PROJECT_CONTEXT = Object.fromEntries(
+export const CURRENTLY_RECOMMENDED_FLAGS = Object.fromEntries(
   Object.entries(FLAGS)
     .filter(([_, flag]) => flag.recommendedValue !== flag.defaults?.[CURRENT_MV] && flag.introducedIn[CURRENT_MV])
     .map(([name, flag]) => [name, flag.recommendedValue]),
@@ -877,10 +1411,10 @@ export function futureFlagDefault(flag: string): boolean {
 /** @deprecated use CURRENT_VERSION_EXPIRED_FLAGS instead */
 export const FUTURE_FLAGS_EXPIRED = CURRENT_VERSION_EXPIRED_FLAGS;
 
-/** @deprecated use NEW_PROJECT_CONTEXT instead */
-export const FUTURE_FLAGS = Object.fromEntries(Object.entries(NEW_PROJECT_CONTEXT)
+/** @deprecated do not use at all! */
+export const FUTURE_FLAGS = Object.fromEntries(Object.entries(CURRENTLY_RECOMMENDED_FLAGS)
   .filter(([_, v]) => typeof v === 'boolean'));
 
-/** @deprecated use NEW_PROJECT_CONTEXT instead */
-export const NEW_PROJECT_DEFAULT_CONTEXT = Object.fromEntries(Object.entries(NEW_PROJECT_CONTEXT)
+/** @deprecated do not use at all! */
+export const NEW_PROJECT_DEFAULT_CONTEXT = Object.fromEntries(Object.entries(CURRENTLY_RECOMMENDED_FLAGS)
   .filter(([_, v]) => typeof v !== 'boolean'));

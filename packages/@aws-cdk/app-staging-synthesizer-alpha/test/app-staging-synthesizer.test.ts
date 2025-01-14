@@ -3,6 +3,7 @@ import * as path from 'path';
 import { App, Stack, CfnResource, FileAssetPackaging, Token, Lazy, Duration } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import * as cxschema from 'aws-cdk-lib/cloud-assembly-schema';
 import { CloudAssembly } from 'aws-cdk-lib/cx-api';
 import { evaluateCFN } from './evaluate-cfn';
@@ -15,7 +16,7 @@ describe(AppStagingSynthesizer, () => {
 
   beforeEach(() => {
     app = new App({
-      defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({ appId: APP_ID }),
+      defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({ appId: APP_ID, stagingBucketEncryption: BucketEncryption.S3_MANAGED }),
     });
     stack = new Stack(app, 'Stack', {
       env: {
@@ -62,7 +63,7 @@ describe(AppStagingSynthesizer, () => {
 
   test('stack template is in the asset manifest - environment tokens', () => {
     const app2 = new App({
-      defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({ appId: APP_ID }),
+      defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({ appId: APP_ID, stagingBucketEncryption: BucketEncryption.S3_MANAGED }),
     });
     const accountToken = Token.asString('111111111111');
     const regionToken = Token.asString('us-east-2');
@@ -137,7 +138,7 @@ describe(AppStagingSynthesizer, () => {
 
     // THEN - we have a fixed asset location
     expect(evalCFN(location.bucketName)).toEqual(`cdk-${APP_ID}-staging-000000000000-us-east-1`);
-    expect(evalCFN(location.httpUrl)).toEqual(`https://s3.us-east-1.domain.aws/cdk-${APP_ID}-staging-000000000000-us-east-1/abcdef.js`);
+    expect(evalCFN(location.httpUrl)).toEqual(`https://s3.us-east-1.domain.aws/cdk-${APP_ID}-staging-000000000000-us-east-1/abcdef.ts`);
 
     // THEN - object key contains source hash somewhere
     expect(location.objectKey.indexOf('abcdef')).toBeGreaterThan(-1);
@@ -187,7 +188,7 @@ describe(AppStagingSynthesizer, () => {
       });
 
       // THEN - asset has deploy time prefix
-      expect(evalCFN(location.objectKey)).toEqual(`${DEPLOY_TIME_PREFIX}abcdef.js`);
+      expect(evalCFN(location.objectKey)).toEqual(`${DEPLOY_TIME_PREFIX}abcdef.ts`);
     });
 
     test('lambda assets are by default deploy time assets', () => {
@@ -252,12 +253,13 @@ describe(AppStagingSynthesizer, () => {
         defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
           appId: APP_ID,
           deployTimeFileAssetLifetime: Duration.days(1),
+          stagingBucketEncryption: BucketEncryption.KMS,
         }),
       });
       stack = new Stack(app, 'Stack', {
         env: {
           account: '000000000000',
-          region: 'us-west-2',
+          region: 'us-east-1',
         },
       });
       new CfnResource(stack, 'Resource', {
@@ -268,15 +270,58 @@ describe(AppStagingSynthesizer, () => {
       const asm = app.synth();
 
       // THEN
-      const stagingStackArtifact = asm.getStackArtifact(`StagingStack-${APP_ID}-000000000000-us-west-2`);
-
-      Template.fromJSON(stagingStackArtifact.template).hasResourceProperties('AWS::S3::Bucket', {
+      Template.fromJSON(getStagingResourceStack(asm).template).hasResourceProperties('AWS::S3::Bucket', {
         LifecycleConfiguration: {
           Rules: Match.arrayWith([{
             ExpirationInDays: 1,
             Prefix: DEPLOY_TIME_PREFIX,
             Status: 'Enabled',
           }]),
+        },
+        BucketEncryption: {
+          ServerSideEncryptionConfiguration: [
+            {
+              ServerSideEncryptionByDefault: {
+                SSEAlgorithm: 'aws:kms',
+              },
+            },
+          ],
+        },
+      });
+    });
+
+    test('staging bucket with SSE-S3 encryption', () => {
+      // GIVEN
+      app = new App({
+        defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
+          appId: APP_ID,
+          deployTimeFileAssetLifetime: Duration.days(1),
+          stagingBucketEncryption: BucketEncryption.S3_MANAGED,
+        }),
+      });
+      stack = new Stack(app, 'Stack', {
+        env: {
+          account: '000000000000',
+          region: 'us-east-1',
+        },
+      });
+      new CfnResource(stack, 'Resource', {
+        type: 'Some::Resource',
+      });
+
+      // WHEN
+      const asm = app.synth();
+
+      // THEN
+      Template.fromJSON(getStagingResourceStack(asm).template).hasResourceProperties('AWS::S3::Bucket', {
+        BucketEncryption: {
+          ServerSideEncryptionConfiguration: [
+            {
+              ServerSideEncryptionByDefault: {
+                SSEAlgorithm: 'AES256',
+              },
+            },
+          ],
         },
       });
     });
@@ -331,7 +376,7 @@ describe(AppStagingSynthesizer, () => {
     expect(() => stack.synthesizer.addDockerImageAsset({
       directoryName: '.',
       sourceHash: 'abcdef',
-    })).toThrowError('Assets synthesized with AppScopedStagingSynthesizer must include an \'assetName\' in the asset source definition.');
+    })).toThrow('Assets synthesized with AppScopedStagingSynthesizer must include an \'assetName\' in the asset source definition.');
   });
 
   test('docker image asset depends on staging stack', () => {
@@ -425,6 +470,7 @@ describe(AppStagingSynthesizer, () => {
       defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
         appId: APP_ID,
         imageAssetVersionCount: 1,
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
       }),
     });
     stack = new Stack(app, 'Stack', {
@@ -462,12 +508,67 @@ describe(AppStagingSynthesizer, () => {
     });
   });
 
+  test('auto delete assets can be turned off', () => {
+    // GIVEN
+    app = new App({
+      defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
+        appId: APP_ID,
+        autoDeleteStagingAssets: false,
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
+      }),
+    });
+    stack = new Stack(app, 'Stack', {
+      env: {
+        account: '000000000000',
+        region: 'us-east-1',
+      },
+    });
+
+    const assetName = 'abcdef';
+    stack.synthesizer.addDockerImageAsset({
+      directoryName: '.',
+      sourceHash: 'abcdef',
+      assetName,
+    });
+
+    // WHEN
+    const asm = app.synth();
+
+    // THEN
+    Template.fromJSON(getStagingResourceStack(asm).template).resourceCountIs('Custom::ECRAutoDeleteImages', 0);
+    Template.fromJSON(getStagingResourceStack(asm).template).resourceCountIs('Custom::S3AutoDeleteObjects', 0);
+  });
+
+  test('stack prefix can be customized', () => {
+    // GIVEN
+    const prefix = 'Prefix';
+    app = new App({
+      defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
+        appId: APP_ID,
+        stagingStackNamePrefix: prefix,
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
+      }),
+    });
+    stack = new Stack(app, 'Stack', {
+      env: {
+        account: '000000000000',
+        region: 'us-east-1',
+      },
+    });
+
+    // WHEN
+    const asm = app.synth();
+
+    // THEN
+    expect(getStagingResourceStack(asm, prefix).template).toBeDefined();
+  });
+
   describe('environment specifics', () => {
     test('throws if App includes env-agnostic and specific env stacks', () => {
       // GIVEN - App with Stack with specific environment
 
       // THEN - Expect environment agnostic stack to fail
-      expect(() => new Stack(app, 'NoEnvStack')).toThrowError(/It is not safe to use AppStagingSynthesizer/);
+      expect(() => new Stack(app, 'NoEnvStack')).toThrow(/It is not safe to use AppStagingSynthesizer/);
     });
   });
 
@@ -475,8 +576,9 @@ describe(AppStagingSynthesizer, () => {
     expect(() => new App({
       defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
         appId: Lazy.string({ produce: () => 'appId' }),
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
       }),
-    })).toThrowError(/AppStagingSynthesizer property 'appId' may not contain tokens;/);
+    })).toThrow(/AppStagingSynthesizer property 'appId' may not contain tokens;/);
   });
 
   test('throws when staging resource stack is too large', () => {
@@ -491,7 +593,7 @@ describe(AppStagingSynthesizer, () => {
     }
 
     // THEN
-    expect(() => app.synth()).toThrowError(/Staging resource template cannot be greater than 51200 bytes/);
+    expect(() => app.synth()).toThrow(/Staging resource template cannot be greater than 51200 bytes/);
   });
 
   /**
@@ -506,7 +608,7 @@ describe(AppStagingSynthesizer, () => {
   /**
    * Return the staging resource stack that is generated as part of the assembly
    */
-  function getStagingResourceStack(asm: CloudAssembly) {
-    return asm.getStackArtifact(`StagingStack-${APP_ID}-000000000000-us-east-1`);
+  function getStagingResourceStack(asm: CloudAssembly, prefix?: string) {
+    return asm.getStackArtifact(`${prefix ?? 'StagingStack'}-${APP_ID}-000000000000-us-east-1`);
   }
 });

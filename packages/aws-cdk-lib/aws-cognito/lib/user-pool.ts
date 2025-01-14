@@ -5,7 +5,8 @@ import { StandardAttributeNames } from './private/attr-names';
 import { ICustomAttribute, StandardAttribute, StandardAttributes } from './user-pool-attr';
 import { UserPoolClient, UserPoolClientOptions } from './user-pool-client';
 import { UserPoolDomain, UserPoolDomainOptions } from './user-pool-domain';
-import { UserPoolEmail } from './user-pool-email';
+import { UserPoolEmail, UserPoolEmailConfig } from './user-pool-email';
+import { UserPoolGroup, UserPoolGroupOptions } from './user-pool-group';
 import { IUserPoolIdentityProvider } from './user-pool-idp';
 import { UserPoolResourceServer, UserPoolResourceServerOptions } from './user-pool-resource-server';
 import { Grant, IGrantable, IRole, PolicyDocument, PolicyStatement, Role, ServicePrincipal } from '../../aws-iam';
@@ -163,14 +164,14 @@ export interface UserPoolTriggers {
    * @see https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-lambda-custom-email-sender.html
    * @default - no trigger configured
    */
-  readonly customEmailSender?: lambda.IFunction
+  readonly customEmailSender?: lambda.IFunction;
 
   /**
    * Amazon Cognito invokes this trigger to send SMS notifications to users.
    * @see https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-lambda-custom-sms-sender.html
    * @default - no trigger configured
    */
-  readonly customSmsSender?: lambda.IFunction
+  readonly customSmsSender?: lambda.IFunction;
 
   /**
    * Index signature.
@@ -230,9 +231,19 @@ export class UserPoolOperation {
 
   /**
    * Add or remove attributes in Id tokens
+   *
+   * Set this parameter for legacy purposes.
+   * If you also set an ARN in PreTokenGenerationConfig, its value must be identical to PreTokenGeneration.
+   * For new instances of pre token generation triggers, set the LambdaArn of PreTokenGenerationConfig.
    * @see https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-lambda-pre-token-generation.html
    */
   public static readonly PRE_TOKEN_GENERATION = new UserPoolOperation('preTokenGeneration');
+
+  /**
+   * Add or remove attributes in Id tokens
+   * @see https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-lambda-pre-token-generation.html
+   */
+  public static readonly PRE_TOKEN_GENERATION_CONFIG = new UserPoolOperation('preTokenGenerationConfig');
 
   /**
    * Migrate a user from an existing user directory to user pools
@@ -280,6 +291,22 @@ export enum VerificationEmailStyle {
   CODE = 'CONFIRM_WITH_CODE',
   /** Verify email via link */
   LINK = 'CONFIRM_WITH_LINK',
+}
+
+/**
+ * The user pool trigger version of the request that Amazon Cognito sends to your Lambda function.
+ */
+export enum LambdaVersion {
+  /**
+   * V1_0 trigger
+   */
+  V1_0 = 'V1_0',
+  /**
+   * V2_0 trigger
+   *
+   * This is supported only for PRE_TOKEN_GENERATION trigger.
+   */
+  V2_0 = 'V2_0',
 }
 
 /**
@@ -365,7 +392,7 @@ export enum Mfa {
 export interface MfaSecondFactor {
   /**
    * The MFA token is sent to the user via SMS to their verified phone numbers
-   * @see https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-settings-mfa-sms-text-message.html
+   * @see https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-settings-mfa-sms-email-message.html
    * @default true
    */
   readonly sms: boolean;
@@ -376,6 +403,17 @@ export interface MfaSecondFactor {
    * @default false
    */
   readonly otp: boolean;
+
+  /**
+   * The MFA token is sent to the user via EMAIL
+   *
+   * To enable email-based MFA, set `email` property to the Amazon SES email-sending configuration
+   * and set `feturePlan` to `FeaturePlan.ESSENTIALS` or `FeaturePlan.PLUS`
+   *
+   * @see https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-settings-mfa-sms-email-message.html
+   * @default false
+   */
+  readonly email?: boolean;
 }
 
 /**
@@ -502,6 +540,7 @@ export interface DeviceTracking {
 
 /**
  * The different ways in which a user pool's Advanced Security Mode can be configured.
+ * @deprecated Advanced Security Mode is deprecated in favor of user pool feature plans.
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-cognito-userpool-userpooladdons.html#cfn-cognito-userpool-userpooladdons-advancedsecuritymode
  */
 export enum AdvancedSecurityMode {
@@ -510,42 +549,60 @@ export enum AdvancedSecurityMode {
   /** gather metrics on detected risks without taking action. Metrics are published to Amazon CloudWatch */
   AUDIT = 'AUDIT',
   /** Advanced security mode is disabled */
-  OFF = 'OFF'
+  OFF = 'OFF',
 }
+
+/**
+ * The user pool feature plan, or tier.
+ * @see https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-sign-in-feature-plans.html
+ */
+export enum FeaturePlan {
+  /** Lite feature plan */
+  LITE = 'LITE',
+  /** Essentials feature plan */
+  ESSENTIALS = 'ESSENTIALS',
+  /** Plus feature plan */
+  PLUS = 'PLUS',
+};
 
 /**
  * Props for the UserPool construct
  */
 export interface UserPoolProps {
   /**
-   * Name of the user pool
+   * Name of the user pool.
    *
-   * @default - automatically generated name by CloudFormation at deploy time
+   * @default - automatically generated name by CloudFormation at deploy time.
    */
   readonly userPoolName?: string;
 
   /**
-   * Whether self sign up should be enabled. This can be further configured via the `selfSignUp` property.
-   * @default false
+   * Whether self sign-up should be enabled.
+   * To configure self sign-up configuration use the `userVerification` property.
+   *
+   * @default - false
    */
   readonly selfSignUpEnabled?: boolean;
 
   /**
    * Configuration around users signing themselves up to the user pool.
    * Enable or disable self sign-up via the `selfSignUpEnabled` property.
-   * @default - see defaults in UserVerificationConfig
+   *
+   * @default - see defaults in UserVerificationConfig.
    */
   readonly userVerification?: UserVerificationConfig;
 
   /**
    * Configuration around admins signing up users into a user pool.
-   * @default - see defaults in UserInvitationConfig
+   *
+   * @default - see defaults in UserInvitationConfig.
    */
   readonly userInvitation?: UserInvitationConfig;
 
   /**
    * The IAM role that Cognito will assume while sending SMS messages.
-   * @default - a new IAM role is created
+   *
+   * @default - a new IAM role is created.
    */
   readonly smsRole?: IRole;
 
@@ -554,14 +611,16 @@ export interface UserPoolProps {
    * Learn more about ExternalId here - https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html
    *
    * This property will be ignored if `smsRole` is not specified.
-   * @default - No external id will be configured
+   *
+   * @default - No external id will be configured.
    */
   readonly smsRoleExternalId?: string;
 
   /**
-   * The region to integrate with SNS to send SMS messages
+   * The region to integrate with SNS to send SMS messages.
    *
-   * This property will do nothing if SMS configuration is not configured
+   * This property will do nothing if SMS configuration is not configured.
+   *
    * @default - The same region as the user pool, with a few exceptions - https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-sms-settings.html#user-pool-sms-settings-first-time
    */
   readonly snsRegion?: string;
@@ -569,6 +628,7 @@ export interface UserPoolProps {
   /**
    * Setting this would explicitly enable or disable SMS role creation.
    * When left unspecified, CDK will determine based on other properties if a role is needed or not.
+   *
    * @default - CDK will determine based on other properties of the user pool if an SMS role should be created or not.
    */
   readonly enableSmsRole?: boolean;
@@ -637,8 +697,8 @@ export interface UserPoolProps {
   /**
    * Configure the MFA types that users can use in this user pool. Ignored if `mfa` is set to `OFF`.
    *
-   * @default - { sms: true, otp: false }, if `mfa` is set to `OPTIONAL` or `REQUIRED`.
-   * { sms: false, otp: false }, otherwise
+   * @default - { sms: true, otp: false, email: false }, if `mfa` is set to `OPTIONAL` or `REQUIRED`.
+   * { sms: false, otp: false, email:false }, otherwise
    */
   readonly mfaSecondFactor?: MfaSecondFactor;
 
@@ -712,9 +772,18 @@ export interface UserPoolProps {
 
   /**
    * The user pool's Advanced Security Mode
+   * @deprecated Advanced Security Mode is deprecated in favor of user pool feature plans.
    * @default - no value
    */
   readonly advancedSecurityMode?: AdvancedSecurityMode;
+
+  /**
+   * The user pool feature plan, or tier.
+   * This parameter determines the eligibility of the user pool for features like managed login, access-token customization, and threat protection.
+   * @see https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-sign-in-feature-plans.html
+   * @default - FeaturePlan.ESSENTIALS for a newly created user pool; FeaturePlan.LITE otherwise
+   */
+  readonly featurePlan?: FeaturePlan;
 }
 
 /**
@@ -732,6 +801,13 @@ export interface IUserPool extends IResource {
    * @attribute
    */
   readonly userPoolArn: string;
+
+  /**
+   * The provider name of this user pool resource
+   *
+   * @attribute
+   */
+  readonly userPoolProviderName: string;
 
   /**
    * Get all identity providers registered with this user pool.
@@ -757,6 +833,12 @@ export interface IUserPool extends IResource {
   addResourceServer(id: string, options: UserPoolResourceServerOptions): UserPoolResourceServer;
 
   /**
+   * Add a new group to this user pool.
+   * @see https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-user-groups.html
+   */
+  addGroup(id: string, options: UserPoolGroupOptions): UserPoolGroup;
+
+  /**
    * Register an identity provider with this user pool.
    */
   registerIdentityProvider(provider: IUserPoolIdentityProvider): void;
@@ -771,6 +853,7 @@ export interface IUserPool extends IResource {
 abstract class UserPoolBase extends Resource implements IUserPool {
   public abstract readonly userPoolId: string;
   public abstract readonly userPoolArn: string;
+  public abstract readonly userPoolProviderName: string;
   public readonly identityProviders: IUserPoolIdentityProvider[] = [];
 
   public addClient(id: string, options?: UserPoolClientOptions): UserPoolClient {
@@ -789,6 +872,13 @@ abstract class UserPoolBase extends Resource implements IUserPool {
 
   public addResourceServer(id: string, options: UserPoolResourceServerOptions): UserPoolResourceServer {
     return new UserPoolResourceServer(this, id, {
+      userPool: this,
+      ...options,
+    });
+  }
+
+  public addGroup(id: string, options: UserPoolGroupOptions): UserPoolGroup {
+    return new UserPoolGroup(this, id, {
       userPool: this,
       ...options,
     });
@@ -836,10 +926,14 @@ export class UserPool extends UserPoolBase {
     }
 
     const userPoolId = arnParts.resourceName;
+    // ex) cognito-idp.us-east-1.amazonaws.com/us-east-1_abcdefghi
+    const providerName = `cognito-idp.${arnParts.region}.${Stack.of(scope).urlSuffix}/${userPoolId}`;;
 
     class ImportedUserPool extends UserPoolBase {
       public readonly userPoolArn = userPoolArn;
       public readonly userPoolId = userPoolId;
+      public readonly userPoolProviderName = providerName;
+
       constructor() {
         super(scope, id, {
           account: arnParts.account,
@@ -874,6 +968,7 @@ export class UserPool extends UserPoolBase {
   public readonly userPoolProviderUrl: string;
 
   private triggers: CfnUserPool.LambdaConfigProperty = {};
+  private emailConfiguration: UserPoolEmailConfig | undefined;
 
   constructor(scope: Construct, id: string, props: UserPoolProps = {}) {
     super(scope, id);
@@ -943,6 +1038,14 @@ export class UserPool extends UserPoolBase {
       from: encodePuny(props.emailSettings?.from),
       replyToEmailAddress: encodePuny(props.emailSettings?.replyTo),
     });
+    this.emailConfiguration = emailConfiguration;
+
+    if (
+      props.featurePlan && props.featurePlan !== FeaturePlan.LITE &&
+      props.advancedSecurityMode && props.advancedSecurityMode !== AdvancedSecurityMode.OFF
+    ) {
+      throw new Error('you cannot enable Advanced Security Mode when feature plan is Essentials or higher.');
+    }
 
     const userPool = new CfnUserPool(this, 'Resource', {
       userPoolName: props.userPoolName,
@@ -971,6 +1074,7 @@ export class UserPool extends UserPoolBase {
       accountRecoverySetting: this.accountRecovery(props),
       deviceConfiguration: props.deviceTracking,
       userAttributeUpdateSettings: this.configureUserAttributeChanges(props),
+      userPoolTier: props.featurePlan,
       deletionProtection: defaultDeletionProtection(props.deletionProtection),
     });
     userPool.applyRemovalPolicy(props.removalPolicy);
@@ -986,9 +1090,12 @@ export class UserPool extends UserPoolBase {
    * Add a lambda trigger to a user pool operation
    * @see https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-identity-pools-working-with-aws-lambda-triggers.html
    */
-  public addTrigger(operation: UserPoolOperation, fn: lambda.IFunction): void {
+  public addTrigger(operation: UserPoolOperation, fn: lambda.IFunction, lambdaVersion?: LambdaVersion): void {
     if (operation.operationName in this.triggers) {
       throw new Error(`A trigger for the operation ${operation.operationName} already exists.`);
+    }
+    if (operation !== UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG && lambdaVersion === LambdaVersion.V2_0) {
+      throw new Error('Only the `PRE_TOKEN_GENERATION_CONFIG` operation supports V2_0 lambda version.');
     }
 
     this.addLambdaPermission(fn, operation.operationName);
@@ -1000,7 +1107,13 @@ export class UserPool extends UserPoolBase {
         }
         (this.triggers as any)[operation.operationName] = {
           lambdaArn: fn.functionArn,
-          lambdaVersion: 'V1_0',
+          lambdaVersion: LambdaVersion.V1_0,
+        };
+        break;
+      case 'preTokenGenerationConfig':
+        (this.triggers as any)[operation.operationName] = {
+          lambdaArn: fn.functionArn,
+          lambdaVersion: lambdaVersion ?? LambdaVersion.V1_0,
         };
         break;
       default:
@@ -1039,6 +1152,11 @@ export class UserPool extends UserPoolBase {
   private verificationMessageConfiguration(props: UserPoolProps): CfnUserPool.VerificationMessageTemplateProperty {
     const CODE_TEMPLATE = '{####}';
     const VERIFY_EMAIL_TEMPLATE = '{##Verify Email##}';
+    /**
+     * Email message placeholder regex
+     * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-cognito-userpool-verificationmessagetemplate.html#cfn-cognito-userpool-verificationmessagetemplate-emailmessagebylink
+     */
+    const VERIFY_EMAIL_REGEX = /\{##[\p{L}\p{M}\p{S}\p{N}\p{P}\s*]*##\}/u;
 
     const emailStyle = props.userVerification?.emailStyle ?? VerificationEmailStyle.CODE;
     const emailSubject = props.userVerification?.emailSubject ?? 'Verify your new account';
@@ -1061,7 +1179,7 @@ export class UserPool extends UserPoolBase {
     } else {
       const emailMessage = props.userVerification?.emailBody ??
         `Verify your account by clicking on ${VERIFY_EMAIL_TEMPLATE}`;
-      if (!Token.isUnresolved(emailMessage) && emailMessage.indexOf(VERIFY_EMAIL_TEMPLATE) < 0) {
+      if (!Token.isUnresolved(emailMessage) && !VERIFY_EMAIL_REGEX.test(emailMessage)) {
         throw new Error(`Verification email body must contain the template string '${VERIFY_EMAIL_TEMPLATE}'`);
       }
       return {
@@ -1177,6 +1295,9 @@ export class UserPool extends UserPoolBase {
       }
       if (props.mfaSecondFactor!.otp) {
         enabledMfas.push('SOFTWARE_TOKEN_MFA');
+      } if (props.mfaSecondFactor!.email) {
+        this.validateEmailMfa(props);
+        enabledMfas.push('EMAIL_OTP');
       }
       return enabledMfas;
     }
@@ -1303,6 +1424,16 @@ export class UserPool extends UserPoolBase {
     return {
       attributesRequireVerificationBeforeUpdate,
     };
+  }
+
+  private validateEmailMfa(props: UserPoolProps) {
+    if (props.email === undefined || this.emailConfiguration?.emailSendingAccount !== 'DEVELOPER') {
+      throw new Error('To enable email-based MFA, set `email` property to the Amazon SES email-sending configuration.');
+    }
+
+    if (props.featurePlan === FeaturePlan.LITE && (!props.advancedSecurityMode || props.advancedSecurityMode === AdvancedSecurityMode.OFF)) {
+      throw new Error('To enable email-based MFA, set `featurePlan` to `FeaturePlan.ESSENTIALS` or `FeaturePlan.PLUS`.');
+    }
   }
 }
 

@@ -15,6 +15,7 @@ import * as logs from '../../aws-logs';
 import * as route53 from '../../aws-route53';
 import * as secretsmanager from '../../aws-secretsmanager';
 import * as cdk from '../../core';
+import * as cxapi from '../../cx-api';
 
 /**
  * Configures the capacity of the cluster such as the instance type and the
@@ -31,8 +32,7 @@ export interface CapacityConfig {
   /**
    * The hardware configuration of the computer that hosts the dedicated master
    * node, such as `m3.medium.search`. For valid values, see [Supported
-   * Instance Types]
-   * (https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-instance-types.html)
+   * Instance Types](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-instance-types.html)
    * in the Amazon OpenSearch Service Developer Guide.
    *
    * @default - r5.large.search
@@ -65,14 +65,23 @@ export interface CapacityConfig {
 
   /**
    * The instance type for your UltraWarm node, such as `ultrawarm1.medium.search`.
-   * For valid values, see [UltraWarm Storage Limits]
-   * (https://docs.aws.amazon.com/opensearch-service/latest/developerguide/limits.html#limits-ultrawarm)
+   * For valid values, see [UltraWarm Storage
+   * Limits](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/limits.html#limits-ultrawarm)
    * in the Amazon OpenSearch Service Developer Guide.
    *
    * @default - ultrawarm1.medium.search
    */
   readonly warmInstanceType?: string;
 
+  /**
+   * Indicates whether Multi-AZ with Standby deployment option is enabled.
+   * For more information, see [Multi-AZ with
+   * Standby](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/managedomains-multiaz.html#managedomains-za-standby)
+   *
+   * @default - multi-az with standby if the feature flag `ENABLE_OPENSEARCH_MULTIAZ_WITH_STANDBY`
+   * is true, no multi-az with standby otherwise
+   */
+  readonly multiAzWithStandbyEnabled?: boolean;
 }
 
 /**
@@ -86,8 +95,7 @@ export interface ZoneAwarenessConfig {
    * in the same region to prevent data loss and minimize downtime in the event
    * of node or data center failure. Don't enable zone awareness if your cluster
    * has no replica index shards or is a single-node cluster. For more information,
-   * see [Configuring a Multi-AZ Domain]
-   * (https://docs.aws.amazon.com/opensearch-service/latest/developerguide/managedomains-multiaz.html)
+   * see [Configuring a Multi-AZ Domain](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/managedomains-multiaz.html)
    * in the Amazon OpenSearch Service Developer Guide.
    *
    * @default - false
@@ -106,8 +114,7 @@ export interface ZoneAwarenessConfig {
 /**
  * The configurations of Amazon Elastic Block Store (Amazon EBS) volumes that
  * are attached to data nodes in the Amazon OpenSearch Service domain. For more information, see
- * [Amazon EBS]
- * (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AmazonEBS.html)
+ * [Amazon EBS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AmazonEBS.html)
  * in the Amazon Elastic Compute Cloud Developer Guide.
  */
 export interface EbsOptions {
@@ -121,7 +128,7 @@ export interface EbsOptions {
 
   /**
    * The number of I/O operations per second (IOPS) that the volume
-   * supports. This property applies only to the Provisioned IOPS (SSD) EBS
+   * supports. This property applies only to the gp3 and Provisioned IOPS (SSD) EBS
    * volume type.
    *
    * @default - iops are not set.
@@ -129,11 +136,18 @@ export interface EbsOptions {
   readonly iops?: number;
 
   /**
+   * The throughput (in MiB/s) of the EBS volumes attached to data nodes.
+   * This property applies only to the gp3 volume type.
+   *
+   * @default - throughput is not set.
+   */
+  readonly throughput?: number;
+
+  /**
    * The size (in GiB) of the EBS volume for each data node. The minimum and
    * maximum size of an EBS volume depends on the EBS volume type and the
    * instance type to which it is attached.  For  valid values, see
-   * [EBS volume size limits]
-   * (https://docs.aws.amazon.com/opensearch-service/latest/developerguide/limits.html#ebsresource)
+   * [EBS volume size limits](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/limits.html#ebsresource)
    * in the Amazon OpenSearch Service Developer Guide.
    *
    * @default 10
@@ -155,6 +169,7 @@ export interface LoggingOptions {
   /**
    * Specify if slow search logging should be set up.
    * Requires Elasticsearch version 5.1 or later or OpenSearch version 1.0 or later.
+   * An explicit `false` is required when disabling it from `true`.
    *
    * @default - false
    */
@@ -170,6 +185,7 @@ export interface LoggingOptions {
   /**
    * Specify if slow index logging should be set up.
    * Requires Elasticsearch version 5.1 or later or OpenSearch version 1.0 or later.
+   * An explicit `false` is required when disabling it from `true`.
    *
    * @default - false
    */
@@ -185,6 +201,7 @@ export interface LoggingOptions {
   /**
    * Specify if Amazon OpenSearch Service application logging should be set up.
    * Requires Elasticsearch version 5.1 or later or OpenSearch version 1.0 or later.
+   * An explicit `false` is required when disabling it from `true`.
    *
    * @default - false
    */
@@ -264,7 +281,63 @@ export enum TLSSecurityPolicy {
   /** Cipher suite TLS 1.0 */
   TLS_1_0 = 'Policy-Min-TLS-1-0-2019-07',
   /** Cipher suite TLS 1.2 */
-  TLS_1_2 = 'Policy-Min-TLS-1-2-2019-07'
+  TLS_1_2 = 'Policy-Min-TLS-1-2-2019-07',
+  /** Cipher suite TLS 1.2 to 1.3 with perfect forward secrecy (PFS) */
+  TLS_1_2_PFS = 'Policy-Min-TLS-1-2-PFS-2023-10',
+}
+
+/**
+ * Container for information about the SAML configuration for OpenSearch Dashboards.
+ */
+export interface SAMLOptionsProperty {
+  /**
+   * The unique entity ID of the application in the SAML identity provider.
+   */
+  readonly idpEntityId: string;
+
+  /**
+   * The metadata of the SAML application, in XML format.
+   */
+  readonly idpMetadataContent: string;
+
+  /**
+   * The SAML master username, which is stored in the domain's internal user database.
+   * This SAML user receives full permission in OpenSearch Dashboards/Kibana.
+   * Creating a new master username does not delete any existing master usernames.
+   *
+   * @default - No master user name is configured
+   */
+  readonly masterUserName?: string;
+
+  /**
+   * The backend role that the SAML master user is mapped to.
+   * Any users with this backend role receives full permission in OpenSearch Dashboards/Kibana.
+   * To use a SAML master backend role, configure the `rolesKey` property.
+   *
+   * @default - The master user is not mapped to a backend role
+   */
+  readonly masterBackendRole?: string;
+
+  /**
+   * Element of the SAML assertion to use for backend roles.
+   *
+   * @default - roles
+   */
+  readonly rolesKey?: string;
+
+  /**
+   * Element of the SAML assertion to use for the user name.
+   *
+   * @default - NameID element of the SAML assertion fot the user name
+   */
+  readonly subjectKey?: string;
+
+  /**
+   * The duration, in minutes, after which a user session becomes inactive.
+   *
+   * @default - 60
+   */
+  readonly sessionTimeoutMinutes?: number;
 }
 
 /**
@@ -295,6 +368,23 @@ export interface AdvancedSecurityOptions {
    * @default - A Secrets Manager generated password
    */
   readonly masterUserPassword?: cdk.SecretValue;
+
+  /**
+   * True to enable SAML authentication for a domain.
+   *
+   * @see https://docs.aws.amazon.com/opensearch-service/latest/developerguide/saml.html
+   *
+   * @default - SAML authentication is disabled. Enabled if `samlAuthenticationOptions` is set.
+   */
+  readonly samlAuthenticationEnabled?: boolean;
+
+  /**
+   * Container for information about the SAML configuration for OpenSearch Dashboards.
+   * If set, `samlAuthenticationEnabled` will be enabled.
+   *
+   * @default - no SAML authentication options
+   */
+  readonly samlAuthenticationOptions?: SAMLOptionsProperty;
 }
 
 /**
@@ -317,6 +407,36 @@ export interface CustomEndpointOptions {
    * @default - do not create a CNAME
    */
   readonly hostedZone?: route53.IHostedZone;
+}
+
+export interface WindowStartTime {
+  /**
+   * The start hour of the window in Coordinated Universal Time (UTC), using 24-hour time.
+   * For example, 17 refers to 5:00 P.M. UTC.
+   *
+   * @default - 22
+   */
+  readonly hours: number;
+  /**
+   * The start minute of the window, in UTC.
+   *
+   * @default - 0
+   */
+  readonly minutes: number;
+}
+
+/**
+ * The IP address type for the domain.
+ */
+export enum IpAddressType {
+  /**
+   * IPv4 addresses only
+   */
+  IPV4 = 'ipv4',
+  /**
+   * IPv4 and IPv6 addresses
+   */
+  DUAL_STACK = 'dualstack',
 }
 
 /**
@@ -484,6 +604,7 @@ export interface DomainProps {
    * domain resource, use the EnableVersionUpgrade update policy.
    *
    * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-attribute-updatepolicy.html#cfn-attributes-updatepolicy-upgradeopensearchdomain
+   *
    * @default - false
    */
   readonly enableVersionUpgrade?: boolean;
@@ -499,9 +620,79 @@ export interface DomainProps {
    * To configure a custom domain configure these options
    *
    * If you specify a Route53 hosted zone it will create a CNAME record and use DNS validation for the certificate
+   *
    * @default - no custom domain endpoint will be configured
    */
   readonly customEndpoint?: CustomEndpointOptions;
+
+  /**
+   * Options for enabling a domain's off-peak window, during which OpenSearch Service can perform mandatory
+   * configuration changes on the domain.
+   *
+   * Off-peak windows were introduced on February 16, 2023.
+   * All domains created before this date have the off-peak window disabled by default.
+   * You must manually enable and configure the off-peak window for these domains.
+   * All domains created after this date will have the off-peak window enabled by default.
+   * You can't disable the off-peak window for a domain after it's enabled.
+   *
+   * @see https://docs.aws.amazon.com/it_it/AWSCloudFormation/latest/UserGuide/aws-properties-opensearchservice-domain-offpeakwindow.html
+   *
+   * @default - Disabled for domains created before February 16, 2023. Enabled for domains created after. Enabled if `offPeakWindowStart` is set.
+   */
+  readonly offPeakWindowEnabled?: boolean;
+
+  /**
+   * Start time for the off-peak window, in Coordinated Universal Time (UTC).
+   * The window length will always be 10 hours, so you can't specify an end time.
+   * For example, if you specify 11:00 P.M. UTC as a start time, the end time will automatically be set to 9:00 A.M.
+   *
+   * @default - 10:00 P.M. local time
+   */
+  readonly offPeakWindowStart?: WindowStartTime;
+
+  /**
+   * Specifies whether automatic service software updates are enabled for the domain.
+   *
+   * @see https://docs.aws.amazon.com/it_it/AWSCloudFormation/latest/UserGuide/aws-properties-opensearchservice-domain-softwareupdateoptions.html
+   *
+   * @default - false
+   */
+  readonly enableAutoSoftwareUpdate?: boolean;
+
+  /**
+   * Specify either dual stack or IPv4 as your IP address type.
+   * Dual stack allows you to share domain resources across IPv4 and IPv6 address types, and is the recommended option.
+   *
+   * If you set your IP address type to dual stack, you can't change your address type later.
+   *
+   * @default - IpAddressType.IPV4
+   */
+  readonly ipAddressType?: IpAddressType;
+
+  /**
+   * Specify whether to create a CloudWatch Logs resource policy or not.
+   *
+   * When logging is enabled for the domain, a CloudWatch Logs resource policy is created by default.
+   * However, CloudWatch Logs supports only 10 resource policies per region.
+   * If you enable logging for several domains, it may hit the quota and cause an error.
+   * By setting this property to true, creating a resource policy is suppressed, allowing you to avoid this problem.
+   *
+   * If you set this option to true, you must create a resource policy before deployment.
+   *
+   * @see https://docs.aws.amazon.com/opensearch-service/latest/developerguide/createdomain-configure-slow-logs.html
+   *
+   * @default - false
+   */
+  readonly suppressLogsResourcePolicy?: boolean;
+
+  /**
+   * Whether to enable or disable cold storage on the domain. You must enable UltraWarm storage to enable cold storage.
+   *
+   * @see https://docs.aws.amazon.com/opensearch-service/latest/developerguide/cold-storage.html
+   *
+   * @default - undefined
+   */
+  readonly coldStorageEnabled?: boolean;
 }
 
 /**
@@ -1080,7 +1271,6 @@ abstract class DomainBase extends cdk.Resource implements IDomain {
 
     return grant;
   }
-
 }
 
 /**
@@ -1190,9 +1380,9 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
 
   private readonly domain: CfnDomain;
 
-  private accessPolicy?: OpenSearchAccessPolicy
+  private accessPolicy?: OpenSearchAccessPolicy;
 
-  private encryptionAtRestOptions?: EncryptionAtRestOptions
+  private encryptionAtRestOptions?: EncryptionAtRestOptions;
 
   private readonly _connections: ec2.Connections | undefined;
 
@@ -1384,14 +1574,39 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
       }
     }
 
+    const unSupportEbsInstanceType = [
+      ec2.InstanceClass.I3,
+      ec2.InstanceClass.R6GD,
+      ec2.InstanceClass.I4G,
+      ec2.InstanceClass.I4I,
+      ec2.InstanceClass.IM4GN,
+      ec2.InstanceClass.R7GD,
+    ];
+
+    const supportInstanceStorageInstanceType = [
+      ec2.InstanceClass.R3,
+      ...unSupportEbsInstanceType,
+    ];
+
+    const unSupportEncryptionAtRestInstanceType=[
+      ec2.InstanceClass.M3,
+      ec2.InstanceClass.R3,
+      ec2.InstanceClass.T2,
+    ];
+
+    const unSupportUltraWarmInstanceType=[
+      ec2.InstanceClass.T2,
+      ec2.InstanceClass.T3,
+    ];
+
     // Validate against instance type restrictions, per
     // https://docs.aws.amazon.com/opensearch-service/latest/developerguide/supported-instance-types.html
-    if (isSomeInstanceType('i3', 'r6gd') && ebsEnabled) {
-      throw new Error('I3 and R6GD instance types do not support EBS storage volumes.');
+    if (isSomeInstanceType(...unSupportEbsInstanceType) && ebsEnabled) {
+      throw new Error(`${formatInstanceTypesList(unSupportEbsInstanceType, 'and')} instance types do not support EBS storage volumes.`);
     }
 
     if (isSomeInstanceType('m3', 'r3', 't2') && encryptionAtRestEnabled) {
-      throw new Error('M3, R3, and T2 instance types do not support encryption of data at rest.');
+      throw new Error(`${formatInstanceTypesList(unSupportEncryptionAtRestInstanceType, 'and')} instance types do not support encryption of data at rest.`);
     }
 
     if (isInstanceType('t2.micro') && !(isElasticsearchVersion && versionNum <= 2.3)) {
@@ -1399,13 +1614,95 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
     }
 
     if (isSomeInstanceType('t2', 't3') && warmEnabled) {
-      throw new Error('T2 and T3 instance types do not support UltraWarm storage.');
+      throw new Error(`${formatInstanceTypesList(unSupportUltraWarmInstanceType, 'and')} instance types do not support UltraWarm storage.`);
     }
 
-    // Only R3, I3 and r6gd support instance storage, per
+    // Only R3, I3, R6GD, I4G, I4I, IM4GN and R7GD support instance storage, per
     // https://aws.amazon.com/opensearch-service/pricing/
-    if (!ebsEnabled && !isEveryDatanodeInstanceType('r3', 'i3', 'r6gd')) {
-      throw new Error('EBS volumes are required when using instance types other than r3, i3 or r6gd.');
+    if (!ebsEnabled && !isEveryDatanodeInstanceType(...supportInstanceStorageInstanceType)) {
+      throw new Error(`EBS volumes are required when using instance types other than ${formatInstanceTypesList(supportInstanceStorageInstanceType, 'or')}.`);
+    }
+
+    // Only for a valid ebs volume configuration, per
+    // https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-opensearchservice-domain-ebsoptions.html
+    if (ebsEnabled) {
+      // Check if iops or throughput if general purpose is configured
+      if (volumeType == ec2.EbsDeviceVolumeType.GENERAL_PURPOSE_SSD || volumeType == ec2.EbsDeviceVolumeType.STANDARD) {
+        if (props.ebs?.iops !== undefined || props.ebs?.throughput !== undefined) {
+          throw new Error('General Purpose EBS volumes can not be used with Iops or Throughput configuration');
+        }
+      }
+
+      if (
+        volumeType &&
+        [
+          ec2.EbsDeviceVolumeType.PROVISIONED_IOPS_SSD,
+        ].includes(volumeType) &&
+        !props.ebs?.iops
+      ) {
+        throw new Error(
+          '`iops` must be specified if the `volumeType` is `PROVISIONED_IOPS_SSD`.',
+        );
+      }
+      if (props.ebs?.iops) {
+        if (
+          ![
+            ec2.EbsDeviceVolumeType.PROVISIONED_IOPS_SSD,
+            ec2.EbsDeviceVolumeType.PROVISIONED_IOPS_SSD_IO2,
+            ec2.EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3,
+          ].includes(volumeType)
+        ) {
+          throw new Error(
+            '`iops` may only be specified if the `volumeType` is `PROVISIONED_IOPS_SSD`, `PROVISIONED_IOPS_SSD_IO2` or `GENERAL_PURPOSE_SSD_GP3`.',
+          );
+        }
+        // Enforce minimum & maximum IOPS:
+        // https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-ebs-volume.html
+        const iopsRanges: { [key: string]: { Min: number; Max: number } } = {};
+        iopsRanges[ec2.EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3] = { Min: 3000, Max: 16000 };
+        iopsRanges[ec2.EbsDeviceVolumeType.PROVISIONED_IOPS_SSD] = { Min: 100, Max: 64000 };
+        iopsRanges[ec2.EbsDeviceVolumeType.PROVISIONED_IOPS_SSD_IO2] = { Min: 100, Max: 64000 };
+        const { Min, Max } = iopsRanges[volumeType];
+        if (props.ebs?.iops < Min || props.ebs?.iops > Max) {
+          throw new Error(`\`${volumeType}\` volumes iops must be between ${Min} and ${Max}.`);
+        }
+
+        // Enforce maximum ratio of IOPS/GiB:
+        // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-volume-types.html
+        const maximumRatios: { [key: string]: number } = {};
+        maximumRatios[ec2.EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3] = 500;
+        maximumRatios[ec2.EbsDeviceVolumeType.PROVISIONED_IOPS_SSD] = 50;
+        maximumRatios[ec2.EbsDeviceVolumeType.PROVISIONED_IOPS_SSD_IO2] = 500;
+        const maximumRatio = maximumRatios[volumeType];
+        if (props.ebs?.volumeSize && (props.ebs?.iops > maximumRatio * props.ebs?.volumeSize)) {
+          throw new Error(`\`${volumeType}\` volumes iops has a maximum ratio of ${maximumRatio} IOPS/GiB.`);
+        }
+
+        const maximumThroughputRatios: { [key: string]: number } = {};
+        maximumThroughputRatios[ec2.EbsDeviceVolumeType.GP3] = 0.25;
+        const maximumThroughputRatio = maximumThroughputRatios[volumeType];
+        if (props.ebs?.throughput && props.ebs?.iops) {
+          const iopsRatio = (props.ebs?.throughput / props.ebs?.iops);
+          if (iopsRatio > maximumThroughputRatio) {
+            throw new Error(`Throughput (MiBps) to iops ratio of ${iopsRatio} is too high; maximum is ${maximumThroughputRatio} MiBps per iops.`);
+          }
+        }
+      }
+
+      if (props.ebs?.throughput) {
+        const throughputRange = { Min: 125, Max: 1000 };
+        const { Min, Max } = throughputRange;
+        if (volumeType != ec2.EbsDeviceVolumeType.GP3) {
+          throw new Error(
+            '`throughput` property requires volumeType: `EbsDeviceVolumeType.GP3`',
+          );
+        }
+        if (props.ebs?.throughput < Min || props.ebs?.throughput > Max) {
+          throw new Error(
+            `throughput property takes a minimum of ${Min} and a maximum of ${Max}.`,
+          );
+        }
+      }
     }
 
     // Fine-grained access control requires node-to-node encryption, encryption at rest,
@@ -1434,6 +1731,10 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
       throw new Error('Dedicated master node is required when UltraWarm storage is enabled.');
     }
 
+    if (props.coldStorageEnabled && !warmEnabled) {
+      throw new Error('You must enable UltraWarm storage to enable cold storage.');
+    }
+
     let cfnVpcOptions: CfnDomain.VPCOptionsProperty | undefined;
 
     if (securityGroups && subnets) {
@@ -1445,6 +1746,7 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
 
     // Setup logging
     const logGroups: logs.ILogGroup[] = [];
+    const logPublishing: Record<string, any> = {};
 
     if (props.logging?.slowSearchLogEnabled) {
       this.slowSearchLogGroup = props.logging.slowSearchLogGroup ??
@@ -1453,6 +1755,14 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
         });
 
       logGroups.push(this.slowSearchLogGroup);
+      logPublishing.SEARCH_SLOW_LOGS = {
+        enabled: true,
+        cloudWatchLogsLogGroupArn: this.slowSearchLogGroup.logGroupArn,
+      };
+    } else if (props.logging?.slowSearchLogEnabled === false) {
+      logPublishing.SEARCH_SLOW_LOGS = {
+        enabled: false,
+      };
     };
 
     if (props.logging?.slowIndexLogEnabled) {
@@ -1462,6 +1772,14 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
         });
 
       logGroups.push(this.slowIndexLogGroup);
+      logPublishing.INDEX_SLOW_LOGS = {
+        enabled: true,
+        cloudWatchLogsLogGroupArn: this.slowIndexLogGroup.logGroupArn,
+      };
+    } else if (props.logging?.slowIndexLogEnabled === false) {
+      logPublishing.INDEX_SLOW_LOGS = {
+        enabled: false,
+      };
     };
 
     if (props.logging?.appLogEnabled) {
@@ -1471,6 +1789,14 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
         });
 
       logGroups.push(this.appLogGroup);
+      logPublishing.ES_APPLICATION_LOGS = {
+        enabled: true,
+        cloudWatchLogsLogGroupArn: this.appLogGroup.logGroupArn,
+      };
+    } else if (props.logging?.appLogEnabled === false) {
+      logPublishing.ES_APPLICATION_LOGS = {
+        enabled: false,
+      };
     };
 
     if (props.logging?.auditLogEnabled) {
@@ -1480,10 +1806,18 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
         });
 
       logGroups.push(this.auditLogGroup);
+      logPublishing.AUDIT_LOGS = {
+        enabled: true,
+        cloudWatchLogsLogGroupArn: this.auditLogGroup?.logGroupArn,
+      };
+    } else if (props.logging?.auditLogEnabled === false) {
+      logPublishing.AUDIT_LOGS = {
+        enabled: false,
+      };
     };
 
     let logGroupResourcePolicy: LogGroupResourcePolicy | null = null;
-    if (logGroups.length > 0) {
+    if (logGroups.length > 0 && !props.suppressLogsResourcePolicy) {
       const logPolicyStatement = new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['logs:PutLogEvents', 'logs:CreateLogStream'],
@@ -1500,36 +1834,6 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
       });
     }
 
-    const logPublishing: Record<string, any> = {};
-
-    if (this.appLogGroup) {
-      logPublishing.ES_APPLICATION_LOGS = {
-        enabled: true,
-        cloudWatchLogsLogGroupArn: this.appLogGroup.logGroupArn,
-      };
-    }
-
-    if (this.slowSearchLogGroup) {
-      logPublishing.SEARCH_SLOW_LOGS = {
-        enabled: true,
-        cloudWatchLogsLogGroupArn: this.slowSearchLogGroup.logGroupArn,
-      };
-    }
-
-    if (this.slowIndexLogGroup) {
-      logPublishing.INDEX_SLOW_LOGS = {
-        enabled: true,
-        cloudWatchLogsLogGroupArn: this.slowIndexLogGroup.logGroupArn,
-      };
-    }
-
-    if (this.auditLogGroup) {
-      logPublishing.AUDIT_LOGS = {
-        enabled: this.auditLogGroup != null,
-        cloudWatchLogsLogGroupArn: this.auditLogGroup?.logGroupArn,
-      };
-    }
-
     let customEndpointCertificate: acm.ICertificate | undefined;
     if (props.customEndpoint) {
       if (props.customEndpoint.certificate) {
@@ -1542,11 +1846,39 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
       }
     }
 
+    let multiAzWithStandbyEnabled = props.capacity?.multiAzWithStandbyEnabled;
+    if (multiAzWithStandbyEnabled === undefined) {
+      if (cdk.FeatureFlags.of(this).isEnabled(cxapi.ENABLE_OPENSEARCH_MULTIAZ_WITH_STANDBY)) {
+        multiAzWithStandbyEnabled = true;
+      }
+    }
+
+    if (isSomeInstanceType('t3') && multiAzWithStandbyEnabled) {
+      throw new Error('T3 instance type does not support Multi-AZ with standby feature.');
+    }
+
+    const offPeakWindowEnabled = props.offPeakWindowEnabled ?? props.offPeakWindowStart !== undefined;
+    if (offPeakWindowEnabled) {
+      this.validateWindowStartTime(props.offPeakWindowStart);
+    }
+
+    const samlAuthenticationEnabled = props.fineGrainedAccessControl?.samlAuthenticationEnabled ??
+      props.fineGrainedAccessControl?.samlAuthenticationOptions !== undefined;
+    if (samlAuthenticationEnabled) {
+      if (!advancedSecurityEnabled) {
+        throw new Error('SAML authentication requires fine-grained access control to be enabled.');
+      }
+      this.validateSamlAuthenticationOptions(props.fineGrainedAccessControl?.samlAuthenticationOptions);
+    }
+
     // Create the domain
     this.domain = new CfnDomain(this, 'Resource', {
       domainName: this.physicalName,
       engineVersion: props.version.version,
       clusterConfig: {
+        coldStorageOptions: props.coldStorageEnabled !== undefined ? {
+          enabled: props.coldStorageEnabled,
+        } : undefined,
         dedicatedMasterEnabled,
         dedicatedMasterCount: dedicatedMasterEnabled
           ? dedicatedMasterCount
@@ -1556,6 +1888,7 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
           : undefined,
         instanceCount,
         instanceType,
+        multiAzWithStandbyEnabled,
         warmEnabled: warmEnabled
           ? warmEnabled
           : undefined,
@@ -1575,6 +1908,7 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
         volumeSize: ebsEnabled ? volumeSize : undefined,
         volumeType: ebsEnabled ? volumeType : undefined,
         iops: ebsEnabled ? props.ebs?.iops : undefined,
+        throughput: ebsEnabled ? props.ebs?.throughput : undefined,
       },
       encryptionAtRestOptions: {
         enabled: encryptionAtRestEnabled,
@@ -1589,7 +1923,7 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
         identityPoolId: props.cognitoDashboardsAuth?.identityPoolId,
         roleArn: props.cognitoDashboardsAuth?.role.roleArn,
         userPoolId: props.cognitoDashboardsAuth?.userPoolId,
-      }: undefined,
+      } : undefined,
       vpcOptions: cfnVpcOptions,
       snapshotOptions: props.automatedSnapshotStartHour
         ? { automatedSnapshotStartHour: props.automatedSnapshotStartHour }
@@ -1612,9 +1946,34 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
             masterUserName: masterUserName,
             masterUserPassword: this.masterUserPassword?.unsafeUnwrap(), // Safe usage
           },
+          samlOptions: samlAuthenticationEnabled ? {
+            enabled: true,
+            idp: props.fineGrainedAccessControl && props.fineGrainedAccessControl.samlAuthenticationOptions ? {
+              entityId: props.fineGrainedAccessControl.samlAuthenticationOptions.idpEntityId,
+              metadataContent: props.fineGrainedAccessControl.samlAuthenticationOptions.idpMetadataContent,
+            } : undefined,
+            masterUserName: props.fineGrainedAccessControl?.samlAuthenticationOptions?.masterUserName,
+            masterBackendRole: props.fineGrainedAccessControl?.samlAuthenticationOptions?.masterBackendRole,
+            rolesKey: props.fineGrainedAccessControl?.samlAuthenticationOptions?.rolesKey ?? 'roles',
+            subjectKey: props.fineGrainedAccessControl?.samlAuthenticationOptions?.subjectKey,
+            sessionTimeoutMinutes: props.fineGrainedAccessControl?.samlAuthenticationOptions?.sessionTimeoutMinutes ?? 60,
+          } : undefined,
         }
         : undefined,
       advancedOptions: props.advancedOptions,
+      offPeakWindowOptions: offPeakWindowEnabled ? {
+        enabled: offPeakWindowEnabled,
+        offPeakWindow: {
+          windowStartTime: props.offPeakWindowStart ?? {
+            hours: 22,
+            minutes: 0,
+          },
+        },
+      } : undefined,
+      softwareUpdateOptions: props.enableAutoSoftwareUpdate ? {
+        autoSoftwareUpdateEnabled: props.enableAutoSoftwareUpdate,
+      } : undefined,
+      ipAddressType: props.ipAddressType,
     });
     this.domain.applyRemovalPolicy(props.removalPolicy);
 
@@ -1669,6 +2028,54 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
     }
     if (unsignedBasicAuthEnabled) {
       this.addAccessPolicies(unsignedAccessPolicy);
+    }
+  }
+
+  /**
+   * Validate windowStartTime property according to
+   * https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-opensearchservice-domain-windowstarttime.html
+   */
+  private validateWindowStartTime(windowStartTime?: WindowStartTime) {
+    if (!windowStartTime) return;
+    if (windowStartTime.hours < 0 || windowStartTime.hours > 23) {
+      throw new Error(`Hours must be a value between 0 and 23, but got ${windowStartTime.hours}.`);
+    }
+    if (windowStartTime.minutes < 0 || windowStartTime.minutes > 59) {
+      throw new Error(`Minutes must be a value between 0 and 59, but got ${windowStartTime.minutes}.`);
+    }
+  }
+
+  /**
+   * Validate SAML configuration according to
+   * https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-opensearchservice-domain-samloptions.html
+   */
+  private validateSamlAuthenticationOptions(samlAuthenticationOptions?: SAMLOptionsProperty) {
+    if (!samlAuthenticationOptions) {
+      throw new Error('You need to specify at least an Entity ID and Metadata content for the SAML configuration');
+    }
+    if (samlAuthenticationOptions.idpEntityId.length < 8 || samlAuthenticationOptions.idpEntityId.length > 512) {
+      throw new Error(`SAML identity provider entity ID must be between 8 and 512 characters long, received ${samlAuthenticationOptions.idpEntityId.length}.`);
+    }
+    if (samlAuthenticationOptions.idpMetadataContent.length < 1 || samlAuthenticationOptions.idpMetadataContent.length > 1048576) {
+      throw new Error(`SAML identity provider metadata content must be between 1 and 1048576 characters long, received ${samlAuthenticationOptions.idpMetadataContent.length}.`);
+    }
+    if (
+      samlAuthenticationOptions.masterUserName &&
+      (samlAuthenticationOptions.masterUserName.length < 1 || samlAuthenticationOptions.masterUserName.length > 64)
+    ) {
+      throw new Error(`SAML master username must be between 1 and 64 characters long, received ${samlAuthenticationOptions.masterUserName.length}.`);
+    }
+    if (
+      samlAuthenticationOptions.masterBackendRole &&
+      (samlAuthenticationOptions.masterBackendRole.length < 1 || samlAuthenticationOptions.masterBackendRole.length > 256)
+    ) {
+      throw new Error(`SAML backend role must be between 1 and 256 characters long, received ${samlAuthenticationOptions.masterBackendRole.length}.`);
+    }
+    if (
+      samlAuthenticationOptions.sessionTimeoutMinutes &&
+      (samlAuthenticationOptions.sessionTimeoutMinutes < 1 || samlAuthenticationOptions.sessionTimeoutMinutes > 1440)
+    ) {
+      throw new Error(`SAML session timeout must be a value between 1 and 1440, received ${samlAuthenticationOptions.sessionTimeoutMinutes}.`);
     }
   }
 
@@ -1738,11 +2145,11 @@ function extractNameFromEndpoint(domainEndpoint: string) {
 }
 
 /**
- * Converts an engine version into a into a decimal number with major and minor version i.e x.y.
+ * Converts an engine version into a decimal number with major and minor version i.e x.y.
  *
  * @param version The engine version object
  */
-function parseVersion(version: EngineVersion): { versionNum: number, isElasticsearchVersion: boolean } {
+function parseVersion(version: EngineVersion): { versionNum: number; isElasticsearchVersion: boolean } {
   const elasticsearchPrefix = 'Elasticsearch_';
   const openSearchPrefix = 'OpenSearch_';
   const isElasticsearchVersion = version.version.startsWith(elasticsearchPrefix);
@@ -1805,4 +2212,15 @@ function initializeInstanceType(defaultInstanceType: string, instanceType?: stri
   } else {
     return defaultInstanceType;
   }
+}
+
+/**
+ * Format instance types list for error messages.
+ *
+ * @param instanceTypes List of instance types to format
+ * @param conjunction Word to use as the conjunction (e.g., 'and', 'or')
+ * @returns Formatted instance types list for error messages
+ */
+function formatInstanceTypesList(instanceTypes: string[], conjunction: string): string {
+  return instanceTypes.map((type) => type.toUpperCase()).join(', ').replace(/, ([^,]*)$/, ` ${conjunction} $1`);
 }

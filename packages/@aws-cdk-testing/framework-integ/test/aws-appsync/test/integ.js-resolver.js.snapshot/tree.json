@@ -76,7 +76,6 @@
                   "aws:cdk:cloudformation:type": "AWS::AppSync::GraphQLApi",
                   "aws:cdk:cloudformation:props": {
                     "authenticationType": "API_KEY",
-                    "name": "JsResolverApi",
                     "logConfig": {
                       "cloudWatchLogsRoleArn": {
                         "Fn::GetAtt": [
@@ -85,7 +84,8 @@
                         ]
                       },
                       "fieldLogLevel": "NONE"
-                    }
+                    },
+                    "name": "JsResolverApi"
                   }
                 },
                 "constructInfo": {
@@ -132,14 +132,6 @@
                   "version": "0.0.0"
                 }
               },
-              "LogGroup": {
-                "id": "LogGroup",
-                "path": "AppSyncJsResolverTestStack/JsResolverApi/LogGroup",
-                "constructInfo": {
-                  "fqn": "aws-cdk-lib.Resource",
-                  "version": "0.0.0"
-                }
-              },
               "LogRetention": {
                 "id": "LogRetention",
                 "path": "AppSyncJsResolverTestStack/JsResolverApi/LogRetention",
@@ -155,6 +147,14 @@
                 },
                 "constructInfo": {
                   "fqn": "aws-cdk-lib.aws_logs.LogRetention",
+                  "version": "0.0.0"
+                }
+              },
+              "LogGroup": {
+                "id": "LogGroup",
+                "path": "AppSyncJsResolverTestStack/JsResolverApi/LogGroup",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
                   "version": "0.0.0"
                 }
               },
@@ -279,8 +279,6 @@
                             "ApiId"
                           ]
                         },
-                        "name": "DynamoDataSource",
-                        "type": "AMAZON_DYNAMODB",
                         "dynamoDbConfig": {
                           "tableName": {
                             "Ref": "DynamoTableB2B22E15"
@@ -289,12 +287,14 @@
                             "Ref": "AWS::Region"
                           }
                         },
+                        "name": "DynamoDataSource",
                         "serviceRoleArn": {
                           "Fn::GetAtt": [
                             "JsResolverApiDynamoDataSourceServiceRole6406F7E8",
                             "Arn"
                           ]
-                        }
+                        },
+                        "type": "AMAZON_DYNAMODB"
                       }
                     },
                     "constructInfo": {
@@ -350,12 +350,12 @@
                             "ApiId"
                           ]
                         },
-                        "dataSourceName": "DynamoDataSource",
-                        "name": "addTestFunc",
                         "codeS3Location": {
                           "Fn::Sub": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/64f136fd66d0a20e8574eddfe2e50aa10168344ebac0f3ca03e5ae0b4b7475ec.js"
                         },
+                        "dataSourceName": "DynamoDataSource",
                         "functionVersion": "2018-05-29",
+                        "name": "addTestFunc",
                         "runtime": {
                           "name": "APPSYNC_JS",
                           "runtimeVersion": "1.0.0"
@@ -519,12 +519,12 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.1.270"
+              "version": "10.3.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "AppSyncJsResolverTestStack/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "AppSyncJsResolverTestStack/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -540,16 +540,16 @@
                 "attributes": {
                   "aws:cdk:cloudformation:type": "AWS::DynamoDB::Table",
                   "aws:cdk:cloudformation:props": {
-                    "keySchema": [
-                      {
-                        "attributeName": "id",
-                        "keyType": "HASH"
-                      }
-                    ],
                     "attributeDefinitions": [
                       {
                         "attributeName": "id",
                         "attributeType": "S"
+                      }
+                    ],
+                    "keySchema": [
+                      {
+                        "attributeName": "id",
+                        "keyType": "HASH"
                       }
                     ],
                     "provisionedThroughput": {
@@ -619,11 +619,10 @@
                         "ApiId"
                       ]
                     },
-                    "fieldName": "addTest",
-                    "typeName": "Mutation",
                     "codeS3Location": {
                       "Fn::Sub": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/922ddc9d9563ca9402e283efe80ad2b4e00c8ddf6fbbbc2ae2b9dc6fe7107061.js"
                     },
+                    "fieldName": "addTest",
                     "kind": "PIPELINE",
                     "pipelineConfig": {
                       "functions": [
@@ -638,7 +637,8 @@
                     "runtime": {
                       "name": "APPSYNC_JS",
                       "runtimeVersion": "1.0.0"
-                    }
+                    },
+                    "typeName": "Mutation"
                   }
                 },
                 "constructInfo": {
@@ -751,13 +751,13 @@
                       },
                       "s3Key": "c8a056b7b029cede879af4833f48bcc456748b2f8456f85ba76393466c08693a.zip"
                     },
+                    "handler": "index.handler",
                     "role": {
                       "Fn::GetAtt": [
                         "InvokeApiServiceRoleFB17CD97",
                         "Arn"
                       ]
                     },
-                    "handler": "index.handler",
                     "runtime": "nodejs18.x"
                   }
                 },
@@ -811,7 +811,7 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.1.270"
+              "version": "10.3.0"
             }
           },
           "BootstrapVersion": {
@@ -849,7 +849,7 @@
                 "path": "JsResolverIntegTest/DefaultTest/Default",
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.1.270"
+                  "version": "10.3.0"
                 }
               },
               "DeployAssert": {
@@ -869,7 +869,7 @@
                             "path": "JsResolverIntegTest/DefaultTest/DeployAssert/LambdaInvokeb55e453397dded0a19101717f7183064/SdkProvider/AssertionsProvider",
                             "constructInfo": {
                               "fqn": "constructs.Construct",
-                              "version": "10.1.270"
+                              "version": "10.3.0"
                             }
                           }
                         },
@@ -949,23 +949,31 @@
                     },
                     "constructInfo": {
                       "fqn": "constructs.Construct",
-                      "version": "10.1.270"
+                      "version": "10.3.0"
                     }
                   },
-                  "AwsApiCallDynamoDBgetItem": {
-                    "id": "AwsApiCallDynamoDBgetItem",
-                    "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem",
+                  "LatestNodeRuntimeMap": {
+                    "id": "LatestNodeRuntimeMap",
+                    "path": "JsResolverIntegTest/DefaultTest/DeployAssert/LatestNodeRuntimeMap",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnMapping",
+                      "version": "0.0.0"
+                    }
+                  },
+                  "AwsApiCallDynamoDBgetItem3bcce89c3400f7c98ac0aa1a95192cda": {
+                    "id": "AwsApiCallDynamoDBgetItem3bcce89c3400f7c98ac0aa1a95192cda",
+                    "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem3bcce89c3400f7c98ac0aa1a95192cda",
                     "children": {
                       "SdkProvider": {
                         "id": "SdkProvider",
-                        "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem/SdkProvider",
+                        "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem3bcce89c3400f7c98ac0aa1a95192cda/SdkProvider",
                         "children": {
                           "AssertionsProvider": {
                             "id": "AssertionsProvider",
-                            "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem/SdkProvider/AssertionsProvider",
+                            "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem3bcce89c3400f7c98ac0aa1a95192cda/SdkProvider/AssertionsProvider",
                             "constructInfo": {
                               "fqn": "constructs.Construct",
-                              "version": "10.1.270"
+                              "version": "10.3.0"
                             }
                           }
                         },
@@ -976,11 +984,11 @@
                       },
                       "Default": {
                         "id": "Default",
-                        "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem/Default",
+                        "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem3bcce89c3400f7c98ac0aa1a95192cda/Default",
                         "children": {
                           "Default": {
                             "id": "Default",
-                            "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem/Default/Default",
+                            "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem3bcce89c3400f7c98ac0aa1a95192cda/Default/Default",
                             "constructInfo": {
                               "fqn": "aws-cdk-lib.CfnResource",
                               "version": "0.0.0"
@@ -994,7 +1002,7 @@
                       },
                       "AssertionResults": {
                         "id": "AssertionResults",
-                        "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem/AssertionResults",
+                        "path": "JsResolverIntegTest/DefaultTest/DeployAssert/AwsApiCallDynamoDBgetItem3bcce89c3400f7c98ac0aa1a95192cda/AssertionResults",
                         "constructInfo": {
                           "fqn": "aws-cdk-lib.CfnOutput",
                           "version": "0.0.0"
@@ -1045,7 +1053,7 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.1.270"
+          "version": "10.3.0"
         }
       }
     },

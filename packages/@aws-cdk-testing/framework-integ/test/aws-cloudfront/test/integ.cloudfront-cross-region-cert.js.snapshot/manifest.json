@@ -1,5 +1,5 @@
 {
-  "version": "31.0.0",
+  "version": "38.0.1",
   "artifacts": {
     "integ-acm-stack.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,12 @@
       "environment": "aws://12345678/us-east-1",
       "properties": {
         "templateFile": "integ-acm-stack.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
+        "notificationArns": [],
         "assumeRoleArn": "arn:${AWS::Partition}:iam::12345678:role/cdk-hnb659fds-deploy-role-12345678-us-east-1",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::12345678:role/cdk-hnb659fds-cfn-exec-role-12345678-us-east-1",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-12345678-us-east-1/fbd26bddc84b200b5508bf24721801430187defe25c9cadd56dbd1686d70605a.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-12345678-us-east-1/f75737861671528ed71ef6d40cace62cbcbaa9e63beb4b43c256ec3f7a937a63.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -43,6 +45,12 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "ExportsWriteruseast2828FA26B86FBEFA7"
+          }
+        ],
+        "/integ-acm-stack/Custom::CrossRegionExportWriterCustomResourceProvider": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-customResourceProvider",
+            "data": true
           }
         ],
         "/integ-acm-stack/Custom::CrossRegionExportWriterCustomResourceProvider/Role": [
@@ -85,10 +93,12 @@
       "environment": "aws://12345678/us-east-2",
       "properties": {
         "templateFile": "integ-cloudfront-stack.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
+        "notificationArns": [],
         "assumeRoleArn": "arn:${AWS::Partition}:iam::12345678:role/cdk-hnb659fds-deploy-role-12345678-us-east-2",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::12345678:role/cdk-hnb659fds-cfn-exec-role-12345678-us-east-2",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-12345678-us-east-2/3c699d922328fe76df90cc9b81f0a882b00d708a541c1af0de4f03d6db6ff742.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-12345678-us-east-2/98c4bad44c1ae01253ae97613db860faab9e09783e5291da77332cbc2a85a51c.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -115,6 +125,12 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "ExportsReader8B249524"
+          }
+        ],
+        "/integ-cloudfront-stack/Custom::CrossRegionExportReaderCustomResourceProvider": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-customResourceProvider",
+            "data": true
           }
         ],
         "/integ-cloudfront-stack/Custom::CrossRegionExportReaderCustomResourceProvider/Role": [
@@ -157,7 +173,9 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "integcloudfrontcrossregionacmDefaultTestDeployAssertD48673AA.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
+        "notificationArns": [],
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
         "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/21fbb51d7b23f6a6c262b46a9caee79d744a3ac019fd45422d988b96d44b2a22.json",

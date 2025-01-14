@@ -96,6 +96,34 @@ test('can make and use a Generic SSM image', () => {
   expect(details.osType).toEqual(ec2.OperatingSystemType.LINUX);
 });
 
+test('can make and use a SSM resolve image', () => {
+  // WHEN
+  const image = new ec2.ResolveSsmParameterAtLaunchImage('testParam');
+
+  // THEN
+  const details = image.getImage(stack);
+  expect(details.imageId).toEqual('resolve:ssm:testParam');
+  expect(details.osType).toEqual(ec2.OperatingSystemType.LINUX);
+});
+
+test('can make and use a SSM resolve image with parameter version', () => {
+  // WHEN
+  const image = new ec2.ResolveSsmParameterAtLaunchImage('testParam', { parameterVersion: '2' });
+
+  // THEN
+  const details = image.getImage(stack);
+  expect(details.imageId).toEqual('resolve:ssm:testParam:2');
+});
+
+test('can make and use a SSM resolve image with resolveSsmParameterAtLaunch', () => {
+  // WHEN
+  const image = ec2.MachineImage.resolveSsmParameterAtLaunch('testParam', { parameterVersion: '2' });
+
+  // THEN
+  const details = image.getImage(stack);
+  expect(details.imageId).toEqual('resolve:ssm:testParam:2');
+});
+
 test('WindowsImage retains userdata if given', () => {
   // WHEN
   const ud = ec2.UserData.forWindows();
@@ -135,6 +163,7 @@ test('LookupMachineImage default search', () => {
       key: 'ami:account=1234:filters.image-type.0=machine:filters.name.0=bla*:filters.state.0=available:owners.0=amazon:region=testregion',
       props: {
         account: '1234',
+        dummyValue: 'ami-1234',
         region: 'testregion',
         lookupRoleArn: 'arn:${AWS::Partition}:iam::1234:role/cdk-hnb659fds-lookup-role-1234-testregion',
         owners: ['amazon'],
@@ -170,6 +199,8 @@ test('cached lookups of Amazon Linux', () => {
       key: 'ssm:account=1234:parameterName=/aws/service/ami-amazon-linux-latest/amzn-ami-hvm-x86_64-gp2:region=testregion',
       props: {
         account: '1234',
+        dummyValue: 'dummy-value-for-/aws/service/ami-amazon-linux-latest/amzn-ami-hvm-x86_64-gp2',
+        ignoreErrorOnMissingContext: false,
         lookupRoleArn: 'arn:${AWS::Partition}:iam::1234:role/cdk-hnb659fds-lookup-role-1234-testregion',
         region: 'testregion',
         parameterName: '/aws/service/ami-amazon-linux-latest/amzn-ami-hvm-x86_64-gp2',
@@ -193,6 +224,8 @@ test('cached lookups of Amazon Linux 2', () => {
       key: 'ssm:account=1234:parameterName=/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2:region=testregion',
       props: {
         account: '1234',
+        dummyValue: 'dummy-value-for-/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2',
+        ignoreErrorOnMissingContext: false,
         lookupRoleArn: 'arn:${AWS::Partition}:iam::1234:role/cdk-hnb659fds-lookup-role-1234-testregion',
         region: 'testregion',
         parameterName: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2',
@@ -217,6 +250,8 @@ test('cached lookups of Amazon Linux 2 with kernel 5.x', () => {
       key: 'ssm:account=1234:parameterName=/aws/service/ami-amazon-linux-latest/amzn2-ami-kernel-5.10-hvm-x86_64-gp2:region=testregion',
       props: {
         account: '1234',
+        dummyValue: 'dummy-value-for-/aws/service/ami-amazon-linux-latest/amzn2-ami-kernel-5.10-hvm-x86_64-gp2',
+        ignoreErrorOnMissingContext: false,
         lookupRoleArn: 'arn:${AWS::Partition}:iam::1234:role/cdk-hnb659fds-lookup-role-1234-testregion',
         region: 'testregion',
         parameterName: '/aws/service/ami-amazon-linux-latest/amzn2-ami-kernel-5.10-hvm-x86_64-gp2',
@@ -233,7 +268,7 @@ test('throw error if storage param is set for Amazon Linux 2022', () => {
       generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2022,
       storage: ec2.AmazonLinuxStorage.GENERAL_PURPOSE,
     }).getImage(stack).imageId;
-  }).toThrow(/Storage parameter does not exist in smm parameter name for Amazon Linux 2022./);
+  }).toThrow(/Storage parameter does not exist in SSM parameter name for Amazon Linux 2022./);
 });
 
 test('throw error if virtualization param is set for Amazon Linux 2022', () => {
@@ -243,7 +278,7 @@ test('throw error if virtualization param is set for Amazon Linux 2022', () => {
       generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2022,
       virtualization: ec2.AmazonLinuxVirt.HVM,
     }).getImage(stack).imageId;
-  }).toThrow(/Virtualization parameter does not exist in smm parameter name for Amazon Linux 2022./);
+  }).toThrow(/Virtualization parameter does not exist in SSM parameter name for Amazon Linux 2022./);
 });
 
 test('cached lookups of Amazon Linux 2022 with kernel 5.x', () => {
@@ -260,6 +295,8 @@ test('cached lookups of Amazon Linux 2022 with kernel 5.x', () => {
       key: 'ssm:account=1234:parameterName=/aws/service/ami-amazon-linux-latest/al2022-ami-kernel-5.10-x86_64:region=testregion',
       props: {
         account: '1234',
+        dummyValue: 'dummy-value-for-/aws/service/ami-amazon-linux-latest/al2022-ami-kernel-5.10-x86_64',
+        ignoreErrorOnMissingContext: false,
         lookupRoleArn: 'arn:${AWS::Partition}:iam::1234:role/cdk-hnb659fds-lookup-role-1234-testregion',
         region: 'testregion',
         parameterName: '/aws/service/ami-amazon-linux-latest/al2022-ami-kernel-5.10-x86_64',
@@ -298,6 +335,8 @@ describe('latest amazon linux', () => {
         key: 'ssm:account=1234:parameterName=/aws/service/ami-amazon-linux-latest/amzn2-ami-minimal-pv-arm64-ebs:region=testregion',
         props: {
           account: '1234',
+          dummyValue: 'dummy-value-for-/aws/service/ami-amazon-linux-latest/amzn2-ami-minimal-pv-arm64-ebs',
+          ignoreErrorOnMissingContext: false,
           lookupRoleArn: 'arn:${AWS::Partition}:iam::1234:role/cdk-hnb659fds-lookup-role-1234-testregion',
           region: 'testregion',
           parameterName: '/aws/service/ami-amazon-linux-latest/amzn2-ami-minimal-pv-arm64-ebs',
@@ -333,6 +372,8 @@ describe('latest amazon linux', () => {
         key: 'ssm:account=1234:parameterName=/aws/service/ami-amazon-linux-latest/al2022-ami-minimal-kernel-default-arm64:region=testregion',
         props: {
           account: '1234',
+          dummyValue: 'dummy-value-for-/aws/service/ami-amazon-linux-latest/al2022-ami-minimal-kernel-default-arm64',
+          ignoreErrorOnMissingContext: false,
           lookupRoleArn: 'arn:${AWS::Partition}:iam::1234:role/cdk-hnb659fds-lookup-role-1234-testregion',
           region: 'testregion',
           parameterName: '/aws/service/ami-amazon-linux-latest/al2022-ami-minimal-kernel-default-arm64',
@@ -368,6 +409,8 @@ describe('latest amazon linux', () => {
         key: 'ssm:account=1234:parameterName=/aws/service/ami-amazon-linux-latest/al2023-ami-minimal-kernel-default-arm64:region=testregion',
         props: {
           account: '1234',
+          dummyValue: 'dummy-value-for-/aws/service/ami-amazon-linux-latest/al2023-ami-minimal-kernel-default-arm64',
+          ignoreErrorOnMissingContext: false,
           lookupRoleArn: 'arn:${AWS::Partition}:iam::1234:role/cdk-hnb659fds-lookup-role-1234-testregion',
           region: 'testregion',
           parameterName: '/aws/service/ami-amazon-linux-latest/al2023-ami-minimal-kernel-default-arm64',
@@ -376,6 +419,35 @@ describe('latest amazon linux', () => {
       },
     ]);
   });
+
+  test('AmazonLinuxImage with AMAZON_LINUX_2023', () => {
+    // WHEN
+    new ec2.AmazonLinuxImage({ generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2023 }).getImage(stack);
+
+    // THEN
+    Template.fromStack(stack).hasParameter('*', {
+      Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>',
+      Default: '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64',
+    });
+  });
+});
+
+test('throw error if storage param is set for Amazon Linux 2023', () => {
+  expect(() => {
+    new ec2.AmazonLinuxImage({
+      generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2023,
+      storage: ec2.AmazonLinuxStorage.GENERAL_PURPOSE,
+    }).getImage(stack);
+  }).toThrow(/Storage parameter does not exist in SSM parameter name for Amazon Linux 2023./);
+});
+
+test('throw error if virtualization param is set for Amazon Linux 2023', () => {
+  expect(() => {
+    new ec2.AmazonLinuxImage({
+      generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2023,
+      virtualization: ec2.AmazonLinuxVirt.HVM,
+    }).getImage(stack);
+  }).toThrow(/Virtualization parameter does not exist in SSM parameter name for Amazon Linux 2023./);
 });
 
 function isWindowsUserData(ud: ec2.UserData) {

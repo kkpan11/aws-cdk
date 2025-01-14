@@ -260,7 +260,7 @@ describe('Template', () => {
             Properties: { baz: 'waldo' },
           },
         },
-      })).toThrowError(/Expected waldo but received qux/);
+      })).toThrow(/Expected waldo but received qux/);
     });
   });
 
@@ -1345,7 +1345,51 @@ describe('Template', () => {
     }).toThrow(/dependency cycle/);
   });
 
-  test('does not throw when given a template with cyclic dependencies if check is skipped', () => {
+  test('throws when given a more complex template with cyclic dependencies', () => {
+    expect(() => {
+      Template.fromJSON({
+        Resources: {
+          Res1: {
+            Type: 'Foo',
+            Properties: {
+              Thing: { Ref: 'Res2' },
+            },
+          },
+          Res2: {
+            Type: 'Foo',
+            DependsOn: ['Res3'],
+          },
+          Res3: {
+            Type: 'Foo',
+            DependsOn: ['Res2'],
+          },
+        },
+      });
+    }).toThrow(/dependency cycle/);
+  });
+
+  test('throws when given a template with cyclic dependencies if skipCyclicalDependenciesCheck is false', () => {
+    expect(() => {
+      Template.fromJSON({
+        Resources: {
+          Res1: {
+            Type: 'Foo',
+            Properties: {
+              Thing: { Ref: 'Res2' },
+            },
+          },
+          Res2: {
+            Type: 'Foo',
+            DependsOn: ['Res1'],
+          },
+        },
+      }, {
+        skipCyclicalDependenciesCheck: false,
+      });
+    }).toThrow(/dependency cycle/);
+  });
+
+  test('does not throw when given a template with cyclic dependencies if skipCyclicalDependenciesCheck is true', () => {
     expect(() => {
       Template.fromJSON({
         Resources: {

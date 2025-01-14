@@ -112,7 +112,7 @@ describe('Metrics', () => {
 
   });
 
-  testDeprecated('throws error when there are more than 10 dimensions', () => {
+  testDeprecated('throws error when there are more than 30 dimensions', () => {
     expect(() => {
       new Metric({
         namespace: 'Test',
@@ -130,13 +130,33 @@ describe('Metrics', () => {
           dimensionI: 'value9',
           dimensionJ: 'value10',
           dimensionK: 'value11',
+          dimensionL: 'value12',
+          dimensionM: 'value13',
+          dimensionN: 'value14',
+          dimensionO: 'value15',
+          dimensionP: 'value16',
+          dimensionQ: 'value17',
+          dimensionR: 'value18',
+          dimensionS: 'value19',
+          dimensionT: 'value20',
+          dimensionU: 'value21',
+          dimensionV: 'value22',
+          dimensionW: 'value23',
+          dimensionX: 'value24',
+          dimensionY: 'value25',
+          dimensionZ: 'value26',
+          dimensionAA: 'value27',
+          dimensionAB: 'value28',
+          dimensionAC: 'value29',
+          dimensionAD: 'value30',
+          dimensionAE: 'value31',
         },
       } );
-    }).toThrow(/The maximum number of dimensions is 10, received 11/);
+    }).toThrow(/The maximum number of dimensions is 30, received 31/);
 
   });
 
-  test('throws error when there are more than 10 dimensions in dimensionsMap', () => {
+  test('throws error when there are more than 30 dimensions in dimensionsMap', () => {
     expect(() => {
       new Metric({
         namespace: 'Test',
@@ -154,9 +174,29 @@ describe('Metrics', () => {
           dimensionI: 'value9',
           dimensionJ: 'value10',
           dimensionK: 'value11',
+          dimensionL: 'value12',
+          dimensionM: 'value13',
+          dimensionN: 'value14',
+          dimensionO: 'value15',
+          dimensionP: 'value16',
+          dimensionQ: 'value17',
+          dimensionR: 'value18',
+          dimensionS: 'value19',
+          dimensionT: 'value20',
+          dimensionU: 'value21',
+          dimensionV: 'value22',
+          dimensionW: 'value23',
+          dimensionX: 'value24',
+          dimensionY: 'value25',
+          dimensionZ: 'value26',
+          dimensionAA: 'value27',
+          dimensionAB: 'value28',
+          dimensionAC: 'value29',
+          dimensionAD: 'value30',
+          dimensionAE: 'value31',
         },
       } );
-    }).toThrow(/The maximum number of dimensions is 10, received 11/);
+    }).toThrow(/The maximum number of dimensions is 30, received 31/);
 
   });
 
@@ -231,6 +271,35 @@ describe('Metrics', () => {
     });
 
     expect(metric.statistic).toEqual(customStat);
+  });
+
+  test('region and account getters are enumerable', () => {
+    const metric = new Metric({
+      namespace: 'Test',
+      metricName: 'Metric',
+      period: cdk.Duration.minutes(10),
+      region: 'test-region',
+      account: 'test-account',
+    });
+
+    expect(metric.region).toBe('test-region');
+    expect(metric.account).toBe('test-account');
+
+    const metricObject = { ...metric };
+    expect(metricObject).toEqual(expect.objectContaining({
+      region: 'test-region',
+      account: 'test-account',
+    }));
+
+    // Check that private fields are not included.
+    // @ts-expect-error
+    expect(metricObject.accountOverride).toBeUndefined();
+    // @ts-expect-error
+    expect(metricObject.stackAccount).toBeUndefined();
+    // @ts-expect-error
+    expect(metricObject.regionOverride).toBeUndefined();
+    // @ts-expect-error
+    expect(metricObject.stackRegion).toBeUndefined();
   });
 
   test('statistic is properly parsed', () => {

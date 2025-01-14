@@ -76,7 +76,6 @@
                   "aws:cdk:cloudformation:type": "AWS::AppSync::GraphQLApi",
                   "aws:cdk:cloudformation:props": {
                     "authenticationType": "API_KEY",
-                    "name": "IntegLogRetention",
                     "logConfig": {
                       "cloudWatchLogsRoleArn": {
                         "Fn::GetAtt": [
@@ -85,7 +84,8 @@
                         ]
                       },
                       "fieldLogLevel": "NONE"
-                    }
+                    },
+                    "name": "IntegLogRetention"
                   }
                 },
                 "constructInfo": {
@@ -132,14 +132,6 @@
                   "version": "0.0.0"
                 }
               },
-              "LogGroup": {
-                "id": "LogGroup",
-                "path": "AppSyncIntegLogRetention/GraphqlApi/LogGroup",
-                "constructInfo": {
-                  "fqn": "aws-cdk-lib.Resource",
-                  "version": "0.0.0"
-                }
-              },
               "LogRetention": {
                 "id": "LogRetention",
                 "path": "AppSyncIntegLogRetention/GraphqlApi/LogRetention",
@@ -155,6 +147,14 @@
                 },
                 "constructInfo": {
                   "fqn": "aws-cdk-lib.aws_logs.LogRetention",
+                  "version": "0.0.0"
+                }
+              },
+              "LogGroup": {
+                "id": "LogGroup",
+                "path": "AppSyncIntegLogRetention/GraphqlApi/LogGroup",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
                   "version": "0.0.0"
                 }
               }
@@ -304,12 +304,12 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.1.270"
+              "version": "10.3.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "AppSyncIntegLogRetention/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "AppSyncIntegLogRetention/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -319,9 +319,9 @@
             "id": "Exports",
             "path": "AppSyncIntegLogRetention/Exports",
             "children": {
-              "Output{\"Fn::GetAtt\":[\"GraphqlApi1B6CF24C\",\"ApiId\"]}": {
-                "id": "Output{\"Fn::GetAtt\":[\"GraphqlApi1B6CF24C\",\"ApiId\"]}",
-                "path": "AppSyncIntegLogRetention/Exports/Output{\"Fn::GetAtt\":[\"GraphqlApi1B6CF24C\",\"ApiId\"]}",
+              "Output{\"Fn::GetAtt\":[\"GraphqlApiLogRetention082A7017\",\"LogGroupName\"]}": {
+                "id": "Output{\"Fn::GetAtt\":[\"GraphqlApiLogRetention082A7017\",\"LogGroupName\"]}",
+                "path": "AppSyncIntegLogRetention/Exports/Output{\"Fn::GetAtt\":[\"GraphqlApiLogRetention082A7017\",\"LogGroupName\"]}",
                 "constructInfo": {
                   "fqn": "aws-cdk-lib.CfnOutput",
                   "version": "0.0.0"
@@ -330,7 +330,7 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.1.270"
+              "version": "10.3.0"
             }
           },
           "BootstrapVersion": {
@@ -368,27 +368,27 @@
                 "path": "Integ/DefaultTest/Default",
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.1.270"
+                  "version": "10.3.0"
                 }
               },
               "DeployAssert": {
                 "id": "DeployAssert",
                 "path": "Integ/DefaultTest/DeployAssert",
                 "children": {
-                  "AwsApiCallCloudWatchLogsdescribeLogGroups": {
-                    "id": "AwsApiCallCloudWatchLogsdescribeLogGroups",
-                    "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups",
+                  "AwsApiCallCloudWatchLogsdescribeLogGroups8bf25a7acd37f39f7e35df44651487d5": {
+                    "id": "AwsApiCallCloudWatchLogsdescribeLogGroups8bf25a7acd37f39f7e35df44651487d5",
+                    "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups8bf25a7acd37f39f7e35df44651487d5",
                     "children": {
                       "SdkProvider": {
                         "id": "SdkProvider",
-                        "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups/SdkProvider",
+                        "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups8bf25a7acd37f39f7e35df44651487d5/SdkProvider",
                         "children": {
                           "AssertionsProvider": {
                             "id": "AssertionsProvider",
-                            "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups/SdkProvider/AssertionsProvider",
+                            "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups8bf25a7acd37f39f7e35df44651487d5/SdkProvider/AssertionsProvider",
                             "constructInfo": {
                               "fqn": "constructs.Construct",
-                              "version": "10.1.270"
+                              "version": "10.3.0"
                             }
                           }
                         },
@@ -399,11 +399,11 @@
                       },
                       "Default": {
                         "id": "Default",
-                        "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups/Default",
+                        "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups8bf25a7acd37f39f7e35df44651487d5/Default",
                         "children": {
                           "Default": {
                             "id": "Default",
-                            "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups/Default/Default",
+                            "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups8bf25a7acd37f39f7e35df44651487d5/Default/Default",
                             "constructInfo": {
                               "fqn": "aws-cdk-lib.CfnResource",
                               "version": "0.0.0"
@@ -417,7 +417,7 @@
                       },
                       "AssertionResults": {
                         "id": "AssertionResults",
-                        "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups/AssertionResults",
+                        "path": "Integ/DefaultTest/DeployAssert/AwsApiCallCloudWatchLogsdescribeLogGroups8bf25a7acd37f39f7e35df44651487d5/AssertionResults",
                         "constructInfo": {
                           "fqn": "aws-cdk-lib.CfnOutput",
                           "version": "0.0.0"
@@ -460,7 +460,15 @@
                     },
                     "constructInfo": {
                       "fqn": "constructs.Construct",
-                      "version": "10.1.270"
+                      "version": "10.3.0"
+                    }
+                  },
+                  "LatestNodeRuntimeMap": {
+                    "id": "LatestNodeRuntimeMap",
+                    "path": "Integ/DefaultTest/DeployAssert/LatestNodeRuntimeMap",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnMapping",
+                      "version": "0.0.0"
                     }
                   },
                   "BootstrapVersion": {
@@ -502,7 +510,7 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.1.270"
+          "version": "10.3.0"
         }
       }
     },

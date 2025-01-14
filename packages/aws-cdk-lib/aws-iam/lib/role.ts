@@ -6,14 +6,14 @@ import { IManagedPolicy, ManagedPolicy } from './managed-policy';
 import { Policy } from './policy';
 import { PolicyDocument } from './policy-document';
 import { PolicyStatement } from './policy-statement';
-import { AddToPrincipalPolicyResult, ArnPrincipal, IPrincipal, PrincipalPolicyFragment } from './principals';
+import { AccountPrincipal, AddToPrincipalPolicyResult, ArnPrincipal, IPrincipal, PrincipalPolicyFragment, ServicePrincipal } from './principals';
 import { defaultAddPrincipalToAssumeRole } from './private/assume-role-policy';
 import { ImmutableRole } from './private/immutable-role';
 import { ImportedRole } from './private/imported-role';
 import { MutatingPolicyDocumentAdapter } from './private/policydoc-adapter';
 import { PrecreatedRole } from './private/precreated-role';
 import { AttachedPolicies, UniqueStringSet } from './private/util';
-import { ArnFormat, Duration, Resource, Stack, Token, TokenComparison, Aspects, Annotations } from '../../core';
+import { ArnFormat, Duration, Resource, Stack, Token, TokenComparison, Aspects, Annotations, RemovalPolicy, AspectPriority } from '../../core';
 import { getCustomizeRolesConfig, getPrecreatedRoleConfig, CUSTOMIZE_ROLES_CONTEXT_KEY, CustomizeRoleConfig } from '../../core/lib/helpers-internal';
 
 const MAX_INLINE_SIZE = 10000;
@@ -300,7 +300,7 @@ export class Role extends Resource implements IRole {
   }
 
   /**
-    * Return whether the given object is a Role
+   * Return whether the given object is a Role
    */
   public static isRole(x: any) : x is Role {
     return x !== null && typeof(x) === 'object' && IAM_ROLE_SYMBOL in x;
@@ -413,6 +413,10 @@ export class Role extends Resource implements IRole {
       physicalName: props.roleName,
     });
 
+    if (props.roleName && !Token.isUnresolved(props.roleName) && !/^[\w+=,.@-]{1,64}$/.test(props.roleName)) {
+      throw new Error('Invalid roleName. The name must be a string of characters consisting of upper and lowercase alphanumeric characters with no spaces. You can also include any of the following characters: _+=,.@-. Length must be between 1 and 64 characters.');
+    }
+
     const externalIds = props.externalIds || [];
     if (props.externalId) {
       externalIds.push(props.externalId);
@@ -489,7 +493,7 @@ export class Role extends Resource implements IRole {
             this.splitLargePolicy();
           }
         },
-      });
+      }, { priority: AspectPriority.MUTATING });
     }
 
     this.policyFragment = new ArnPrincipal(this.roleArn).policyFragment;
@@ -590,6 +594,10 @@ export class Role extends Resource implements IRole {
    * Grant permissions to the given principal to assume this role.
    */
   public grantAssumeRole(identity: IPrincipal) {
+    // Service and account principals must use assumeRolePolicy
+    if (identity instanceof ServicePrincipal || identity instanceof AccountPrincipal) {
+      throw new Error('Cannot use a service or account principal with grantAssumeRole, use assumeRolePolicy instead.');
+    }
     return this.grant(identity, 'sts:AssumeRole');
   }
 
@@ -623,6 +631,19 @@ export class Role extends Resource implements IRole {
     return this.immutableRole;
   }
 
+  /**
+   * Skip applyRemovalPolicy if role synthesis is prevented by customizeRoles.
+   * Because in this case, this construct does not have a CfnResource in the tree.
+   * @override
+   * @param policy RemovalPolicy
+   */
+  public applyRemovalPolicy(policy: RemovalPolicy): void {
+    const config = this.getPrecreatedRoleConfig();
+    if (!config.preventSynthesis) {
+      super.applyRemovalPolicy(policy);
+    }
+  }
+
   private validateRole(): string[] {
     const errors = new Array<string>();
     errors.push(...this.assumeRolePolicy?.validateForResourcePolicy() ?? []);
@@ -652,9 +673,9 @@ export class Role extends Resource implements IRole {
 
     const mpCount = this.managedPolicies.length + (splitOffDocs.size - 1);
     if (mpCount > 20) {
-      Annotations.of(this).addWarning(`Policy too large: ${mpCount} exceeds the maximum of 20 managed policies attached to a Role`);
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-iam:rolePolicyTooLarge', `Policy too large: ${mpCount} exceeds the maximum of 20 managed policies attached to a Role`);
     } else if (mpCount > 10) {
-      Annotations.of(this).addWarning(`Policy large: ${mpCount} exceeds 10 managed policies attached to a Role, this requires a quota increase`);
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-iam:rolePolicyLarge', `Policy large: ${mpCount} exceeds 10 managed policies attached to a Role, this requires a quota increase`);
     }
 
     // Create the managed policies and fix up the dependencies

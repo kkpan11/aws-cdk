@@ -1,28 +1,16 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import { Construct } from 'constructs';
-import { PHYSICAL_RESOURCE_ID_REFERENCE } from './runtime';
+import { Logging } from './logging';
 import * as ec2 from '../../../aws-ec2';
 import * as iam from '../../../aws-iam';
-import * as lambda from '../../../aws-lambda';
 import * as logs from '../../../aws-logs';
 import * as cdk from '../../../core';
 import { Annotations } from '../../../core';
+import { AwsCustomResourceSingletonFunction } from '../../../custom-resource-handlers/dist/custom-resources/aws-custom-resource-provider.generated';
 import * as cxapi from '../../../cx-api';
-import { FactName } from '../../../region-info';
+import { awsSdkToIamAction } from '../helpers-internal/sdk-info';
 
-/**
- * The lambda runtime used by default for aws-cdk vended custom resources. Can change
- * based on region.
- */
-export function builtInCustomResourceNodeRuntime(scope: Construct): lambda.Runtime {
-  // Runtime regional fact should always return a known runtime string that lambda.Runtime
-  // can index off, but for type safety we also default it here.
-  const runtimeName = cdk.Stack.of(scope).regionalFact(FactName.DEFAULT_CR_NODE_VERSION, 'nodejs16.x');
-  return runtimeName
-    ? new lambda.Runtime(runtimeName, lambda.RuntimeFamily.NODEJS, { supportsInlineCode: true })
-    : lambda.Runtime.NODEJS_16_X;
-}
+// Shared definition with packages/@aws-cdk/custom-resource-handlers/lib/custom-resources/aws-custom-resource-handler/shared.ts
+const PHYSICAL_RESOURCE_ID_REFERENCE = 'PHYSICAL:RESOURCEID:';
 
 /**
  * Reference to the physical resource id that can be passed to the AWS operation as a parameter.
@@ -74,10 +62,35 @@ export class PhysicalResourceId {
 
 /**
  * An AWS SDK call.
+ *
+ * @example
+ *
+ *    new cr.AwsCustomResource(this, 'GetParameterCustomResource', {
+ *      onUpdate: { // will also be called for a CREATE event
+ *        service: 'SSM',
+ *        action: 'getParameter',
+ *        parameters: {
+ *          Name: 'my-parameter',
+ *          WithDecryption: true,
+ *        },
+ *        physicalResourceId: cr.PhysicalResourceId.fromResponse('Parameter.ARN'),
+ *      },
+ *      policy: cr.AwsCustomResourcePolicy.fromSdkCalls({
+ *        resources: cr.AwsCustomResourcePolicy.ANY_RESOURCE,
+ *      }),
+ *    });
+ *
  */
 export interface AwsSdkCall {
   /**
    * The service to call
+   *
+   * This is the name of an AWS service, in one of the following forms:
+   *
+   * - An AWS SDK for JavaScript v3 package name (`@aws-sdk/client-api-gateway`)
+   * - An AWS SDK for JavaScript v3 client name (`api-gateway`)
+   * - An AWS SDK for JavaScript v2 constructor name (`APIGateway`)
+   * - A lowercase AWS SDK for JavaScript v2 constructor name (`apigateway`)
    *
    * @see https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/index.html
    */
@@ -85,6 +98,12 @@ export interface AwsSdkCall {
 
   /**
    * The service action to call
+   *
+   * This is the name of an AWS API call, in one of the following forms:
+   *
+   * - An API call name as found in the API Reference documentation (`GetObject`)
+   * - The API call name starting with a lowercase letter (`getObject`)
+   * - The AWS SDK for JavaScript v3 command class name (`GetObjectCommand`)
    *
    * @see https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/index.html
    */
@@ -160,15 +179,31 @@ export interface AwsSdkCall {
   readonly outputPaths?: string[];
 
   /**
-   * Used for running the SDK calls in underlying lambda with a different role
+   * Used for running the SDK calls in underlying lambda with a different role.
    * Can be used primarily for cross-account requests to for example connect
-   * hostedzone with a shared vpc
+   * hostedzone with a shared vpc.
+   * Region controls where assumeRole call is made.
    *
    * Example for Route53 / associateVPCWithHostedZone
    *
    * @default - run without assuming role
    */
   readonly assumedRoleArn?: string;
+
+  /**
+   * A property used to configure logging during lambda function execution.
+   *
+   * Note: The default Logging configuration is all. This configuration will enable logging on all logged data
+   * in the lambda handler. This includes:
+   *  - The event object that is received by the lambda handler
+   *  - The response received after making a API call
+   *  - The response object that the lambda handler will return
+   *  - SDK versioning information
+   *  - Caught and uncaught errors
+   *
+   * @default Logging.all()
+   */
+  readonly logging?: Logging;
 }
 
 /**
@@ -185,7 +220,7 @@ export interface SdkCallsPolicyOptions {
    *
    * Note that will apply to ALL SDK calls.
    */
-  readonly resources: string[]
+  readonly resources: string[];
 
 }
 
@@ -230,7 +265,7 @@ export class AwsCustomResourcePolicy {
    * @param statements statements for explicit policy.
    * @param resources resources for auto-generated from SDK calls.
    */
-  private constructor(public readonly statements: iam.PolicyStatement[], public readonly resources?: string[]) {}
+  private constructor(public readonly statements: iam.PolicyStatement[], public readonly resources?: string[]) { }
 }
 
 /**
@@ -304,15 +339,35 @@ export interface AwsCustomResourceProps {
    *
    * @default Duration.minutes(2)
    */
-  readonly timeout?: cdk.Duration
+  readonly timeout?: cdk.Duration;
+
+  /**
+   * The memory size for the singleton Lambda function implementing this custom resource.
+   *
+   * @default 512 mega in case if installLatestAwsSdk is false.
+   */
+  readonly memorySize?: number;
 
   /**
    * The number of days log events of the singleton Lambda function implementing
    * this custom resource are kept in CloudWatch Logs.
    *
+   * This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+   * `logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+   *
    * @default logs.RetentionDays.INFINITE
    */
   readonly logRetention?: logs.RetentionDays;
+
+  /**
+   * The Log Group used for logging of events emitted by the custom resource's lambda function.
+   *
+   * Providing a user-controlled log group was rolled out to commercial regions on 2023-11-16.
+   * If you are deploying to another type of region, please check regional availability first.
+   *
+   * @default - a default log group created by AWS Lambda
+   */
+  readonly logGroup?: logs.ILogGroup;
 
   /**
    * Whether to install the latest AWS SDK v2.
@@ -362,6 +417,20 @@ export interface AwsCustomResourceProps {
    * @default - the Vpc default strategy if not specified
    */
   readonly vpcSubnets?: ec2.SubnetSelection;
+
+  /**
+   * The maximum time that can elapse before a custom resource operation times out.
+   *
+   * You should not need to set this property. It is intended to allow quick turnaround
+   * even if the implementor of the custom resource forgets to include a `try/catch`.
+   * We have included the `try/catch`, and AWS service calls usually do not take an hour
+   * to complete.
+   *
+   * The value must be between 1 second and 3600 seconds.
+   *
+   * @default Duration.seconds(3600)
+   */
+  readonly serviceTimeout?: cdk.Duration;
 }
 
 /**
@@ -426,17 +495,22 @@ export class AwsCustomResource extends Construct implements iam.IGrantable {
 
     this.props = props;
 
-    const provider = new lambda.SingletonFunction(this, 'Provider', {
-      code: lambda.Code.fromAsset(path.join(__dirname, 'runtime'), {
-        exclude: ['*.ts'],
-      }),
-      runtime: builtInCustomResourceNodeRuntime(scope),
-      handler: 'index.handler',
+    let memorySize = props.memorySize;
+
+    if (props.installLatestAwsSdk) {
+      memorySize ??= 512;
+    }
+
+    const provider = new AwsCustomResourceSingletonFunction(this, 'Provider', {
       uuid: AwsCustomResource.PROVIDER_FUNCTION_UUID,
       lambdaPurpose: 'AWS',
+      memorySize: memorySize,
       timeout: props.timeout || cdk.Duration.minutes(2),
       role: props.role,
-      logRetention: props.logRetention,
+      // props.logRetention is deprecated, make sure we only set it if it is actually provided
+      // otherwise jsii will print warnings even for users that don't use this directly
+      ...(props.logRetention ? { logRetention: props.logRetention } : {}),
+      logGroup: props.logGroup,
       functionName: props.functionName,
       vpc: props.vpc,
       vpcSubnets: props.vpcSubnets,
@@ -449,7 +523,7 @@ export class AwsCustomResource extends Construct implements iam.IGrantable {
 
     if (installLatestAwsSdk && props.installLatestAwsSdk === undefined) {
       // This is dangerous. Add a warning.
-      Annotations.of(this).addWarning([
+      Annotations.of(this).addWarningV2('@aws-cdk/custom-resources:installLatestAwsSdkNotSpecified', [
         'installLatestAwsSdk was not specified, and defaults to true. You probably do not want this.',
         `Set the global context flag \'${cxapi.AWS_CUSTOM_RESOURCE_LATEST_SDK_DEFAULT}\' to false to switch this behavior off project-wide,`,
         'or set the property explicitly to true if you know you need to call APIs that are not in Lambda\'s built-in SDK version.',
@@ -460,12 +534,13 @@ export class AwsCustomResource extends Construct implements iam.IGrantable {
     this.customResource = new cdk.CustomResource(this, 'Resource', {
       resourceType: props.resourceType || 'Custom::AWS',
       serviceToken: provider.functionArn,
+      serviceTimeout: props.serviceTimeout,
       pascalCaseProperties: true,
       removalPolicy: props.removalPolicy,
       properties: {
-        create: create && this.encodeJson(create),
-        update: props.onUpdate && this.encodeJson(props.onUpdate),
-        delete: props.onDelete && this.encodeJson(props.onDelete),
+        create: create && this.formatSdkCall(create),
+        update: props.onUpdate && this.formatSdkCall(props.onUpdate),
+        delete: props.onDelete && this.formatSdkCall(props.onDelete),
         installLatestAwsSdk,
       },
     });
@@ -544,29 +619,19 @@ export class AwsCustomResource extends Construct implements iam.IGrantable {
     return this.customResource.getAttString(dataPath);
   }
 
+  private formatSdkCall(sdkCall: AwsSdkCall) {
+    const { logging, ...call } = sdkCall;
+    const renderedLogging = (logging ?? Logging.all())._render(this);
+    return this.encodeJson({
+      ...call,
+      ...renderedLogging,
+    });
+  }
+
   private encodeJson(obj: any) {
     return cdk.Lazy.uncachedString({ produce: () => cdk.Stack.of(this).toJsonString(obj) });
   }
 }
-
-/**
- * AWS SDK service metadata.
- */
-export type AwsSdkMetadata = {[key: string]: any};
-
-/**
- * Gets awsSdkMetaData from file or from cache
- */
-let getAwsSdkMetadata = (() => {
-  let _awsSdkMetadata: AwsSdkMetadata;
-  return function () {
-    if (_awsSdkMetadata) {
-      return _awsSdkMetadata;
-    } else {
-      return _awsSdkMetadata = JSON.parse(fs.readFileSync(path.join(__dirname, 'sdk-api-metadata.json'), 'utf-8'));
-    }
-  };
-})();
 
 /**
  * Returns true if `obj` includes a `PhysicalResourceIdReference` in one of the
@@ -590,18 +655,4 @@ function includesPhysicalResourceIdRef(obj: any | undefined) {
   });
 
   return foundRef;
-}
-
-/**
- * Transform SDK service/action to IAM action using metadata from aws-sdk module.
- * Example: CloudWatchLogs with putRetentionPolicy => logs:PutRetentionPolicy
- *
- * TODO: is this mapping correct for all services?
- */
-function awsSdkToIamAction(service: string, action: string): string {
-  const srv = service.toLowerCase();
-  const awsSdkMetadata = getAwsSdkMetadata();
-  const iamService = (awsSdkMetadata[srv] && awsSdkMetadata[srv].prefix) || srv;
-  const iamAction = action.charAt(0).toUpperCase() + action.slice(1);
-  return `${iamService}:${iamAction}`;
 }

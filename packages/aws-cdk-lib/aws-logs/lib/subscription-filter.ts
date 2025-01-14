@@ -2,7 +2,8 @@ import { Construct } from 'constructs';
 import { ILogGroup, SubscriptionFilterOptions } from './log-group';
 import { CfnSubscriptionFilter } from './logs.generated';
 import * as iam from '../../aws-iam';
-import { Resource } from '../../core';
+import { KinesisDestination } from '../../aws-logs-destinations';
+import { Resource, Token } from '../../core';
 
 /**
  * Interface for classes that can be the destination of a log Subscription
@@ -53,7 +54,18 @@ export interface SubscriptionFilterProps extends SubscriptionFilterOptions {
  */
 export class SubscriptionFilter extends Resource {
   constructor(scope: Construct, id: string, props: SubscriptionFilterProps) {
-    super(scope, id);
+    super(scope, id, {
+      physicalName: props.filterName,
+    });
+
+    if (
+      props.distribution &&
+      !Token.isUnresolved(props.distribution) &&
+      !Token.isUnresolved(props.destination) &&
+      !(props.destination instanceof KinesisDestination)
+    ) {
+      throw new Error('distribution property can only be used with KinesisDestination.');
+    }
 
     const destProps = props.destination.bind(this, props.logGroup);
 
@@ -62,6 +74,8 @@ export class SubscriptionFilter extends Resource {
       destinationArn: destProps.arn,
       roleArn: destProps.role && destProps.role.roleArn,
       filterPattern: props.filterPattern.logPatternString,
+      filterName: this.physicalName,
+      distribution: props.distribution,
     });
   }
 }

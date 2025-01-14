@@ -25,6 +25,7 @@ const lb = new elbv2.ApplicationLoadBalancer(stack, 'LB', {
 });
 
 lb.logAccessLogs(bucket, 'prefix');
+lb.logConnectionLogs(bucket, 'prefix-connection-log');
 
 const listener = lb.addListener('Listener', {
   port: 80,
@@ -42,4 +43,5 @@ vpc.publicSubnets.forEach((subnet) => {
 
 new IntegTest(app, 'cdk-integ-alb-log', {
   testCases: [stack],
+  diffAssets: true,
 });

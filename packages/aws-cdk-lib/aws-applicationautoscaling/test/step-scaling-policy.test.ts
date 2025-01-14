@@ -218,6 +218,26 @@ describe('step scaling policy', () => {
 
   });
 
+  test('step scaling with invalid evaluation period throws error', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const target = createScalableTarget(stack);
+
+    // THEN
+    expect(() => {
+      target.scaleOnMetric('Tracking', {
+        metric: new cloudwatch.Metric({ namespace: 'Test', metricName: 'Metric', statistic: 'p99' }),
+        scalingSteps: [
+          { upper: 0, change: -1 },
+          { lower: 100, change: +1 },
+          { lower: 500, change: +5 },
+        ],
+        evaluationPeriods: 0,
+        metricAggregationType: appscaling.MetricAggregationType.MAXIMUM,
+      });
+    }).toThrow(/evaluationPeriods cannot be less than 1, got: 0/);
+  });
+
   test('step scaling with evaluation period & data points to alarm configured', () => {
     // GIVEN
     const stack = new cdk.Stack();
@@ -272,6 +292,88 @@ describe('step scaling policy', () => {
         metricAggregationType: appscaling.MetricAggregationType.MAXIMUM,
       });
     }).toThrow('datapointsToAlarm cannot be less than 1, got: 0');
+  });
+
+  test('step scaling with datapointsToAlarm is greater than evaluationPeriods throws error', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const target = createScalableTarget(stack);
+
+    // THEN
+    expect(() => {
+      target.scaleOnMetric('Tracking', {
+        metric: new cloudwatch.Metric({ namespace: 'Test', metricName: 'Metric', statistic: 'p99' }),
+        scalingSteps: [
+          { upper: 0, change: -1 },
+          { lower: 100, change: +1 },
+          { lower: 500, change: +5 },
+        ],
+        evaluationPeriods: 10,
+        datapointsToAlarm: 15,
+        metricAggregationType: appscaling.MetricAggregationType.MAXIMUM,
+      });
+    }).toThrow(/datapointsToAlarm must be less than or equal to evaluationPeriods, got datapointsToAlarm: 15, evaluationPeriods: 10/);
+  });
+
+  test('step scaling with datapointsToAlarm without evaluationPeriods throws error', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const target = createScalableTarget(stack);
+
+    // THEN
+    expect(() => {
+      target.scaleOnMetric('Tracking', {
+        metric: new cloudwatch.Metric({ namespace: 'Test', metricName: 'Metric', statistic: 'p99' }),
+        scalingSteps: [
+          { upper: 0, change: -1 },
+          { lower: 100, change: +1 },
+          { lower: 500, change: +5 },
+        ],
+        datapointsToAlarm: 15,
+        metricAggregationType: appscaling.MetricAggregationType.MAXIMUM,
+      });
+    }).toThrow(/evaluationPeriods must be set if datapointsToAlarm is set/);
+  });
+
+  test('scalingSteps must have at least 2 steps', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const target = createScalableTarget(stack);
+
+    expect(() => {
+      target.scaleOnMetric('Tracking', {
+        metric: new cloudwatch.Metric({ namespace: 'Test', metricName: 'Metric' }),
+        scalingSteps: [
+          { lower: 0, upper: 2, change: +1 },
+        ],
+      });
+    }).toThrow(/must supply at least 2/);
+  });
+
+  test('scalingSteps has a maximum of 40 steps', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const target = createScalableTarget(stack);
+
+    const numSteps = 41;
+    const messagesPerTask = 20;
+    let steps: appscaling.ScalingInterval[] = [];
+
+    for (let i = 0; i < numSteps; ++i) {
+      const step: appscaling.ScalingInterval = {
+        lower: i * messagesPerTask,
+        upper: i * (messagesPerTask + 1) - 1,
+        change: i + 1,
+      };
+      steps.push(step);
+    }
+
+    expect(() => {
+      target.scaleOnMetric('Tracking', {
+        metric: new cloudwatch.Metric({ namespace: 'Test', metricName: 'Metric' }),
+        scalingSteps: steps,
+      });
+    }).toThrow('\'scalingSteps\' can have at most 40 steps, got 41');
   });
 });
 

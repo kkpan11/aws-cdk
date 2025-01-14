@@ -1,5 +1,5 @@
 {
-  "version": "31.0.0",
+  "version": "36.0.5",
   "artifacts": {
     "cdk-integ-elasticsearch-custom-kms-key.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "cdk-integ-elasticsearch-custom-kms-key.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/8d288de04f2b892f48a36f6750128d21368cb84611c7b3edbb45e2fde5b05cfd.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/4835dc9d65e27eb79cfab3d4eb42658cd0bf721ef774a5806a46fe3a51437327.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -81,10 +82,28 @@
             "data": "DomainESAccessPolicyCustomResourcePolicy9747FC42"
           }
         ],
-        "/cdk-integ-elasticsearch-custom-kms-key/DefaultCrNodeVersionMap": [
+        "/cdk-integ-elasticsearch-custom-kms-key/LatestNodeRuntimeMap": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "DefaultCrNodeVersionMap"
+            "data": "LatestNodeRuntimeMap"
+          }
+        ],
+        "/cdk-integ-elasticsearch-custom-kms-key/AWS679f53fac002430cb0da5b7982bd2287": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-singleton",
+            "data": true
+          },
+          {
+            "type": "aws:cdk:is-custom-resource-handler-runtime-family",
+            "data": 0
+          },
+          {
+            "type": "aws:cdk:is-custom-resource-handler-singleton",
+            "data": true
+          },
+          {
+            "type": "aws:cdk:is-custom-resource-handler-runtime-family",
+            "data": 0
           }
         ],
         "/cdk-integ-elasticsearch-custom-kms-key/AWS679f53fac002430cb0da5b7982bd2287/ServiceRole/Resource": [
@@ -119,6 +138,54 @@
         ]
       },
       "displayName": "cdk-integ-elasticsearch-custom-kms-key"
+    },
+    "ElasticsearchCustomKmsIntegDefaultTestDeployAssertFEEBA45B.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "ElasticsearchCustomKmsIntegDefaultTestDeployAssertFEEBA45B.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "ElasticsearchCustomKmsIntegDefaultTestDeployAssertFEEBA45B": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://unknown-account/unknown-region",
+      "properties": {
+        "templateFile": "ElasticsearchCustomKmsIntegDefaultTestDeployAssertFEEBA45B.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/21fbb51d7b23f6a6c262b46a9caee79d744a3ac019fd45422d988b96d44b2a22.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "ElasticsearchCustomKmsIntegDefaultTestDeployAssertFEEBA45B.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-lookup-role-${AWS::AccountId}-${AWS::Region}",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "ElasticsearchCustomKmsIntegDefaultTestDeployAssertFEEBA45B.assets"
+      ],
+      "metadata": {
+        "/ElasticsearchCustomKmsInteg/DefaultTest/DeployAssert/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/ElasticsearchCustomKmsInteg/DefaultTest/DeployAssert/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "ElasticsearchCustomKmsInteg/DefaultTest/DeployAssert"
     },
     "Tree": {
       "type": "cdk:tree",

@@ -10,7 +10,7 @@ describe('FunctionUrl', () => {
     const fn = new lambda.Function(stack, 'MyLambda', {
       code: new lambda.InlineCode('hello()'),
       handler: 'index.hello',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     });
 
     // WHEN
@@ -36,7 +36,7 @@ describe('FunctionUrl', () => {
     const fn = new lambda.Function(stack, 'MyLambda', {
       code: new lambda.InlineCode('hello()'),
       handler: 'index.hello',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     });
 
     // WHEN
@@ -94,7 +94,7 @@ describe('FunctionUrl', () => {
     const fn = new lambda.Function(stack, 'MyLambda', {
       code: new lambda.InlineCode('hello()'),
       handler: 'index.hello',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     });
     const aliasName = 'prod';
     const alias = new lambda.Alias(stack, 'Alias', {
@@ -124,7 +124,7 @@ describe('FunctionUrl', () => {
     const fn = new lambda.Function(stack, 'MyLambda', {
       code: new lambda.InlineCode('hello()'),
       handler: 'index.hello',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     });
     const version = new lambda.Version(stack, 'Version', {
       lambda: fn,
@@ -146,7 +146,7 @@ describe('FunctionUrl', () => {
     const fn = new lambda.Function(stack, 'MyLambda', {
       code: new lambda.InlineCode('hello()'),
       handler: 'index.hello',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     });
 
     // WHEN
@@ -169,7 +169,7 @@ describe('FunctionUrl', () => {
     const fn = new lambda.Function(stack, 'MyLambda', {
       code: new lambda.InlineCode('hello()'),
       handler: 'index.hello',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     });
     const fnUrl = new lambda.FunctionUrl(stack, 'FunctionUrl', {
       function: fn,
@@ -231,10 +231,12 @@ describe('FunctionUrl', () => {
     });
 
     // WHEN
-    fn.addFunctionUrl({
+    const fnUrl = fn.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE,
       invokeMode: lambda.InvokeMode.BUFFERED,
     });
+
+    expect(fnUrl.authType).toBe(lambda.FunctionUrlAuthType.NONE);
 
     // THEN
     Template.fromStack(stack).hasResource('AWS::Lambda::Url', {

@@ -2,6 +2,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cdk from 'aws-cdk-lib';
 import { TestFunction } from './test-function';
 import { S3EventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+import { IntegTest } from '@aws-cdk/integ-tests-alpha';
 
 class S3EventSourceTest extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
@@ -20,6 +21,15 @@ class S3EventSourceTest extends cdk.Stack {
   }
 }
 
-const app = new cdk.App();
-new S3EventSourceTest(app, 'lambda-event-source-s3');
+const app = new cdk.App({
+  postCliContext: {
+    '@aws-cdk/aws-s3:keepNotificationInImportedBucket': false,
+  },
+});
+
+const stack = new S3EventSourceTest(app, 'lambda-event-source-s3');
+new IntegTest(app, 'LambdaEventSourceS3Integ', {
+  testCases: [stack],
+  diffAssets: true,
+});
 app.synth();

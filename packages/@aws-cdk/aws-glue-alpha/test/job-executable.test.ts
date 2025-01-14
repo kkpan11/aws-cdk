@@ -13,6 +13,8 @@ describe('GlueVersion', () => {
 
   test('.V4_0 should set the name correctly', () => expect(glue.GlueVersion.V4_0.name).toEqual('4.0'));
 
+  test('.V5_0 should set the name correctly', () => expect(glue.GlueVersion.V5_0.name).toEqual('5.0'));
+
   test('of(customVersion) should set the name correctly', () => expect(glue.GlueVersion.of('CustomVersion').name).toEqual('CustomVersion'));
 });
 
@@ -67,6 +69,24 @@ describe('JobExecutable', () => {
       })).toThrow(/Python shell requires the language to be set to Python/);
     });
 
+    test('with JobType.of("pythonshell") and a language other than JobLanguage.PYTHON should throw', () => {
+      expect(() => glue.JobExecutable.of({
+        glueVersion: glue.GlueVersion.V3_0,
+        type: glue.JobType.of('pythonshell'),
+        language: glue.JobLanguage.SCALA,
+        script,
+      })).toThrow(/Python shell requires the language to be set to Python/);
+    });
+
+    test('with JobType.of("glueray") and a language other than JobLanguage.PYTHON should throw', () => {
+      expect(() => glue.JobExecutable.of({
+        glueVersion: glue.GlueVersion.V4_0,
+        type: glue.JobType.of('glueray'),
+        language: glue.JobLanguage.SCALA,
+        script,
+      })).toThrow(/Ray requires the language to be set to Python/);
+    });
+
     test('with JobType.RAY and a language other than JobLanguage.PYTHON should throw', () => {
       expect(() => glue.JobExecutable.of({
         glueVersion: glue.GlueVersion.V4_0,
@@ -87,7 +107,7 @@ describe('JobExecutable', () => {
       })).toThrow(/extraPythonFiles is not supported for languages other than JobLanguage.PYTHON/);
     });
 
-    [glue.GlueVersion.V0_9, glue.GlueVersion.V3_0, glue.GlueVersion.V4_0].forEach((glueVersion) => {
+    [glue.GlueVersion.V0_9, glue.GlueVersion.V4_0].forEach((glueVersion) => {
       test(`with JobType.PYTHON_SHELL and GlueVersion ${glueVersion} should throw`, () => {
         expect(() => glue.JobExecutable.of({
           type: glue.JobType.PYTHON_SHELL,
@@ -96,6 +116,42 @@ describe('JobExecutable', () => {
           script,
           glueVersion,
         })).toThrow(`Specified GlueVersion ${glueVersion.name} does not support Python Shell`);
+      });
+    });
+
+    [glue.GlueVersion.V0_9, glue.GlueVersion.V4_0].forEach((glueVersion) => {
+      test(`with JobType.PYTHON_SHELL and GlueVersion.of("${glueVersion.name}") should throw`, () => {
+        expect(() => glue.JobExecutable.of({
+          type: glue.JobType.PYTHON_SHELL,
+          language: glue.JobLanguage.PYTHON,
+          pythonVersion: glue.PythonVersion.TWO,
+          script,
+          glueVersion: glue.GlueVersion.of(glueVersion.name),
+        })).toThrow(`Specified GlueVersion ${glueVersion.name} does not support Python Shell`);
+      });
+    });
+
+    [glue.GlueVersion.V0_9, glue.GlueVersion.V1_0, glue.GlueVersion.V2_0, glue.GlueVersion.V3_0].forEach((glueVersion) => {
+      test(`with JobType.RAY and GlueVersion ${glueVersion} should throw`, () => {
+        expect(() => glue.JobExecutable.of({
+          type: glue.JobType.RAY,
+          language: glue.JobLanguage.PYTHON,
+          pythonVersion: glue.PythonVersion.TWO,
+          script,
+          glueVersion,
+        })).toThrow(`Specified GlueVersion ${glueVersion.name} does not support Ray`);
+      });
+    });
+
+    [glue.GlueVersion.V0_9, glue.GlueVersion.V1_0, glue.GlueVersion.V2_0, glue.GlueVersion.V3_0].forEach((glueVersion) => {
+      test(`with JobType.of("glueray") and GlueVersion ${glueVersion} should throw`, () => {
+        expect(() => glue.JobExecutable.of({
+          type: glue.JobType.of('glueray'),
+          language: glue.JobLanguage.PYTHON,
+          pythonVersion: glue.PythonVersion.TWO,
+          script,
+          glueVersion,
+        })).toThrow(`Specified GlueVersion ${glueVersion.name} does not support Ray`);
       });
     });
 
@@ -112,6 +168,19 @@ describe('JobExecutable', () => {
       });
     });
 
+    [glue.GlueVersion.V0_9, glue.GlueVersion.V1_0].forEach((glueVersion) => {
+      test(`with extraJarsFirst set and GlueVersion.of("${glueVersion.name}") should throw`, () => {
+        expect(() => glue.JobExecutable.of({
+          type: glue.JobType.ETL,
+          language: glue.JobLanguage.PYTHON,
+          pythonVersion: glue.PythonVersion.TWO,
+          extraJarsFirst: true,
+          script,
+          glueVersion: glue.GlueVersion.of(glueVersion.name),
+        })).toThrow(`Specified GlueVersion ${glueVersion.name} does not support extraJarsFirst`);
+      });
+    });
+
     [glue.GlueVersion.V2_0, glue.GlueVersion.V3_0, glue.GlueVersion.V4_0].forEach((glueVersion) => {
       test(`with PythonVersion.TWO and GlueVersion ${glueVersion} should throw`, () => {
         expect(() => glue.JobExecutable.of({
@@ -120,6 +189,18 @@ describe('JobExecutable', () => {
           pythonVersion: glue.PythonVersion.TWO,
           script,
           glueVersion,
+        })).toThrow(`Specified GlueVersion ${glueVersion.name} does not support PythonVersion 2`);
+      });
+    });
+
+    [glue.GlueVersion.V2_0, glue.GlueVersion.V3_0, glue.GlueVersion.V4_0].forEach((glueVersion) => {
+      test(`with PythonVersion.TWO and GlueVersion.of("${glueVersion.name}") should throw`, () => {
+        expect(() => glue.JobExecutable.of({
+          type: glue.JobType.ETL,
+          language: glue.JobLanguage.PYTHON,
+          pythonVersion: glue.PythonVersion.TWO,
+          script,
+          glueVersion: glue.GlueVersion.of(glueVersion.name),
         })).toThrow(`Specified GlueVersion ${glueVersion.name} does not support PythonVersion 2`);
       });
     });
@@ -144,12 +225,58 @@ describe('JobExecutable', () => {
       })).toBeDefined();
     });
 
+    test('with PythonVersion PythonVersion.THREE_NINE and JobType.of("pythonshell") should succeed', () => {
+      expect(glue.JobExecutable.of({
+        type: glue.JobType.of('pythonshell'),
+        glueVersion: glue.GlueVersion.V1_0,
+        language: glue.JobLanguage.PYTHON,
+        pythonVersion: glue.PythonVersion.THREE_NINE,
+        script,
+      })).toBeDefined();
+    });
+
     test('with PythonVersion PythonVersion.THREE_NINE and JobType ray should succeed', () => {
       expect(glue.JobExecutable.of({
         type: glue.JobType.RAY,
         glueVersion: glue.GlueVersion.V4_0,
         language: glue.JobLanguage.PYTHON,
         pythonVersion: glue.PythonVersion.THREE_NINE,
+        runtime: glue.Runtime.RAY_TWO_FOUR,
+        script,
+      })).toBeDefined();
+    });
+
+    test('with PythonVersion PythonVersion.THREE_NINE and JobTypeof("glueray") should succeed', () => {
+      expect(glue.JobExecutable.of({
+        type: glue.JobType.of('glueray'),
+        glueVersion: glue.GlueVersion.V4_0,
+        language: glue.JobLanguage.PYTHON,
+        pythonVersion: glue.PythonVersion.THREE_NINE,
+        runtime: glue.Runtime.RAY_TWO_FOUR,
+        script,
+      })).toBeDefined();
+    });
+
+    test('with JobTypeof("glueray") and extraPythonFiles set should throw', () => {
+      expect(() => glue.JobExecutable.of({
+        type: glue.JobType.of('glueray'),
+        glueVersion: glue.GlueVersion.V4_0,
+        language: glue.JobLanguage.PYTHON,
+        pythonVersion: glue.PythonVersion.THREE_NINE,
+        runtime: glue.Runtime.RAY_TWO_FOUR,
+        extraPythonFiles: [script],
+        script,
+      })).toThrow(/extraPythonFiles is not supported for Ray jobs/);
+    });
+
+    test('with JobType ray and s3PythonModules should succeed', () => {
+      expect(glue.JobExecutable.of({
+        type: glue.JobType.of('glueray'),
+        glueVersion: glue.GlueVersion.V4_0,
+        language: glue.JobLanguage.PYTHON,
+        pythonVersion: glue.PythonVersion.THREE_NINE,
+        s3PythonModules: [script],
+        runtime: glue.Runtime.RAY_TWO_FOUR,
         script,
       })).toBeDefined();
     });

@@ -1,7 +1,10 @@
 import { testDeprecated } from '@aws-cdk/cdk-build-tools';
 import { Template } from '../../assertions';
+import * as cloudfront from '../../aws-cloudfront';
+import * as origins from '../../aws-cloudfront-origins';
 import * as iam from '../../aws-iam';
-import { Duration, RemovalPolicy, Stack } from '../../core';
+import * as targets from '../../aws-route53-targets';
+import { CfnParameter, Duration, RemovalPolicy, Stack } from '../../core';
 import * as route53 from '../lib';
 
 describe('record set', () => {
@@ -181,6 +184,138 @@ describe('record set', () => {
       AliasTarget: {
         HostedZoneId: 'Z2P70J7EXAMPLE',
         DNSName: 'foo.example.com',
+      },
+    });
+  });
+
+  test('A record with alias health check', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    const target: route53.IAliasRecordTarget = {
+      bind: () => {
+        return {
+          hostedZoneId: 'Z2P70J7EXAMPLE',
+          dnsName: 'foo.example.com',
+          evaluateTargetHealth: true,
+        };
+      },
+    };
+
+    // WHEN
+    new route53.ARecord(zone, 'Alias', {
+      zone,
+      recordName: '_foo',
+      target: route53.RecordTarget.fromAlias(target),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: '_foo.myzone.',
+      HostedZoneId: {
+        Ref: 'HostedZoneDB99F866',
+      },
+      Type: 'A',
+      AliasTarget: {
+        HostedZoneId: 'Z2P70J7EXAMPLE',
+        DNSName: 'foo.example.com',
+        EvaluateTargetHealth: true,
+      },
+    });
+  });
+
+  test('A record with health check', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    const healthCheck = new route53.HealthCheck(stack, 'HealthCheck', {
+      type: route53.HealthCheckType.HTTP,
+      fqdn: 'example.com',
+      resourcePath: 'health',
+    });
+
+    // WHEN
+    new route53.ARecord(stack, 'Alias', {
+      zone,
+      recordName: '_foo',
+      target: route53.RecordTarget.fromValues('1.2.3.4'),
+      healthCheck,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: '_foo.myzone.',
+      Type: 'A',
+      HealthCheckId: stack.resolve(healthCheck.healthCheckId),
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::HealthCheck', {
+      HealthCheckConfig: {
+        Type: 'HTTP',
+        FullyQualifiedDomainName: 'example.com',
+        ResourcePath: 'health',
+      },
+    });
+  });
+
+  test('A record with imported health check', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    const healthCheck = route53.HealthCheck.fromHealthCheckId(stack, 'HealthCheck', 'abcdef');
+
+    // WHEN
+    new route53.ARecord(stack, 'Alias', {
+      zone,
+      recordName: '_foo',
+      target: route53.RecordTarget.fromValues('1.2.3.4'),
+      healthCheck,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: '_foo.myzone.',
+      Type: 'A',
+      HealthCheckId: 'abcdef',
+    });
+  });
+
+  test('A record with imported alias', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    // WHEN
+    route53.ARecord.fromARecordAttributes(zone, 'Alias', {
+      zone,
+      targetDNS: 'foo1.example.com',
+      recordName: '_foo',
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: '_foo.myzone.',
+      Type: 'A',
+      AliasTarget: {
+        DNSName: 'foo1.example.com',
+        HostedZoneId: {
+          Ref: 'HostedZoneDB99F866',
+        },
       },
     });
   });
@@ -579,6 +714,183 @@ describe('record set', () => {
     });
   });
 
+  test('A record, GeoLocation routing for continent', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    // WHEN
+    new route53.ARecord(stack, 'A', {
+      zone,
+      recordName: 'www',
+      target: route53.RecordTarget.fromIpAddresses('1.2.3.4', '5.6.7.8'),
+      geoLocation: route53.GeoLocation.continent(route53.Continent.EUROPE),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: 'www.myzone.',
+      Type: 'A',
+      HostedZoneId: {
+        Ref: 'HostedZoneDB99F866',
+      },
+      ResourceRecords: [
+        '1.2.3.4',
+        '5.6.7.8',
+      ],
+      TTL: '1800',
+      GeoLocation: {
+        ContinentCode: 'EU',
+      },
+      SetIdentifier: 'GEO_CONTINENT_EU',
+    });
+  });
+
+  test('A record, GeoLocation routing for country', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    // WHEN
+    new route53.ARecord(stack, 'A', {
+      zone,
+      recordName: 'www',
+      target: route53.RecordTarget.fromIpAddresses('1.2.3.4', '5.6.7.8'),
+      geoLocation: route53.GeoLocation.country('DE'),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: 'www.myzone.',
+      Type: 'A',
+      HostedZoneId: {
+        Ref: 'HostedZoneDB99F866',
+      },
+      ResourceRecords: [
+        '1.2.3.4',
+        '5.6.7.8',
+      ],
+      TTL: '1800',
+      GeoLocation: {
+        CountryCode: 'DE',
+      },
+      SetIdentifier: 'GEO_COUNTRY_DE',
+    });
+  });
+
+  test('A record, GeoLocation routing for subdivision', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    // WHEN
+    new route53.ARecord(stack, 'A', {
+      zone,
+      recordName: 'www',
+      target: route53.RecordTarget.fromIpAddresses('1.2.3.4', '5.6.7.8'),
+      geoLocation: route53.GeoLocation.subdivision('WA'),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: 'www.myzone.',
+      Type: 'A',
+      HostedZoneId: {
+        Ref: 'HostedZoneDB99F866',
+      },
+      ResourceRecords: [
+        '1.2.3.4',
+        '5.6.7.8',
+      ],
+      TTL: '1800',
+      GeoLocation: {
+        CountryCode: 'US',
+        SubdivisionCode: 'WA',
+      },
+      SetIdentifier: 'GEO_COUNTRY_US_SUBDIVISION_WA',
+    });
+  });
+
+  test('A record, GeoLocation routing for subdivision with country attribute', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    // WHEN
+    new route53.ARecord(stack, 'A', {
+      zone,
+      recordName: 'www',
+      target: route53.RecordTarget.fromIpAddresses('1.2.3.4', '5.6.7.8'),
+      geoLocation: route53.GeoLocation.subdivision('05', 'UA'),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: 'www.myzone.',
+      Type: 'A',
+      HostedZoneId: {
+        Ref: 'HostedZoneDB99F866',
+      },
+      ResourceRecords: [
+        '1.2.3.4',
+        '5.6.7.8',
+      ],
+      TTL: '1800',
+      GeoLocation: {
+        CountryCode: 'UA',
+        SubdivisionCode: '05',
+      },
+      SetIdentifier: 'GEO_COUNTRY_UA_SUBDIVISION_05',
+    });
+  });
+
+  test('A record, GeoLocation default record', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    // WHEN
+    new route53.ARecord(stack, 'A', {
+      zone,
+      recordName: 'www',
+      target: route53.RecordTarget.fromIpAddresses('1.2.3.4', '5.6.7.8'),
+      geoLocation: route53.GeoLocation.default(),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: 'www.myzone.',
+      Type: 'A',
+      HostedZoneId: {
+        Ref: 'HostedZoneDB99F866',
+      },
+      ResourceRecords: [
+        '1.2.3.4',
+        '5.6.7.8',
+      ],
+      TTL: '1800',
+      GeoLocation: {
+        CountryCode: '*',
+      },
+      SetIdentifier: 'GEO_COUNTRY_*',
+    });
+  });
+
   testDeprecated('Cross account zone delegation record with parentHostedZoneId', () => {
     // GIVEN
     const stack = new Stack();
@@ -624,6 +936,60 @@ describe('record set', () => {
         ],
       },
       TTL: 60,
+    });
+    Template.fromStack(stack).hasResource('Custom::CrossAccountZoneDelegation', {
+      DeletionPolicy: 'Retain',
+      UpdateReplacePolicy: 'Retain',
+    });
+  });
+
+  test('Cross account zone delegation record with stsRegion', () => {
+    // GIVEN
+    const stack = new Stack();
+    const parentZone = new route53.PublicHostedZone(stack, 'ParentHostedZone', {
+      zoneName: 'myzone.com',
+      crossAccountZoneDelegationPrincipal: new iam.AccountPrincipal('123456789012'),
+    });
+
+    // WHEN
+    const childZone = new route53.PublicHostedZone(stack, 'ChildHostedZone', {
+      zoneName: 'sub.myzone.com',
+    });
+    new route53.CrossAccountZoneDelegationRecord(stack, 'Delegation', {
+      delegatedZone: childZone,
+      parentHostedZoneId: parentZone.hostedZoneId,
+      delegationRole: parentZone.crossAccountZoneDelegationRole!,
+      ttl: Duration.seconds(60),
+      removalPolicy: RemovalPolicy.RETAIN,
+      assumeRoleRegion: 'fake-region-1',
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('Custom::CrossAccountZoneDelegation', {
+      ServiceToken: {
+        'Fn::GetAtt': [
+          'CustomCrossAccountZoneDelegationCustomResourceProviderHandler44A84265',
+          'Arn',
+        ],
+      },
+      AssumeRoleArn: {
+        'Fn::GetAtt': [
+          'ParentHostedZoneCrossAccountZoneDelegationRole95B1C36E',
+          'Arn',
+        ],
+      },
+      ParentZoneId: {
+        Ref: 'ParentHostedZoneC2BD86E1',
+      },
+      DelegatedZoneName: 'sub.myzone.com',
+      DelegatedZoneNameServers: {
+        'Fn::GetAtt': [
+          'ChildHostedZone4B14AC71',
+          'NameServers',
+        ],
+      },
+      TTL: 60,
+      AssumeRoleRegion: 'fake-region-1',
     });
     Template.fromStack(stack).hasResource('Custom::CrossAccountZoneDelegation', {
       DeletionPolicy: 'Retain',
@@ -846,32 +1212,6 @@ describe('record set', () => {
     }
   });
 
-  testDeprecated('Cross account zone context flag', () => {
-    // GIVEN
-    const stack = new Stack();
-    stack.node.setContext('@aws-cdk/aws-route53:useRegionalStsEndpoint', true);
-    const parentZone = new route53.PublicHostedZone(stack, 'ParentHostedZone', {
-      zoneName: 'myzone.com',
-      crossAccountZoneDelegationPrincipal: new iam.AccountPrincipal('123456789012'),
-    });
-
-    // WHEN
-    const childZone = new route53.PublicHostedZone(stack, 'ChildHostedZone', {
-      zoneName: 'sub.myzone.com',
-    });
-    new route53.CrossAccountZoneDelegationRecord(stack, 'Delegation', {
-      delegatedZone: childZone,
-      parentHostedZoneName: 'myzone.com',
-      delegationRole: parentZone.crossAccountZoneDelegationRole!,
-      ttl: Duration.seconds(60),
-    });
-
-    // THEN
-    Template.fromStack(stack).hasResourceProperties('Custom::CrossAccountZoneDelegation', {
-      UseRegionalStsEndpoint: 'true',
-    });
-  });
-
   test('Delete existing record', () => {
     // GIVEN
     const stack = new Stack();
@@ -944,5 +1284,260 @@ describe('record set', () => {
         },
       ],
     });
+  });
+
+  test('with weight', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    // WHEN
+    new route53.RecordSet(stack, 'RecordSet', {
+      zone,
+      recordName: 'www',
+      recordType: route53.RecordType.CNAME,
+      target: route53.RecordTarget.fromValues('zzz'),
+      weight: 50,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: 'www.myzone.',
+      Type: 'CNAME',
+      HostedZoneId: {
+        Ref: 'HostedZoneDB99F866',
+      },
+      ResourceRecords: [
+        'zzz',
+      ],
+      TTL: '1800',
+      Weight: 50,
+      SetIdentifier: 'WEIGHT_50_ID_RecordSet',
+    });
+  });
+
+  test('with weight of 0', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    // WHEN
+    new route53.RecordSet(stack, 'RecordSet', {
+      zone,
+      recordName: 'www',
+      recordType: route53.RecordType.CNAME,
+      target: route53.RecordTarget.fromValues('zzz'),
+      weight: 0,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: 'www.myzone.',
+      Type: 'CNAME',
+      HostedZoneId: {
+        Ref: 'HostedZoneDB99F866',
+      },
+      ResourceRecords: [
+        'zzz',
+      ],
+      TTL: '1800',
+      Weight: 0,
+      SetIdentifier: 'WEIGHT_0_ID_RecordSet',
+    });
+  });
+
+  test('with weight provided by CfnParameter', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', {
+      zoneName: 'myzone',
+    });
+
+    const weightParameter = new CfnParameter(stack, 'RecordWeight', {
+      type: 'Number',
+      default: 0,
+      minValue: 0,
+      maxValue: 255,
+    });
+
+    // WHEN
+    new route53.RecordSet(stack, 'RecordSet', {
+      zone,
+      recordName: 'www',
+      recordType: route53.RecordType.CNAME,
+      target: route53.RecordTarget.fromValues('zzz'),
+      weight: weightParameter.valueAsNumber,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasParameter('RecordWeight', {
+      Type: 'Number',
+      Default: 0,
+      MinValue: 0,
+      MaxValue: 255,
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      Name: 'www.myzone.',
+      Type: 'CNAME',
+      HostedZoneId: {
+        Ref: 'HostedZoneDB99F866',
+      },
+      ResourceRecords: [
+        'zzz',
+      ],
+      TTL: '1800',
+      Weight: {
+        Ref: 'RecordWeight',
+      },
+      SetIdentifier: {
+        'Fn::Join': [
+          '',
+          [
+            'WEIGHT_',
+            {
+              Ref: 'RecordWeight',
+            },
+            '_ID_RecordSet',
+          ],
+        ],
+      },
+    });
+  });
+
+  test.each([
+    [-1],
+    [256],
+  ])('throw error for invalid weight %s', (weight: number) => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', { zoneName: 'myzone' });
+
+    // THEN
+    expect(() => new route53.RecordSet(stack, 'Basic', {
+      zone,
+      recordName: 'www',
+      recordType: route53.RecordType.CNAME,
+      target: route53.RecordTarget.fromValues('zzz'),
+      weight,
+    })).toThrow(`weight must be between 0 and 255 inclusive, got: ${weight}`);
+  });
+
+  test('throw error for invalid setIdentifier', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', { zoneName: 'myzone' });
+
+    // THEN
+    expect(() => new route53.RecordSet(stack, 'Basic', {
+      zone,
+      recordName: 'www',
+      recordType: route53.RecordType.CNAME,
+      target: route53.RecordTarget.fromValues('zzz'),
+      weight: 20,
+      setIdentifier: 'a'.repeat(129),
+    })).toThrow('setIdentifier must be between 1 and 128 characters long, got: 129');
+  });
+
+  test.each([
+    { weight: 20, geoLocation: route53.GeoLocation.continent(route53.Continent.EUROPE) },
+    { weight: 20, region: 'us-east-1' },
+    { geoLocation: route53.GeoLocation.continent(route53.Continent.EUROPE), region: 'us-east-1' },
+    { multiValueAnswer: true, geoLocation: route53.GeoLocation.continent(route53.Continent.EUROPE) },
+    { multiValueAnswer: true, region: 'us-east-1' },
+    { multiValueAnswer: true, weight: 20 },
+    { weight: 20, geoLocation: route53.GeoLocation.continent(route53.Continent.EUROPE), region: 'us-east-1', multiValueAnswer: true },
+  ])('throw error for the simultaneous definition of weight, geoLocation and region', (props) => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', { zoneName: 'myzone' });
+
+    // THEN
+    expect(() => new route53.RecordSet(stack, 'Basic', {
+      zone,
+      recordName: 'www',
+      recordType: route53.RecordType.CNAME,
+      target: route53.RecordTarget.fromValues('zzz'),
+      setIdentifier: 'uniqueId',
+      ...props,
+    })).toThrow('Only one of region, weight, multiValueAnswer or geoLocation can be defined');
+  });
+
+  test('throw error for the definition of setIdentifier without weight, geoLocation or region', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', { zoneName: 'myzone' });
+
+    // THEN
+    expect(() => new route53.RecordSet(stack, 'Basic', {
+      zone,
+      recordName: 'www',
+      recordType: route53.RecordType.CNAME,
+      target: route53.RecordTarget.fromValues('zzz'),
+      setIdentifier: 'uniqueId',
+    })).toThrow('setIdentifier can only be specified for non-simple routing policies');
+  });
+
+  test('with multiValueAnswer', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const zone = new route53.HostedZone(stack, 'HostedZone', { zoneName: 'myzone' });
+
+    // WHEN
+    new route53.RecordSet(stack, 'RecordSet', {
+      zone,
+      recordName: 'www',
+      recordType: route53.RecordType.CNAME,
+      target: route53.RecordTarget.fromValues('zzz'),
+      multiValueAnswer: true,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Route53::RecordSet', {
+      HostedZoneId: {
+        Ref: 'HostedZoneDB99F866',
+      },
+      MultiValueAnswer: true,
+      Name: 'www.myzone.',
+      ResourceRecords: [
+        'zzz',
+      ],
+      SetIdentifier: 'MVA_ID_RecordSet',
+      TTL: '1800',
+      Type: 'CNAME',
+    });
+  });
+
+  test('throw error for the definition of multiValueAnswer for alias record', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    const distribution = new cloudfront.Distribution(stack, 'Distribution', {
+      defaultBehavior: {
+        origin: new origins.HttpOrigin('www.example.com'),
+      },
+    });
+    const zone = new route53.HostedZone(stack, 'HostedZone', { zoneName: 'myzone' });
+
+    // THEN
+    expect(() => new route53.RecordSet(stack, 'Basic', {
+      zone,
+      recordName: 'www',
+      recordType: route53.RecordType.A,
+      target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(distribution)),
+      multiValueAnswer: true,
+    })).toThrow('multiValueAnswer cannot be specified for alias record');
   });
 });

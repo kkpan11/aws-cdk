@@ -13,7 +13,7 @@ import * as cpa from '../../../aws-codepipeline-actions';
 import * as ec2 from '../../../aws-ec2';
 import * as iam from '../../../aws-iam';
 import * as s3 from '../../../aws-s3';
-import { Aws, CfnCapabilities, Duration, PhysicalName, Stack, Names } from '../../../core';
+import { Aws, CfnCapabilities, Duration, PhysicalName, Stack, Names, FeatureFlags } from '../../../core';
 import * as cxapi from '../../../cx-api';
 import { AssetType, FileSet, IFileSetProducer, ManualApprovalStep, ShellStep, StackAsset, StackDeployment, Step } from '../blueprint';
 import { DockerCredential, dockerCredentialsInstallCommands, DockerCredentialUsage } from '../docker-credentials';
@@ -131,7 +131,7 @@ export interface CodePipelineProps {
    * application stacks.
    *
    * A common way to use bundling assets in your application is by
-   * using the `@aws-cdk/aws-lambda-nodejs` library.
+   * using the `aws-cdk-lib/aws-lambda-nodejs` library.
    *
    * Configures privileged mode for the synth CodeBuild action.
    *
@@ -146,7 +146,7 @@ export interface CodePipelineProps {
   /**
    * Customize the CodeBuild projects created for this pipeline
    *
-   * @default - All projects run non-privileged build, SMALL instance, LinuxBuildImage.STANDARD_6_0
+   * @default - All projects run non-privileged build, SMALL instance, LinuxBuildImage.STANDARD_7_0
    */
   readonly codeBuildDefaults?: CodeBuildOptions;
 
@@ -244,6 +244,16 @@ export interface CodePipelineProps {
    * @default - A new S3 bucket will be created.
    */
   readonly artifactBucket?: s3.IBucket;
+  /**
+   * A map of region to S3 bucket name used for cross-region CodePipeline.
+   * For every Action that you specify targeting a different region than the Pipeline itself,
+   * if you don't provide an explicit Bucket for that region using this property,
+   * the construct will automatically create a Stack containing an S3 Bucket in that region.
+   * Passed directly through to the {@link cp.Pipeline}.
+   *
+   * @default - no cross region replication buckets.
+   */
+  readonly crossRegionReplicationBuckets?: { [region: string]: s3.IBucket };
 }
 
 /**
@@ -253,7 +263,7 @@ export interface CodeBuildOptions {
   /**
    * Partial build environment, will be combined with other build environments that apply
    *
-   * @default - Non-privileged build, SMALL instance, LinuxBuildImage.STANDARD_6_0
+   * @default - Non-privileged build, SMALL instance, LinuxBuildImage.STANDARD_7_0
    */
   readonly buildEnvironment?: cb.BuildEnvironment;
 
@@ -440,6 +450,9 @@ export class CodePipeline extends PipelineBase {
       if (this.props.enableKeyRotation !== undefined) {
         throw new Error('Cannot set \'enableKeyRotation\' if an existing CodePipeline is given using \'codePipeline\'');
       }
+      if (this.props.crossRegionReplicationBuckets !== undefined) {
+        throw new Error('Cannot set \'crossRegionReplicationBuckets\' if an existing CodePipeline is given using \'codePipeline\'');
+      }
       if (this.props.reuseCrossRegionSupportStacks !== undefined) {
         throw new Error('Cannot set \'reuseCrossRegionSupportStacks\' if an existing CodePipeline is given using \'codePipeline\'');
       }
@@ -454,7 +467,9 @@ export class CodePipeline extends PipelineBase {
     } else {
       this._pipeline = new cp.Pipeline(this, 'Pipeline', {
         pipelineName: this.props.pipelineName,
+        pipelineType: cp.PipelineType.V1,
         crossAccountKeys: this.props.crossAccountKeys ?? false,
+        crossRegionReplicationBuckets: this.props.crossRegionReplicationBuckets,
         reuseCrossRegionSupportStacks: this.props.reuseCrossRegionSupportStacks,
         // This is necessary to make self-mutation work (deployments are guaranteed
         // to happen only after the builds of the latest pipeline definition).
@@ -802,8 +817,6 @@ export class CodePipeline extends PipelineBase {
   }
 
   private publishAssetsAction(node: AGraphNode, assets: StackAsset[]): ICodePipelineActionFactory {
-    const installSuffix = this.cliVersion ? `@${this.cliVersion}` : '';
-
     const commands = assets.map(asset => {
       const relativeAssetManifestPath = path.relative(this.myCxAsmRoot, asset.assetManifestPath);
       return `cdk-assets --path "${toPosixPath(relativeAssetManifestPath)}" --verbose publish "${asset.assetSelector}"`;
@@ -825,7 +838,7 @@ export class CodePipeline extends PipelineBase {
     const script = new CodeBuildStep(node.id, {
       commands,
       installCommands: [
-        `npm install -g cdk-assets${installSuffix}`,
+        'npm install -g cdk-assets@latest',
       ],
       input: this._cloudAssemblyFileSet,
       buildEnvironment: {
@@ -969,13 +982,20 @@ export class CodePipeline extends PipelineBase {
 
     const stack = Stack.of(this);
 
-    const rolePrefix = assetType === AssetType.DOCKER_IMAGE ? 'Docker' : 'File';
-    const assetRole = new AssetSingletonRole(this.assetsScope, `${rolePrefix}Role`, {
-      roleName: PhysicalName.GENERATE_IF_NEEDED,
-      assumedBy: new iam.CompositePrincipal(
+    const removeRootPrincipal = FeatureFlags.of(this).isEnabled(cxapi.PIPELINE_REDUCE_ASSET_ROLE_TRUST_SCOPE);
+
+    const assumePrincipal = removeRootPrincipal ? new iam.CompositePrincipal(
+      new iam.ServicePrincipal('codebuild.amazonaws.com'),
+    ) :
+      new iam.CompositePrincipal(
         new iam.ServicePrincipal('codebuild.amazonaws.com'),
         new iam.AccountPrincipal(stack.account),
-      ),
+      );
+
+    const rolePrefix = assetType === AssetType.DOCKER_IMAGE ? 'Docker' : 'File';
+    let assetRole = new AssetSingletonRole(this.assetsScope, `${rolePrefix}Role`, {
+      roleName: PhysicalName.GENERATE_IF_NEEDED,
+      assumedBy: assumePrincipal,
     });
 
     // Grant pull access for any ECR registries and secrets that exist

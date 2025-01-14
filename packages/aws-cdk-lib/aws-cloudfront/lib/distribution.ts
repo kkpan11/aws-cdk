@@ -1,6 +1,6 @@
 import { Construct } from 'constructs';
 import { ICachePolicy } from './cache-policy';
-import { CfnDistribution } from './cloudfront.generated';
+import { CfnDistribution, CfnMonitoringSubscription } from './cloudfront.generated';
 import { FunctionAssociation } from './function';
 import { GeoRestriction } from './geo-restriction';
 import { IKeyGroup } from './key-group';
@@ -8,12 +8,14 @@ import { IOrigin, OriginBindConfig, OriginBindOptions } from './origin';
 import { IOriginRequestPolicy } from './origin-request-policy';
 import { CacheBehavior } from './private/cache-behavior';
 import { formatDistributionArn } from './private/utils';
+import { IRealtimeLogConfig } from './realtime-log-config';
 import { IResponseHeadersPolicy } from './response-headers-policy';
 import * as acm from '../../aws-certificatemanager';
+import * as cloudwatch from '../../aws-cloudwatch';
 import * as iam from '../../aws-iam';
 import * as lambda from '../../aws-lambda';
 import * as s3 from '../../aws-s3';
-import { ArnFormat, IResource, Lazy, Resource, Stack, Token, Duration, Names, FeatureFlags } from '../../core';
+import { ArnFormat, IResource, Lazy, Resource, Stack, Token, Duration, Names, FeatureFlags, Annotations } from '../../core';
 import { CLOUDFRONT_DEFAULT_SECURITY_POLICY_TLS_V1_2_2021 } from '../../cx-api';
 
 /**
@@ -41,6 +43,13 @@ export interface IDistribution extends IResource {
    * @attribute
    */
   readonly distributionId: string;
+
+  /**
+   * The distribution ARN for this distribution.
+   *
+   * @attribute
+   */
+  readonly distributionArn: string;
 
   /**
    * Adds an IAM policy statement associated with this distribution to an IAM
@@ -127,7 +136,10 @@ export interface DistributionProps {
    *
    * If you want to use your own domain name, such as www.example.com, instead of the cloudfront.net domain name,
    * you can add an alternate domain name to your distribution. If you attach a certificate to the distribution,
-   * you must add (at least one of) the domain names of the certificate to this list.
+   * you should add (at least one of) the domain names of the certificate to this list.
+   *
+   * When you want to move a domain name between distributions, you can associate a certificate without specifying any domain names.
+   * For more information, see the _Moving an alternate domain name to a different distribution_ section in the README.
    *
    * @default - The distribution will only support the default generated name (e.g., d111111abcdef8.cloudfront.net)
    */
@@ -227,33 +239,42 @@ export interface DistributionProps {
   readonly errorResponses?: ErrorResponse[];
 
   /**
-    * The minimum version of the SSL protocol that you want CloudFront to use for HTTPS connections.
-    *
-    * CloudFront serves your objects only to browsers or devices that support at
-    * least the SSL version that you specify.
-    *
-    * @default - SecurityPolicyProtocol.TLS_V1_2_2021 if the '@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021' feature flag is set; otherwise, SecurityPolicyProtocol.TLS_V1_2_2019.
-    */
+   * The minimum version of the SSL protocol that you want CloudFront to use for HTTPS connections.
+   *
+   * CloudFront serves your objects only to browsers or devices that support at
+   * least the SSL version that you specify.
+   *
+   * @default - SecurityPolicyProtocol.TLS_V1_2_2021 if the '@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021' feature flag is set; otherwise, SecurityPolicyProtocol.TLS_V1_2_2019.
+   */
   readonly minimumProtocolVersion?: SecurityPolicyProtocol;
 
   /**
-    * The SSL method CloudFront will use for your distribution.
-    *
-    * Server Name Indication (SNI) - is an extension to the TLS computer networking protocol by which a client indicates
-    * which hostname it is attempting to connect to at the start of the handshaking process. This allows a server to present
-    * multiple certificates on the same IP address and TCP port number and hence allows multiple secure (HTTPS) websites
-    * (or any other service over TLS) to be served by the same IP address without requiring all those sites to use the same certificate.
-    *
-    * CloudFront can use SNI to host multiple distributions on the same IP - which a large majority of clients will support.
-    *
-    * If your clients cannot support SNI however - CloudFront can use dedicated IPs for your distribution - but there is a prorated monthly charge for
-    * using this feature. By default, we use SNI - but you can optionally enable dedicated IPs (VIP).
-    *
-    * See the CloudFront SSL for more details about pricing : https://aws.amazon.com/cloudfront/custom-ssl-domains/
-    *
-    * @default SSLMethod.SNI
-    */
+   * The SSL method CloudFront will use for your distribution.
+   *
+   * Server Name Indication (SNI) - is an extension to the TLS computer networking protocol by which a client indicates
+   * which hostname it is attempting to connect to at the start of the handshaking process. This allows a server to present
+   * multiple certificates on the same IP address and TCP port number and hence allows multiple secure (HTTPS) websites
+   * (or any other service over TLS) to be served by the same IP address without requiring all those sites to use the same certificate.
+   *
+   * CloudFront can use SNI to host multiple distributions on the same IP - which a large majority of clients will support.
+   *
+   * If your clients cannot support SNI however - CloudFront can use dedicated IPs for your distribution - but there is a prorated monthly charge for
+   * using this feature. By default, we use SNI - but you can optionally enable dedicated IPs (VIP).
+   *
+   * See the CloudFront SSL for more details about pricing : https://aws.amazon.com/cloudfront/custom-ssl-domains/
+   *
+   * @default SSLMethod.SNI
+   */
   readonly sslSupportMethod?: SSLMethod;
+
+  /**
+   * Whether to enable additional CloudWatch metrics.
+   *
+   * @see https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/viewing-cloudfront-metrics.html
+   *
+   * @default false
+   */
+  readonly publishAdditionalMetrics?: boolean;
 }
 
 /**
@@ -277,6 +298,9 @@ export class Distribution extends Resource implements IDistribution {
         this.distributionId = attrs.distributionId;
       }
 
+      public get distributionArn(): string {
+        return formatDistributionArn(this);
+      }
       public grant(grantee: iam.IGrantable, ...actions: string[]): iam.Grant {
         return iam.Grant.addToPrincipal({ grantee, actions, resourceArns: [formatDistributionArn(this)] });
       }
@@ -297,6 +321,8 @@ export class Distribution extends Resource implements IDistribution {
 
   private readonly errorResponses: ErrorResponse[];
   private readonly certificate?: acm.ICertificate;
+  private readonly publishAdditionalMetrics?: boolean;
+  private webAclId?: string;
 
   constructor(scope: Construct, id: string, props: DistributionProps) {
     super(scope, id);
@@ -308,7 +334,7 @@ export class Distribution extends Resource implements IDistribution {
       }
 
       if ((props.domainNames ?? []).length === 0) {
-        throw new Error('Must specify at least one domain name to use a certificate with a distribution');
+        Annotations.of(this).addWarningV2('@aws-cdk/aws-cloudfront:emptyDomainNames', 'No domain names are specified. You will need to specify it after running associate-alias CLI command manually. See the "Moving an alternate domain name to a different distribution" section of module\'s README for more info.');
       }
     }
 
@@ -320,8 +346,14 @@ export class Distribution extends Resource implements IDistribution {
       });
     }
 
+    if (props.webAclId) {
+      this.validateWebAclId(props.webAclId);
+      this.webAclId = props.webAclId;
+    }
+
     this.certificate = props.certificate;
     this.errorResponses = props.errorResponses ?? [];
+    this.publishAdditionalMetrics = props.publishAdditionalMetrics;
 
     // Comments have an undocumented limit of 128 characters
     const trimmedComment =
@@ -347,13 +379,211 @@ export class Distribution extends Resource implements IDistribution {
         restrictions: this.renderRestrictions(props.geoRestriction),
         viewerCertificate: this.certificate ? this.renderViewerCertificate(this.certificate,
           props.minimumProtocolVersion, props.sslSupportMethod) : undefined,
-        webAclId: props.webAclId,
+        webAclId: Lazy.string({ produce: () => this.webAclId }),
       },
     });
 
     this.domainName = distribution.attrDomainName;
     this.distributionDomainName = distribution.attrDomainName;
     this.distributionId = distribution.ref;
+
+    if (props.publishAdditionalMetrics) {
+      new CfnMonitoringSubscription(this, 'MonitoringSubscription', {
+        distributionId: this.distributionId,
+        monitoringSubscription: {
+          realtimeMetricsSubscriptionConfig: {
+            realtimeMetricsSubscriptionStatus: 'Enabled',
+          },
+        },
+      });
+    }
+  }
+
+  public get distributionArn(): string {
+    return formatDistributionArn(this);
+  }
+
+  /**
+   * Return the given named metric for this Distribution
+   */
+  public metric(metricName: string, props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    return new cloudwatch.Metric({
+      namespace: 'AWS/CloudFront',
+      metricName,
+      dimensionsMap: { DistributionId: this.distributionId },
+      ...props,
+    });
+  }
+
+  /**
+   * Metric for the total number of viewer requests received by CloudFront, for all HTTP methods and for both HTTP and HTTPS requests.
+   *
+   * @default - sum over 5 minutes
+   */
+  public metricRequests(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    return this.metric('Requests', { statistic: 'sum', ...props });
+  }
+
+  /**
+   * Metric for the total number of bytes that viewers uploaded to your origin with CloudFront, using POST and PUT requests.
+   *
+   * @default - sum over 5 minutes
+   */
+  public metricBytesUploaded(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    return this.metric('BytesUploaded', { statistic: 'sum', ...props });
+  }
+
+  /**
+   * Metric for the total number of bytes downloaded by viewers for GET, HEAD, and OPTIONS requests.
+   *
+   * @default - sum over 5 minutes
+   */
+  public metricBytesDownloaded(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    return this.metric('BytesDownloaded', { statistic: 'sum', ...props });
+  }
+
+  /**
+   * Metric for the percentage of all viewer requests for which the response's HTTP status code is 4xx or 5xx.
+   *
+   * @default - average over 5 minutes
+   */
+  public metricTotalErrorRate(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    return this.metric('TotalErrorRate', props);
+  }
+
+  /**
+   * Metric for the percentage of all viewer requests for which the response's HTTP status code is 4xx.
+   *
+   * @default - average over 5 minutes
+   */
+  public metric4xxErrorRate(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    return this.metric('4xxErrorRate', props);
+  }
+
+  /**
+   * Metric for the percentage of all viewer requests for which the response's HTTP status code is 5xx.
+   *
+   * @default - average over 5 minutes
+   */
+  public metric5xxErrorRate(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    return this.metric('5xxErrorRate', props);
+  }
+
+  /**
+   * Metric for the total time spent from when CloudFront receives a request to when it starts providing a response to the network (not the viewer),
+   * for requests that are served from the origin, not the CloudFront cache.
+   *
+   * This is also known as first byte latency, or time-to-first-byte.
+   *
+   * To obtain this metric, you need to set `publishAdditionalMetrics` to `true`.
+   *
+   * @default - average over 5 minutes
+   */
+  public metricOriginLatency(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    if (this.publishAdditionalMetrics !== true) {
+      throw new Error('Origin latency metric is only available if \'publishAdditionalMetrics\' is set \'true\'');
+    }
+    return this.metric('OriginLatency', props);
+  }
+
+  /**
+   * Metric for the percentage of all cacheable requests for which CloudFront served the content from its cache.
+   *
+   * HTTP POST and PUT requests, and errors, are not considered cacheable requests.
+   *
+   * To obtain this metric, you need to set `publishAdditionalMetrics` to `true`.
+   *
+   * @default - average over 5 minutes
+   */
+  public metricCacheHitRate(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    if (this.publishAdditionalMetrics !== true) {
+      throw new Error('Cache hit rate metric is only available if \'publishAdditionalMetrics\' is set \'true\'');
+    }
+    return this.metric('CacheHitRate', props);
+  }
+
+  /**
+   * Metric for the percentage of all viewer requests for which the response's HTTP status code is 401.
+   *
+   * To obtain this metric, you need to set `publishAdditionalMetrics` to `true`.
+   *
+   * @default - average over 5 minutes
+   */
+  public metric401ErrorRate(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    if (this.publishAdditionalMetrics !== true) {
+      throw new Error('401 error rate metric is only available if \'publishAdditionalMetrics\' is set \'true\'');
+    }
+    return this.metric('401ErrorRate', props);
+  }
+
+  /**
+   * Metric for the percentage of all viewer requests for which the response's HTTP status code is 403.
+   *
+   * To obtain this metric, you need to set `publishAdditionalMetrics` to `true`.
+   *
+   * @default - average over 5 minutes
+   */
+  public metric403ErrorRate(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    if (this.publishAdditionalMetrics !== true) {
+      throw new Error('403 error rate metric is only available if \'publishAdditionalMetrics\' is set \'true\'');
+    }
+    return this.metric('403ErrorRate', props);
+  }
+
+  /**
+   * Metric for the percentage of all viewer requests for which the response's HTTP status code is 404.
+   *
+   * To obtain this metric, you need to set `publishAdditionalMetrics` to `true`.
+   *
+   * @default - average over 5 minutes
+   */
+  public metric404ErrorRate(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    if (this.publishAdditionalMetrics !== true) {
+      throw new Error('404 error rate metric is only available if \'publishAdditionalMetrics\' is set \'true\'');
+    }
+    return this.metric('404ErrorRate', props);
+  }
+
+  /**
+   * Metric for the percentage of all viewer requests for which the response's HTTP status code is 502.
+   *
+   * To obtain this metric, you need to set `publishAdditionalMetrics` to `true`.
+   *
+   * @default - average over 5 minutes
+   */
+  public metric502ErrorRate(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    if (this.publishAdditionalMetrics !== true) {
+      throw new Error('502 error rate metric is only available if \'publishAdditionalMetrics\' is set \'true\'');
+    }
+    return this.metric('502ErrorRate', props);
+  }
+
+  /**
+   * Metric for the percentage of all viewer requests for which the response's HTTP status code is 503.
+   *
+   * To obtain this metric, you need to set `publishAdditionalMetrics` to `true`.
+   *
+   * @default - average over 5 minutes
+   */
+  public metric503ErrorRate(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    if (this.publishAdditionalMetrics !== true) {
+      throw new Error('503 error rate metric is only available if \'publishAdditionalMetrics\' is set \'true\'');
+    }
+    return this.metric('503ErrorRate', props);
+  }
+
+  /**
+   * Metric for the percentage of all viewer requests for which the response's HTTP status code is 504.
+   *
+   * To obtain this metric, you need to set `publishAdditionalMetrics` to `true`.
+   *
+   * @default - average over 5 minutes
+   */
+  public metric504ErrorRate(props?: cloudwatch.MetricOptions): cloudwatch.Metric {
+    if (this.publishAdditionalMetrics !== true) {
+      throw new Error('504 error rate metric is only available if \'publishAdditionalMetrics\' is set \'true\'');
+    }
+    return this.metric('504ErrorRate', props);
   }
 
   /**
@@ -391,6 +621,30 @@ export class Distribution extends Resource implements IDistribution {
     return this.grant(identity, 'cloudfront:CreateInvalidation');
   }
 
+  /**
+   * Attach WAF WebACL to this CloudFront distribution
+   *
+   * WebACL must be in the us-east-1 region
+   *
+   * @param webAclId The WAF WebACL to associate with this distribution
+   */
+  public attachWebAclId(webAclId: string) {
+    if (this.webAclId) {
+      throw new Error('A WebACL has already been attached to this distribution');
+    }
+    this.validateWebAclId(webAclId);
+    this.webAclId = webAclId;
+  }
+
+  private validateWebAclId(webAclId: string) {
+    if (webAclId.startsWith('arn:')) {
+      const webAclRegion = Stack.of(this).splitArn(webAclId, ArnFormat.SLASH_RESOURCE_NAME).region;
+      if (!Token.isUnresolved(webAclRegion) && webAclRegion !== 'us-east-1') {
+        throw new Error(`WebACL for CloudFront distributions must be created in the us-east-1 region; received ${webAclRegion}`);
+      }
+    }
+  }
+
   private addOrigin(origin: IOrigin, isFailoverOrigin: boolean = false): string {
     const ORIGIN_ID_MAX_LENGTH = 128;
 
@@ -401,21 +655,22 @@ export class Distribution extends Resource implements IDistribution {
       const originIndex = this.boundOrigins.length + 1;
       const scope = new Construct(this, `Origin${originIndex}`);
       const generatedId = Names.uniqueId(scope).slice(-ORIGIN_ID_MAX_LENGTH);
-      const originBindConfig = origin.bind(scope, { originId: generatedId });
+      const distributionId = this.distributionId;
+      const originBindConfig = origin.bind(scope, { originId: generatedId, distributionId: Lazy.string({ produce: () => this.distributionId }) });
       const originId = originBindConfig.originProperty?.id ?? generatedId;
       const duplicateId = this.boundOrigins.find(boundOrigin => boundOrigin.originProperty?.id === originBindConfig.originProperty?.id);
       if (duplicateId) {
         throw new Error(`Origin with id ${duplicateId.originProperty?.id} already exists. OriginIds must be unique within a distribution`);
       }
       if (!originBindConfig.failoverConfig) {
-        this.boundOrigins.push({ origin, originId, ...originBindConfig });
+        this.boundOrigins.push({ origin, originId, distributionId, ...originBindConfig });
       } else {
         if (isFailoverOrigin) {
           throw new Error('An Origin cannot use an Origin with its own failover configuration as its fallback origin!');
         }
         const groupIndex = this.originGroups.length + 1;
         const originGroupId = Names.uniqueId(new Construct(this, `OriginGroup${groupIndex}`)).slice(-ORIGIN_ID_MAX_LENGTH);
-        this.boundOrigins.push({ origin, originId, originGroupId, ...originBindConfig });
+        this.boundOrigins.push({ origin, originId, distributionId, originGroupId, ...originBindConfig });
 
         const failoverOriginId = this.addOrigin(originBindConfig.failoverConfig.failoverOrigin, true);
         this.addOriginGroup(originGroupId, originBindConfig.failoverConfig.statusCodes, originId, failoverOriginId);
@@ -543,7 +798,7 @@ export enum HttpVersion {
   /** HTTP 2 and HTTP 3 */
   HTTP2_AND_3 = 'http2and3',
   /** HTTP 3 */
-  HTTP3 = 'http3'
+  HTTP3 = 'http3',
 }
 
 /**
@@ -556,7 +811,7 @@ export enum PriceClass {
   /** PRICE_CLASS_100 + South Africa, Kenya, Middle East, Japan, Singapore, South Korea, Taiwan, Hong Kong, & Philippines */
   PRICE_CLASS_200 = 'PriceClass_200',
   /** All locations */
-  PRICE_CLASS_ALL = 'PriceClass_All'
+  PRICE_CLASS_ALL = 'PriceClass_All',
 }
 
 /**
@@ -568,7 +823,7 @@ export enum ViewerProtocolPolicy {
   /** Will redirect HTTP requests to HTTPS */
   REDIRECT_TO_HTTPS = 'redirect-to-https',
   /** Both HTTP and HTTPS supported */
-  ALLOW_ALL = 'allow-all'
+  ALLOW_ALL = 'allow-all',
 }
 
 /**
@@ -601,7 +856,7 @@ export enum OriginProtocolPolicy {
  */
 export enum SSLMethod {
   SNI = 'sni-only',
-  VIP = 'vip'
+  VIP = 'vip',
 }
 
 /**
@@ -615,7 +870,7 @@ export enum SecurityPolicyProtocol {
   TLS_V1_1_2016 = 'TLSv1.1_2016',
   TLS_V1_2_2018 = 'TLSv1.2_2018',
   TLS_V1_2_2019 = 'TLSv1.2_2019',
-  TLS_V1_2_2021 = 'TLSv1.2_2021'
+  TLS_V1_2_2021 = 'TLSv1.2_2021',
 }
 
 /**
@@ -776,6 +1031,13 @@ export interface AddBehaviorOptions {
    * @default - none
    */
   readonly originRequestPolicy?: IOriginRequestPolicy;
+
+  /**
+   * The real-time log configuration to be attached to this cache behavior.
+   *
+   * @default - none
+   */
+  readonly realtimeLogConfig?: IRealtimeLogConfig;
 
   /**
    * The response headers policy for this behavior. The response headers policy determines which headers are included in responses

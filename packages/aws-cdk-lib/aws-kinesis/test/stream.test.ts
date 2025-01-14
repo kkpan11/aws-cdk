@@ -1,7 +1,7 @@
 import { Match, Template } from '../../assertions';
 import * as iam from '../../aws-iam';
 import * as kms from '../../aws-kms';
-import { App, Duration, Stack, CfnParameter } from '../../core';
+import { App, Duration, Stack, CfnParameter, RemovalPolicy, CfnDeletionPolicy } from '../../core';
 import { Stream, StreamEncryption, StreamMode } from '../lib';
 
 describe('Kinesis data streams', () => {
@@ -135,6 +135,38 @@ describe('Kinesis data streams', () => {
 
     expect(s.streamArn).toEqual('arn:aws:kinesis:region:account-id:stream/stream-name');
   }),
+
+  test('sets account for imported stream env by fromStreamAttributes', () => {
+    const stack = new Stack();
+    const imported = Stream.fromStreamAttributes(stack, 'Imported', {
+      streamArn: 'arn:aws:kinesis:us-west-2:999999999999:stream/imported-stream',
+    });
+
+    expect(imported.env.account).toEqual('999999999999');
+  });
+
+  test('sets region for imported stream env by fromStreamAttributes', () => {
+    const stack = new Stack();
+    const imported = Stream.fromStreamAttributes(stack, 'Imported', {
+      streamArn: 'arn:aws:kinesis:us-west-2:999999999999:stream/imported-stream',
+    });
+
+    expect(imported.env.region).toEqual('us-west-2');
+  });
+
+  test('sets account for imported stream env by fromStreamArn', () => {
+    const stack = new Stack();
+    const imported = Stream.fromStreamArn(stack, 'Imported', 'arn:aws:kinesis:us-west-2:999999999999:stream/imported-stream');
+
+    expect(imported.env.account).toEqual('999999999999');
+  });
+
+  test('sets region for imported stream env by fromStreamArn', () => {
+    const stack = new Stack();
+    const imported = Stream.fromStreamArn(stack, 'Imported', 'arn:aws:kinesis:us-west-2:123456789012:stream/imported-stream');
+
+    expect(imported.env.region).toEqual('us-west-2');
+  });
 
   test('uses explicit shard count', () => {
     const stack = new Stack();
@@ -1227,6 +1259,62 @@ describe('Kinesis data streams', () => {
       metricName: 'IncomingBytes',
       period: { ...fiveMinutes, amount: 1 },
       statistic: 'Sum',
+    });
+  });
+
+  test('with default removal policy', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    // WHEN
+    new Stream(stack, 'Stream');
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::Kinesis::Stream', {
+      DeletionPolicy: CfnDeletionPolicy.RETAIN,
+    });
+  });
+
+  test('with removal policy as DESTROY', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    // WHEN
+    new Stream(stack, 'Stream', {
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::Kinesis::Stream', {
+      DeletionPolicy: CfnDeletionPolicy.DELETE,
+    });
+  });
+
+  test('addToResourcePolicy will automatically create a policy for this stream', () => {
+    // GIVEN
+    const stack = new Stack();
+    const stream = new Stream(stack, 'Stream', {});
+
+    // WHEN
+    stream.addToResourcePolicy(new iam.PolicyStatement({
+      actions: ['kinesis:GetRecords'],
+      principals: [new iam.AnyPrincipal()],
+      resources: [stream.streamArn],
+    }));
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Kinesis::ResourcePolicy', {
+      ResourcePolicy: {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Action: 'kinesis:GetRecords',
+            Effect: 'Allow',
+            Principal: { AWS: '*' },
+            Resource: stack.resolve(stream.streamArn),
+          },
+        ],
+      },
     });
   });
 });

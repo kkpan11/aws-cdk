@@ -204,6 +204,27 @@ export interface GaugeWidgetProps extends MetricWidgetProps {
    * @default - The statistic for each metric is used
    */
   readonly statistic?: string;
+
+  /**
+   * The start of the time range to use for each widget independently from those of the dashboard.
+   * You can specify start without specifying end to specify a relative time range that ends with the current time.
+   * In this case, the value of start must begin with -P, and you can use M, H, D, W and M as abbreviations for
+   * minutes, hours, days, weeks and months. For example, -PT8H shows the last 8 hours and -P3M shows the last three months.
+   * You can also use start along with an end field, to specify an absolute time range.
+   * When specifying an absolute time range, use the ISO 8601 format. For example, 2018-12-17T06:00:00.000Z.
+   *
+   * @default When the dashboard loads, the start time will be the default time range.
+   */
+  readonly start?: string;
+
+  /**
+   * The end of the time range to use for each widget independently from those of the dashboard.
+   * If you specify a value for end, you must also specify a value for start.
+   * Specify an absolute time in the ISO 8601 format. For example, 2018-12-17T06:00:00.000Z.
+   *
+   * @default When the dashboard loads, the end date will be the current time.
+   */
+  readonly end?: string;
 }
 
 /**
@@ -220,6 +241,10 @@ export class GaugeWidget extends ConcreteWidget {
     this.props = props;
     this.metrics = props.metrics ?? [];
     this.copyMetricWarnings(...this.metrics);
+
+    if (props.end !== undefined && props.start === undefined) {
+      throw new Error('If you specify a value for end, you must also specify a value for start.');
+    }
   }
 
   /**
@@ -233,9 +258,6 @@ export class GaugeWidget extends ConcreteWidget {
   }
 
   public toJson(): any[] {
-    const horizontalAnnotations = [
-      ...(this.props.annotations || []).map(mapAnnotation('annotations')),
-    ];
 
     const metrics = allMetricsGraphJson(this.metrics, []);
     const leftYAxis = {
@@ -254,7 +276,7 @@ export class GaugeWidget extends ConcreteWidget {
         title: this.props.title,
         region: this.props.region || cdk.Aws.REGION,
         metrics: metrics.length > 0 ? metrics : undefined,
-        annotations: horizontalAnnotations.length > 0 ? { horizontal: horizontalAnnotations } : undefined,
+        annotations: (this.props.annotations ?? []).length > 0 ? { horizontal: this.props.annotations } : undefined,
         yAxis: {
           left: leftYAxis ?? undefined,
         },
@@ -263,6 +285,8 @@ export class GaugeWidget extends ConcreteWidget {
         setPeriodToTimeRange: this.props.setPeriodToTimeRange,
         period: this.props.period?.toSeconds(),
         stat: this.props.statistic,
+        start: this.props.start,
+        end: this.props.end,
       },
     }];
   }
@@ -299,6 +323,13 @@ export interface GraphWidgetProps extends MetricWidgetProps {
    * @default - No annotations
    */
   readonly rightAnnotations?: HorizontalAnnotation[];
+
+  /**
+   * Annotations for the X axis
+   *
+   * @default - No annotations
+   */
+  readonly verticalAnnotations?: VerticalAnnotation[];
 
   /**
    * Whether the graph should be shown as stacked lines
@@ -368,12 +399,39 @@ export interface GraphWidgetProps extends MetricWidgetProps {
    * @default - The statistic for each metric is used
    */
   readonly statistic?: string;
+
+  /**
+   * The start of the time range to use for each widget independently from those of the dashboard.
+   * You can specify start without specifying end to specify a relative time range that ends with the current time.
+   * In this case, the value of start must begin with -P, and you can use M, H, D, W and M as abbreviations for
+   * minutes, hours, days, weeks and months. For example, -PT8H shows the last 8 hours and -P3M shows the last three months.
+   * You can also use start along with an end field, to specify an absolute time range.
+   * When specifying an absolute time range, use the ISO 8601 format. For example, 2018-12-17T06:00:00.000Z.
+   *
+   * @default When the dashboard loads, the start time will be the default time range.
+   */
+  readonly start?: string;
+
+  /**
+   * The end of the time range to use for each widget independently from those of the dashboard.
+   * If you specify a value for end, you must also specify a value for start.
+   * Specify an absolute time in the ISO 8601 format. For example, 2018-12-17T06:00:00.000Z.
+   *
+   * @default When the dashboard loads, the end date will be the current time.
+   */
+  readonly end?: string;
 }
 
 /**
  * A dashboard widget that displays metrics
  */
 export class GraphWidget extends ConcreteWidget {
+
+  private static readonly ISO8601_REGEX = /^(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|0[1-9]|[12][0-9])T(2[0-3]|[01][0-9]):([0-5][0-9]):([0-5][0-9])(.[0-9]+)?(Z)?$/;
+
+  private static isIso8601(date: string): boolean {
+    return this.ISO8601_REGEX.test(date);
+  }
 
   private readonly props: GraphWidgetProps;
 
@@ -382,10 +440,20 @@ export class GraphWidget extends ConcreteWidget {
 
   constructor(props: GraphWidgetProps) {
     super(props.width || 6, props.height || 6);
+    props.verticalAnnotations?.forEach(annotation => {
+      const date = annotation.date;
+      if (!GraphWidget.isIso8601(date)) {
+        throw new Error(`Given date ${date} is not in ISO 8601 format`);
+      }
+    });
     this.props = props;
     this.leftMetrics = props.left ?? [];
     this.rightMetrics = props.right ?? [];
     this.copyMetricWarnings(...this.leftMetrics, ...this.rightMetrics);
+
+    if (props.end !== undefined && props.start === undefined) {
+      throw new Error('If you specify a value for end, you must also specify a value for start.');
+    }
   }
 
   /**
@@ -413,7 +481,14 @@ export class GraphWidget extends ConcreteWidget {
       ...(this.props.leftAnnotations || []).map(mapAnnotation('left')),
       ...(this.props.rightAnnotations || []).map(mapAnnotation('right')),
     ];
-
+    const verticalAnnotations = (this.props.verticalAnnotations || []).map(({ date, ...rest }) => ({
+      value: date,
+      ...rest,
+    }));
+    const annotations = horizontalAnnotations.length > 0 || verticalAnnotations.length > 0 ? ({
+      horizontal: horizontalAnnotations.length > 0 ? horizontalAnnotations : undefined,
+      vertical: verticalAnnotations.length > 0 ? verticalAnnotations : undefined,
+    }) : undefined;
     const metrics = allMetricsGraphJson(this.leftMetrics, this.rightMetrics);
     return [{
       type: 'metric',
@@ -427,7 +502,7 @@ export class GraphWidget extends ConcreteWidget {
         region: this.props.region || cdk.Aws.REGION,
         stacked: this.props.stacked,
         metrics: metrics.length > 0 ? metrics : undefined,
-        annotations: horizontalAnnotations.length > 0 ? { horizontal: horizontalAnnotations } : undefined,
+        annotations,
         yAxis: {
           left: this.props.leftYAxis ?? undefined,
           right: this.props.rightYAxis ?? undefined,
@@ -437,6 +512,304 @@ export class GraphWidget extends ConcreteWidget {
         setPeriodToTimeRange: this.props.setPeriodToTimeRange,
         period: this.props.period?.toSeconds(),
         stat: this.props.statistic,
+        start: this.props.start,
+        end: this.props.end,
+      },
+    }];
+  }
+}
+
+/**
+ * Layout for TableWidget
+ */
+export enum TableLayout {
+  /**
+   * Data points are laid out in columns
+   */
+  HORIZONTAL = 'horizontal',
+
+  /**
+   * Data points are laid out in rows
+   */
+  VERTICAL = 'vertical',
+}
+
+/**
+ * Standard table summary columns
+ */
+export enum TableSummaryColumn {
+  /**
+   * Minimum of all data points
+   */
+  MINIMUM = 'MIN',
+
+  /**
+   * Maximum of all data points
+   */
+  MAXIMUM = 'MAX',
+
+  /**
+   * Sum of all data points
+   */
+  SUM = 'SUM',
+
+  /**
+   * Average of all data points
+   */
+  AVERAGE = 'AVG',
+}
+
+/**
+ * Properties for TableWidget's summary columns
+ */
+export interface TableSummaryProps {
+  /**
+   * Summary columns
+   *
+   * @default - No summary columns will be shown
+   */
+  readonly columns?: TableSummaryColumn[];
+
+  /**
+   * Make the summary columns sticky, so that they remain in view while scrolling
+   *
+   * @default - false
+   */
+  readonly sticky?: boolean;
+
+  /**
+   * Prevent the columns of datapoints from being displayed, so that only the label and summary columns are displayed
+   *
+   * @default - false
+   */
+  readonly hideNonSummaryColumns?: boolean;
+}
+
+/**
+ * Thresholds for highlighting cells in TableWidget
+ */
+export class TableThreshold {
+  /**
+   * A threshold for highlighting and coloring cells above the specified value
+   *
+   * @param value lower bound of threshold range
+   * @param color cell color for values within threshold range
+   */
+  public static above(value: number, color?: string): TableThreshold {
+    return new TableThreshold(value, undefined, color, Shading.ABOVE);
+  }
+
+  /**
+   * A threshold for highlighting and coloring cells below the specified value
+   *
+   * @param value upper bound of threshold range
+   * @param color cell color for values within threshold range
+   */
+  public static below(value: number, color?: string): TableThreshold {
+    return new TableThreshold(value, undefined, color, Shading.BELOW);
+  }
+
+  /**
+   * A threshold for highlighting and coloring cells within the specified values
+   *
+   * @param lowerBound lower bound of threshold range
+   * @param upperBound upper bound of threshold range
+   * @param color cell color for values within threshold range
+   */
+  public static between(lowerBound: number, upperBound: number, color?: string): TableThreshold {
+    return new TableThreshold(lowerBound, upperBound, color);
+  }
+
+  private readonly lowerBound: number;
+  private readonly upperBound?: number;
+  private readonly color?: string;
+  private readonly comparator?: Shading;
+
+  private constructor(lowerBound: number, upperBound?: number, color?: string, comparator?: Shading) {
+    this.lowerBound = lowerBound;
+    this.upperBound = upperBound;
+    this.color = color;
+    this.comparator = comparator;
+  }
+
+  public toJson(): any {
+    if (this.upperBound) {
+      return [
+        { value: this.lowerBound, color: this.color },
+        { value: this.upperBound },
+      ];
+    }
+    return { value: this.lowerBound, color: this.color, fill: this.comparator };
+  }
+}
+
+/**
+ * Properties for a TableWidget
+ */
+export interface TableWidgetProps extends MetricWidgetProps {
+  /**
+   * Table layout
+   *
+   * @default - TableLayout.HORIZONTAL
+   */
+  readonly layout?: TableLayout;
+
+  /**
+   * Properties for displaying summary columns
+   *
+   * @default - no summary columns are shown
+   */
+  readonly summary?: TableSummaryProps;
+
+  /**
+   * Thresholds for highlighting table cells
+   *
+   * @default - No thresholds
+   */
+  readonly thresholds?: TableThreshold[];
+
+  /**
+   * Show the metrics units in the label column
+   *
+   * @default - false
+   */
+  readonly showUnitsInLabel?: boolean;
+
+  /**
+   * Metrics to display in the table
+   *
+   * @default - No metrics
+   */
+  readonly metrics?: IMetric[];
+
+  /**
+   * Whether the graph should show live data
+   *
+   * @default false
+   */
+  readonly liveData?: boolean;
+
+  /**
+   * Whether to show as many digits as can fit, before rounding.
+   *
+   * @default false
+   */
+  readonly fullPrecision?: boolean;
+
+  /**
+   * Whether to show the value from the entire time range. Only applicable for Bar and Pie charts.
+   *
+   * If false, values will be from the most recent period of your chosen time range;
+   * if true, shows the value from the entire time range.
+   *
+   * @default false
+   */
+  readonly setPeriodToTimeRange?: boolean;
+
+  /**
+   * The default period for all metrics in this widget.
+   * The period is the length of time represented by one data point on the graph.
+   * This default can be overridden within each metric definition.
+   *
+   * @default cdk.Duration.seconds(300)
+   */
+  readonly period?: cdk.Duration;
+
+  /**
+   * The default statistic to be displayed for each metric.
+   * This default can be overridden within the definition of each individual metric
+   *
+   * @default - The statistic for each metric is used
+   */
+  readonly statistic?: string;
+
+  /**
+   * The start of the time range to use for each widget independently from those of the dashboard.
+   * You can specify start without specifying end to specify a relative time range that ends with the current time.
+   * In this case, the value of start must begin with -P, and you can use M, H, D, W and M as abbreviations for
+   * minutes, hours, days, weeks and months. For example, -PT8H shows the last 8 hours and -P3M shows the last three months.
+   * You can also use start along with an end field, to specify an absolute time range.
+   * When specifying an absolute time range, use the ISO 8601 format. For example, 2018-12-17T06:00:00.000Z.
+   *
+   * @default When the dashboard loads, the start time will be the default time range.
+   */
+  readonly start?: string;
+
+  /**
+   * The end of the time range to use for each widget independently from those of the dashboard.
+   * If you specify a value for end, you must also specify a value for start.
+   * Specify an absolute time in the ISO 8601 format. For example, 2018-12-17T06:00:00.000Z.
+   *
+   * @default When the dashboard loads, the end date will be the current time.
+   */
+  readonly end?: string;
+}
+
+/**
+ * A dashboard widget that displays metrics
+ */
+export class TableWidget extends ConcreteWidget {
+
+  private readonly metrics: IMetric[];
+
+  constructor(private readonly props: TableWidgetProps) {
+    super(props.width || 6, props.height || 6);
+
+    this.props = props;
+    this.metrics = props.metrics ?? [];
+    this.copyMetricWarnings(...this.metrics);
+
+    if (props.end !== undefined && props.start === undefined) {
+      throw new Error('If you specify a value for end, you must also specify a value for start.');
+    }
+  }
+
+  /**
+   * Add another metric
+   *
+   * @param metric the metric to add
+   */
+  public addMetric(metric: IMetric) {
+    this.metrics.push(metric);
+    this.copyMetricWarnings(metric);
+  }
+
+  public toJson(): any[] {
+    const horizontalAnnotations = (this.props.thresholds ?? []).map(threshold => threshold.toJson());
+    const annotations = horizontalAnnotations.length > 0 ? ({
+      horizontal: horizontalAnnotations,
+    }) : undefined;
+    const metrics = allMetricsGraphJson(this.metrics, []);
+    return [{
+      type: 'metric',
+      width: this.width,
+      height: this.height,
+      x: this.x,
+      y: this.y,
+      properties: {
+        title: this.props.title,
+        view: 'table',
+        table: {
+          layout: this.props.layout ?? TableLayout.HORIZONTAL,
+          showTimeSeriesData: !(this.props.summary?.hideNonSummaryColumns ?? false),
+          stickySummary: this.props.summary?.sticky ?? false,
+          summaryColumns: this.props.summary?.columns ?? [],
+        },
+        region: this.props.region || cdk.Aws.REGION,
+        metrics: metrics.length > 0 ? metrics : undefined,
+        annotations,
+        yAxis: {
+          left: this.props.showUnitsInLabel ? {
+            showUnits: true,
+          } : undefined,
+        },
+        liveData: this.props.liveData,
+        singleValueFullPrecision: this.props.fullPrecision,
+        setPeriodToTimeRange: this.props.setPeriodToTimeRange,
+        period: this.props.period?.toSeconds(),
+        stat: this.props.statistic,
+        start: this.props.start,
+        end: this.props.end,
       },
     }];
   }
@@ -450,6 +823,15 @@ export interface SingleValueWidgetProps extends MetricWidgetProps {
    * Metrics to display
    */
   readonly metrics: IMetric[];
+
+  /**
+   * The default period for all metrics in this widget.
+   * The period is the length of time represented by one data point on the graph.
+   * This default can be overridden within each metric definition.
+   *
+   * @default cdk.Duration.seconds(300)
+   */
+  readonly period?: cdk.Duration;
 
   /**
    * Whether to show the value from the entire time range.
@@ -472,6 +854,27 @@ export interface SingleValueWidgetProps extends MetricWidgetProps {
    * @default false
    */
   readonly sparkline?: boolean;
+
+  /**
+   * The start of the time range to use for each widget independently from those of the dashboard.
+   * You can specify start without specifying end to specify a relative time range that ends with the current time.
+   * In this case, the value of start must begin with -P, and you can use M, H, D, W and M as abbreviations for
+   * minutes, hours, days, weeks and months. For example, -PT8H shows the last 8 hours and -P3M shows the last three months.
+   * You can also use start along with an end field, to specify an absolute time range.
+   * When specifying an absolute time range, use the ISO 8601 format. For example, 2018-12-17T06:00:00.000Z.
+   *
+   * @default When the dashboard loads, the start time will be the default time range.
+   */
+  readonly start?: string;
+
+  /**
+   * The end of the time range to use for each widget independently from those of the dashboard.
+   * If you specify a value for end, you must also specify a value for start.
+   * Specify an absolute time in the ISO 8601 format. For example, 2018-12-17T06:00:00.000Z.
+   *
+   * @default When the dashboard loads, the end date will be the current time.
+   */
+  readonly end?: string;
 }
 
 /**
@@ -487,6 +890,10 @@ export class SingleValueWidget extends ConcreteWidget {
 
     if (props.setPeriodToTimeRange && props.sparkline) {
       throw new Error('You cannot use setPeriodToTimeRange with sparkline');
+    }
+
+    if (props.end !== undefined && props.start === undefined) {
+      throw new Error('If you specify a value for end, you must also specify a value for start.');
     }
   }
 
@@ -505,6 +912,9 @@ export class SingleValueWidget extends ConcreteWidget {
         metrics: allMetricsGraphJson(this.props.metrics, []),
         setPeriodToTimeRange: this.props.setPeriodToTimeRange,
         singleValueFullPrecision: this.props.fullPrecision,
+        period: this.props.period?.toSeconds(),
+        start: this.props.start,
+        end: this.props.end,
       },
     }];
   }
@@ -641,7 +1051,46 @@ export interface HorizontalAnnotation {
 }
 
 /**
- * Fill shading options that will be used with an annotation
+ * Vertical annotation to be added to a graph
+ */
+export interface VerticalAnnotation {
+  /**
+   * The date and time (in ISO 8601 format) in the graph where the vertical annotation line is to appear
+   */
+  readonly date: string;
+
+  /**
+   * Label for the annotation
+   *
+   * @default - No label
+   */
+  readonly label?: string;
+
+  /**
+   * The hex color code, prefixed with '#' (e.g. '#00ff00'), to be used for the annotation.
+   * The `Color` class has a set of standard colors that can be used here.
+   *
+   * @default - Automatic color
+   */
+  readonly color?: string;
+
+  /**
+   * Add shading before or after the annotation
+   *
+   * @default No shading
+   */
+  readonly fill?: VerticalShading;
+
+  /**
+   * Whether the annotation is visible
+   *
+   * @default true
+   */
+  readonly visible?: boolean;
+}
+
+/**
+ * Fill shading options that will be used with a horizontal annotation
  */
 export enum Shading {
   /**
@@ -657,7 +1106,27 @@ export enum Shading {
   /**
    * Add shading below the annotation
    */
-  BELOW = 'below'
+  BELOW = 'below',
+}
+
+/**
+ * Fill shading options that will be used with a vertical annotation
+ */
+export enum VerticalShading {
+  /**
+   * Don't add shading
+   */
+  NONE = 'none',
+
+  /**
+   * Add shading before the annotation
+   */
+  BEFORE = 'before',
+
+  /**
+   * Add shading after the annotation
+   */
+  AFTER = 'after',
 }
 
 /**
@@ -708,7 +1177,7 @@ export enum LegendPosition {
   /**
    * Add shading below the annotation
    */
-  HIDDEN = 'hidden'
+  HIDDEN = 'hidden',
 }
 
 function mapAnnotation(yAxis: string): ((x: HorizontalAnnotation) => any) {

@@ -2,14 +2,14 @@ import * as path from 'path';
 import { Construct } from 'constructs';
 import * as consts from './runtime/consts';
 import { calculateRetryPolicy } from './util';
-import { WaiterStateMachine } from './waiter-state-machine';
+import { LogOptions, WaiterStateMachine } from './waiter-state-machine';
 import { CustomResourceProviderConfig, ICustomResourceProvider } from '../../../aws-cloudformation';
 import * as ec2 from '../../../aws-ec2';
 import * as iam from '../../../aws-iam';
+import * as kms from '../../../aws-kms';
 import * as lambda from '../../../aws-lambda';
 import * as logs from '../../../aws-logs';
 import { Duration } from '../../../core';
-import { builtInCustomResourceNodeRuntime } from '../aws-custom-resource';
 
 const RUNTIME_HANDLER_PATH = path.join(__dirname, 'runtime');
 const FRAMEWORK_HANDLER_TIMEOUT = Duration.minutes(15); // keep it simple for now
@@ -59,7 +59,7 @@ export interface ProviderProps {
   /**
    * Total timeout for the entire operation.
    *
-   * The maximum timeout is 2 hours (yes, it can exceed the AWS Lambda 15 minutes)
+   * The maximum timeout is 1 hour (yes, it can exceed the AWS Lambda 15 minutes)
    *
    * @default Duration.minutes(30)
    */
@@ -70,9 +70,22 @@ export interface ProviderProps {
    * updating this property, unsetting it doesn't remove the log retention policy.
    * To remove the retention policy, set the value to `INFINITE`.
    *
+   * This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+   * `logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+   *
    * @default logs.RetentionDays.INFINITE
    */
   readonly logRetention?: logs.RetentionDays;
+
+  /**
+   * The Log Group used for logging of events emitted by the custom resource's lambda function.
+   *
+   * Providing a user-controlled log group was rolled out to commercial regions on 2023-11-16.
+   * If you are deploying to another type of region, please check regional availability first.
+   *
+   * @default - a default log group created by AWS Lambda
+   */
+  readonly logGroup?: logs.ILogGroup;
 
   /**
    * The vpc to provision the lambda functions in.
@@ -119,6 +132,27 @@ export interface ProviderProps {
    * @default -  CloudFormation default name from unique physical ID
    */
   readonly providerFunctionName?: string;
+
+  /**
+   * AWS KMS key used to encrypt provider lambda's environment variables.
+   *
+   * @default -  AWS Lambda creates and uses an AWS managed customer master key (CMK)
+   */
+  readonly providerFunctionEnvEncryption?: kms.IKey;
+
+  /**
+   * Defines what execution history events of the waiter state machine are logged and where they are logged.
+   *
+   * @default - A default log group will be created if logging for the waiter state machine is enabled.
+   */
+  readonly waiterStateMachineLogOptions?: LogOptions;
+
+  /**
+   * Whether logging for the waiter state machine is disabled.
+   *
+   * @default - false
+   */
+  readonly disableWaiterStateMachineLogging?: boolean;
 }
 
 /**
@@ -146,28 +180,40 @@ export class Provider extends Construct implements ICustomResourceProvider {
 
   private readonly entrypoint: lambda.Function;
   private readonly logRetention?: logs.RetentionDays;
+  private readonly logGroup?: logs.ILogGroup;
   private readonly vpc?: ec2.IVpc;
   private readonly vpcSubnets?: ec2.SubnetSelection;
   private readonly securityGroups?: ec2.ISecurityGroup[];
   private readonly role?: iam.IRole;
+  private readonly providerFunctionEnvEncryption?: kms.IKey;
 
   constructor(scope: Construct, id: string, props: ProviderProps) {
     super(scope, id);
 
-    if (!props.isCompleteHandler && (props.queryInterval || props.totalTimeout)) {
-      throw new Error('"queryInterval" and "totalTimeout" can only be configured if "isCompleteHandler" is specified. '
-        + 'Otherwise, they have no meaning');
+    if (!props.isCompleteHandler) {
+      if (
+        props.queryInterval
+        || props.totalTimeout
+        || props.waiterStateMachineLogOptions
+        || props.disableWaiterStateMachineLogging !== undefined
+      ) {
+        throw new Error('"queryInterval", "totalTimeout", "waiterStateMachineLogOptions", and "disableWaiterStateMachineLogging" '
+          + 'can only be configured if "isCompleteHandler" is specified. '
+          + 'Otherwise, they have no meaning');
+      }
     }
 
     this.onEventHandler = props.onEventHandler;
     this.isCompleteHandler = props.isCompleteHandler;
 
     this.logRetention = props.logRetention;
+    this.logGroup = props.logGroup;
     this.vpc = props.vpc;
     this.vpcSubnets = props.vpcSubnets;
     this.securityGroups = props.securityGroups;
 
     this.role = props.role;
+    this.providerFunctionEnvEncryption = props.providerFunctionEnvEncryption;
 
     const onEventFunction = this.createFunction(consts.FRAMEWORK_ON_EVENT_HANDLER_NAME, props.providerFunctionName);
 
@@ -182,6 +228,8 @@ export class Provider extends Construct implements ICustomResourceProvider {
         backoffRate: retry.backoffRate,
         interval: retry.interval,
         maxAttempts: retry.maxAttempts,
+        logOptions: props.waiterStateMachineLogOptions,
+        disableLogging: props.disableWaiterStateMachineLogging,
       });
       // the on-event entrypoint is going to start the execution of the waiter
       onEventFunction.addEnvironment(consts.WAITER_STATE_MACHINE_ARN_ENV, waiterStateMachine.stateMachineArn);
@@ -208,15 +256,19 @@ export class Provider extends Construct implements ICustomResourceProvider {
         exclude: ['*.ts'],
       }),
       description: `AWS CDK resource provider framework - ${entrypoint} (${this.node.path})`.slice(0, 256),
-      runtime: builtInCustomResourceNodeRuntime(this),
+      runtime: lambda.determineLatestNodeRuntime(this),
       handler: `framework.${entrypoint}`,
       timeout: FRAMEWORK_HANDLER_TIMEOUT,
-      logRetention: this.logRetention,
+      // props.logRetention is deprecated, make sure we only set it if it is actually provided
+      // otherwise jsii will print warnings even for users that don't use this directly
+      ...(this.logRetention ? { logRetention: this.logRetention } : {}),
+      logGroup: this.logGroup,
       vpc: this.vpc,
       vpcSubnets: this.vpcSubnets,
       securityGroups: this.securityGroups,
       role: this.role,
       functionName: name,
+      environmentEncryption: this.providerFunctionEnvEncryption,
     });
 
     fn.addEnvironment(consts.USER_ON_EVENT_FUNCTION_ARN_ENV, this.onEventHandler.functionArn);

@@ -19,9 +19,6 @@
   "VpcPublicSubnet1Subnet5C2D37C4": {
    "Type": "AWS::EC2::Subnet",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "AvailabilityZone": {
      "Fn::Select": [
       0,
@@ -45,21 +42,24 @@
       "Key": "Name",
       "Value": "cdk-integ-cluster-snapshot/Vpc/PublicSubnet1"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPublicSubnet1RouteTable6C95E38E": {
    "Type": "AWS::EC2::RouteTable",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "Tags": [
      {
       "Key": "Name",
       "Value": "cdk-integ-cluster-snapshot/Vpc/PublicSubnet1"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPublicSubnet1RouteTableAssociation97140677": {
@@ -76,12 +76,12 @@
   "VpcPublicSubnet1DefaultRoute3DA9E72A": {
    "Type": "AWS::EC2::Route",
    "Properties": {
-    "RouteTableId": {
-     "Ref": "VpcPublicSubnet1RouteTable6C95E38E"
-    },
     "DestinationCidrBlock": "0.0.0.0/0",
     "GatewayId": {
      "Ref": "VpcIGWD7BA715C"
+    },
+    "RouteTableId": {
+     "Ref": "VpcPublicSubnet1RouteTable6C95E38E"
     }
    },
    "DependsOn": [
@@ -103,14 +103,14 @@
   "VpcPublicSubnet1NATGateway4D7517AA": {
    "Type": "AWS::EC2::NatGateway",
    "Properties": {
-    "SubnetId": {
-     "Ref": "VpcPublicSubnet1Subnet5C2D37C4"
-    },
     "AllocationId": {
      "Fn::GetAtt": [
       "VpcPublicSubnet1EIPD7E02669",
       "AllocationId"
      ]
+    },
+    "SubnetId": {
+     "Ref": "VpcPublicSubnet1Subnet5C2D37C4"
     },
     "Tags": [
      {
@@ -127,9 +127,6 @@
   "VpcPublicSubnet2Subnet691E08A3": {
    "Type": "AWS::EC2::Subnet",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "AvailabilityZone": {
      "Fn::Select": [
       1,
@@ -153,21 +150,24 @@
       "Key": "Name",
       "Value": "cdk-integ-cluster-snapshot/Vpc/PublicSubnet2"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPublicSubnet2RouteTable94F7E489": {
    "Type": "AWS::EC2::RouteTable",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "Tags": [
      {
       "Key": "Name",
       "Value": "cdk-integ-cluster-snapshot/Vpc/PublicSubnet2"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPublicSubnet2RouteTableAssociationDD5762D8": {
@@ -184,12 +184,12 @@
   "VpcPublicSubnet2DefaultRoute97F91067": {
    "Type": "AWS::EC2::Route",
    "Properties": {
-    "RouteTableId": {
-     "Ref": "VpcPublicSubnet2RouteTable94F7E489"
-    },
     "DestinationCidrBlock": "0.0.0.0/0",
     "GatewayId": {
      "Ref": "VpcIGWD7BA715C"
+    },
+    "RouteTableId": {
+     "Ref": "VpcPublicSubnet2RouteTable94F7E489"
     }
    },
    "DependsOn": [
@@ -199,9 +199,6 @@
   "VpcPrivateSubnet1Subnet536B997A": {
    "Type": "AWS::EC2::Subnet",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "AvailabilityZone": {
      "Fn::Select": [
       0,
@@ -225,21 +222,24 @@
       "Key": "Name",
       "Value": "cdk-integ-cluster-snapshot/Vpc/PrivateSubnet1"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPrivateSubnet1RouteTableB2C5B500": {
    "Type": "AWS::EC2::RouteTable",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "Tags": [
      {
       "Key": "Name",
       "Value": "cdk-integ-cluster-snapshot/Vpc/PrivateSubnet1"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPrivateSubnet1RouteTableAssociation70C59FA6": {
@@ -256,21 +256,18 @@
   "VpcPrivateSubnet1DefaultRouteBE02A9ED": {
    "Type": "AWS::EC2::Route",
    "Properties": {
-    "RouteTableId": {
-     "Ref": "VpcPrivateSubnet1RouteTableB2C5B500"
-    },
     "DestinationCidrBlock": "0.0.0.0/0",
     "NatGatewayId": {
      "Ref": "VpcPublicSubnet1NATGateway4D7517AA"
+    },
+    "RouteTableId": {
+     "Ref": "VpcPrivateSubnet1RouteTableB2C5B500"
     }
    }
   },
   "VpcPrivateSubnet2Subnet3788AAA1": {
    "Type": "AWS::EC2::Subnet",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "AvailabilityZone": {
      "Fn::Select": [
       1,
@@ -294,21 +291,24 @@
       "Key": "Name",
       "Value": "cdk-integ-cluster-snapshot/Vpc/PrivateSubnet2"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPrivateSubnet2RouteTableA678073B": {
    "Type": "AWS::EC2::RouteTable",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "Tags": [
      {
       "Key": "Name",
       "Value": "cdk-integ-cluster-snapshot/Vpc/PrivateSubnet2"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPrivateSubnet2RouteTableAssociationA89CAD56": {
@@ -325,12 +325,12 @@
   "VpcPrivateSubnet2DefaultRoute060D2087": {
    "Type": "AWS::EC2::Route",
    "Properties": {
-    "RouteTableId": {
-     "Ref": "VpcPrivateSubnet2RouteTableA678073B"
-    },
     "DestinationCidrBlock": "0.0.0.0/0",
     "NatGatewayId": {
      "Ref": "VpcPublicSubnet1NATGateway4D7517AA"
+    },
+    "RouteTableId": {
+     "Ref": "VpcPrivateSubnet2RouteTableA678073B"
     }
    }
   },
@@ -348,11 +348,11 @@
   "VpcVPCGWBF912B6E": {
    "Type": "AWS::EC2::VPCGatewayAttachment",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "InternetGatewayId": {
      "Ref": "VpcIGWD7BA715C"
+    },
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
     }
    }
   },
@@ -426,24 +426,12 @@
    "Type": "AWS::RDS::DBCluster",
    "Properties": {
     "CopyTagsToSnapshot": true,
-    "DBClusterParameterGroupName": "default.aurora-mysql5.7",
+    "DBClusterParameterGroupName": "default.aurora-mysql8.0",
     "DBSubnetGroupName": {
      "Ref": "ClusterSubnetsDCFA5CB7"
     },
     "Engine": "aurora-mysql",
-    "EngineVersion": "5.7.mysql_aurora.2.10.2",
-    "MasterUsername": {
-     "Fn::Join": [
-      "",
-      [
-       "{{resolve:secretsmanager:",
-       {
-        "Ref": "ClusterSecret6368BD0F"
-       },
-       ":SecretString:username::}}"
-      ]
-     ]
-    },
+    "EngineVersion": "8.0.mysql_aurora.3.04.0",
     "MasterUserPassword": {
      "Fn::Join": [
       "",
@@ -453,6 +441,18 @@
         "Ref": "ClusterSecret6368BD0F"
        },
        ":SecretString:password::}}"
+      ]
+     ]
+    },
+    "MasterUsername": {
+     "Fn::Join": [
+      "",
+      [
+       "{{resolve:secretsmanager:",
+       {
+        "Ref": "ClusterSecret6368BD0F"
+       },
+       ":SecretString:username::}}"
       ]
      ]
     },
@@ -474,7 +474,7 @@
     "DBClusterIdentifier": {
      "Ref": "ClusterEB0386A7"
     },
-    "DBInstanceClass": "db.t3.small",
+    "DBInstanceClass": "db.t3.medium",
     "DBSubnetGroupName": {
      "Ref": "ClusterSubnetsDCFA5CB7"
     },
@@ -495,7 +495,7 @@
     "DBClusterIdentifier": {
      "Ref": "ClusterEB0386A7"
     },
-    "DBInstanceClass": "db.t3.small",
+    "DBInstanceClass": "db.t3.medium",
     "DBSubnetGroupName": {
      "Ref": "ClusterSubnetsDCFA5CB7"
     },
@@ -616,16 +616,16 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "4d4dc74a9beb8e44733e1a95b570d30a58a658c6b1896bf7da5db1940d5fed82.zip"
+     "S3Key": "7531d12b1fd853bba70fda1369698d729b1ef9986621d19d7cbdbf9648a32ba5.zip"
     },
+    "Handler": "index.onEventHandler",
     "Role": {
      "Fn::GetAtt": [
       "SnapshoterOnEventHandlerServiceRole7F84B26D",
       "Arn"
      ]
     },
-    "Handler": "index.onEventHandler",
-    "Runtime": "nodejs16.x"
+    "Runtime": "nodejs18.x"
    },
    "DependsOn": [
     "SnapshoterOnEventHandlerServiceRoleDefaultPolicyAF0DFD57",
@@ -735,16 +735,16 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "4d4dc74a9beb8e44733e1a95b570d30a58a658c6b1896bf7da5db1940d5fed82.zip"
+     "S3Key": "7531d12b1fd853bba70fda1369698d729b1ef9986621d19d7cbdbf9648a32ba5.zip"
     },
+    "Handler": "index.isCompleteHandler",
     "Role": {
      "Fn::GetAtt": [
       "SnapshoterIsCompleteHandlerServiceRole40F5F1A8",
       "Arn"
      ]
     },
-    "Handler": "index.isCompleteHandler",
-    "Runtime": "nodejs16.x"
+    "Runtime": "nodejs18.x"
    },
    "DependsOn": [
     "SnapshoterIsCompleteHandlerServiceRoleDefaultPolicyA43EB222",
@@ -858,13 +858,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-    },
-    "Role": {
-     "Fn::GetAtt": [
-      "SnapshoterSnapshotProviderframeworkonEventServiceRole29C21F76",
-      "Arn"
-     ]
+     "S3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
     },
     "Description": "AWS CDK resource provider framework - onEvent (cdk-integ-cluster-snapshot/Snapshoter/SnapshotProvider)",
     "Environment": {
@@ -887,9 +881,15 @@
      }
     },
     "Handler": "framework.onEvent",
+    "Role": {
+     "Fn::GetAtt": [
+      "SnapshoterSnapshotProviderframeworkonEventServiceRole29C21F76",
+      "Arn"
+     ]
+    },
     "Runtime": {
      "Fn::FindInMap": [
-      "DefaultCrNodeVersionMap",
+      "LatestNodeRuntimeMap",
       {
        "Ref": "AWS::Region"
       },
@@ -1003,13 +1003,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-    },
-    "Role": {
-     "Fn::GetAtt": [
-      "SnapshoterSnapshotProviderframeworkisCompleteServiceRoleFAA9C6CB",
-      "Arn"
-     ]
+     "S3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
     },
     "Description": "AWS CDK resource provider framework - isComplete (cdk-integ-cluster-snapshot/Snapshoter/SnapshotProvider)",
     "Environment": {
@@ -1029,9 +1023,15 @@
      }
     },
     "Handler": "framework.isComplete",
+    "Role": {
+     "Fn::GetAtt": [
+      "SnapshoterSnapshotProviderframeworkisCompleteServiceRoleFAA9C6CB",
+      "Arn"
+     ]
+    },
     "Runtime": {
      "Fn::FindInMap": [
-      "DefaultCrNodeVersionMap",
+      "LatestNodeRuntimeMap",
       {
        "Ref": "AWS::Region"
       },
@@ -1145,13 +1145,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-    },
-    "Role": {
-     "Fn::GetAtt": [
-      "SnapshoterSnapshotProviderframeworkonTimeoutServiceRole0B00A1BD",
-      "Arn"
-     ]
+     "S3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
     },
     "Description": "AWS CDK resource provider framework - onTimeout (cdk-integ-cluster-snapshot/Snapshoter/SnapshotProvider)",
     "Environment": {
@@ -1171,9 +1165,15 @@
      }
     },
     "Handler": "framework.onTimeout",
+    "Role": {
+     "Fn::GetAtt": [
+      "SnapshoterSnapshotProviderframeworkonTimeoutServiceRole0B00A1BD",
+      "Arn"
+     ]
+    },
     "Runtime": {
      "Fn::FindInMap": [
-      "DefaultCrNodeVersionMap",
+      "LatestNodeRuntimeMap",
       {
        "Ref": "AWS::Region"
       },
@@ -1254,6 +1254,22 @@
          ]
         }
        ]
+      },
+      {
+       "Action": [
+        "logs:CreateLogDelivery",
+        "logs:CreateLogStream",
+        "logs:DeleteLogDelivery",
+        "logs:DescribeLogGroups",
+        "logs:DescribeResourcePolicies",
+        "logs:GetLogDelivery",
+        "logs:ListLogDeliveries",
+        "logs:PutLogEvents",
+        "logs:PutResourcePolicy",
+        "logs:UpdateLogDelivery"
+       ],
+       "Effect": "Allow",
+       "Resource": "*"
       }
      ],
      "Version": "2012-10-17"
@@ -1265,6 +1281,26 @@
      }
     ]
    }
+  },
+  "SnapshoterSnapshotProviderwaiterstatemachineLogGroup5A64CAF9": {
+   "Type": "AWS::Logs::LogGroup",
+   "Properties": {
+    "LogGroupName": {
+     "Fn::Join": [
+      "",
+      [
+       "/aws/vendedlogs/states/waiter-state-machine-",
+       {
+        "Ref": "SnapshoterSnapshotProviderframeworkisComplete803B4F1B"
+       },
+       "-c8913d7ae55807b42206686ba5c74df4ca169c2f9e"
+      ]
+     ]
+    },
+    "RetentionInDays": 731
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain"
   },
   "SnapshoterSnapshotProviderwaiterstatemachineE1F05D1F": {
    "Type": "AWS::StepFunctions::StateMachine",
@@ -1290,6 +1326,22 @@
        "\"}}}"
       ]
      ]
+    },
+    "LoggingConfiguration": {
+     "Destinations": [
+      {
+       "CloudWatchLogsLogGroup": {
+        "LogGroupArn": {
+         "Fn::GetAtt": [
+          "SnapshoterSnapshotProviderwaiterstatemachineLogGroup5A64CAF9",
+          "Arn"
+         ]
+        }
+       }
+      }
+     ],
+     "IncludeExecutionData": false,
+     "Level": "ERROR"
     },
     "RoleArn": {
      "Fn::GetAtt": [
@@ -1353,7 +1405,6 @@
   "FromSnapshotSecurityGroupfromcdkintegclustersnapshotFromSnapshotRotationSingleUserSecurityGroup8B231219IndirectPort7C6DDFDF": {
    "Type": "AWS::EC2::SecurityGroupIngress",
    "Properties": {
-    "IpProtocol": "tcp",
     "Description": "from cdkintegclustersnapshotFromSnapshotRotationSingleUserSecurityGroup8B231219:{IndirectPort}",
     "FromPort": {
      "Fn::GetAtt": [
@@ -1367,6 +1418,7 @@
       "GroupId"
      ]
     },
+    "IpProtocol": "tcp",
     "SourceSecurityGroupId": {
      "Fn::GetAtt": [
       "FromSnapshotRotationSingleUserSecurityGroupF78A9956",
@@ -1379,42 +1431,6 @@
       "Endpoint.Port"
      ]
     }
-   }
-  },
-  "FromSnapshotSecret9100F61C": {
-   "Type": "AWS::SecretsManager::Secret",
-   "Properties": {
-    "Description": {
-     "Fn::Join": [
-      "",
-      [
-       "Generated by the CDK for stack: ",
-       {
-        "Ref": "AWS::StackName"
-       }
-      ]
-     ]
-    },
-    "GenerateSecretString": {
-     "ExcludeCharacters": " %+~`#$&*()|[]{}:;<>?!'/@\"\\",
-     "GenerateStringKey": "password",
-     "PasswordLength": 30,
-     "SecretStringTemplate": "{\"username\":\"admin\"}"
-    }
-   },
-   "UpdateReplacePolicy": "Delete",
-   "DeletionPolicy": "Delete"
-  },
-  "FromSnapshotSecretAttachmentB62DA1C6": {
-   "Type": "AWS::SecretsManager::SecretTargetAttachment",
-   "Properties": {
-    "SecretId": {
-     "Ref": "FromSnapshotSecret9100F61C"
-    },
-    "TargetId": {
-     "Ref": "FromSnapshotEE0682C5"
-    },
-    "TargetType": "AWS::RDS::DBCluster"
    }
   },
   "cdkintegclustersnapshotFromSnapshotSnapshotSecretD93327943fdaad7efa858a3daf9490cf0a702aeb": {
@@ -1456,9 +1472,6 @@
   "FromSnapshotSnapshotSecretAttachmentRotationSchedule102BDEB3": {
    "Type": "AWS::SecretsManager::RotationSchedule",
    "Properties": {
-    "SecretId": {
-     "Ref": "FromSnapshotSnapshotSecretAttachmentA3F619B8"
-    },
     "RotationLambdaARN": {
      "Fn::GetAtt": [
       "FromSnapshotRotationSingleUserEBCAA50C",
@@ -1466,7 +1479,10 @@
      ]
     },
     "RotationRules": {
-     "AutomaticallyAfterDays": 30
+     "ScheduleExpression": "rate(30 days)"
+    },
+    "SecretId": {
+     "Ref": "FromSnapshotSnapshotSecretAttachmentA3F619B8"
     }
    }
   },
@@ -1510,12 +1526,12 @@
    "Type": "AWS::RDS::DBCluster",
    "Properties": {
     "CopyTagsToSnapshot": true,
-    "DBClusterParameterGroupName": "default.aurora-mysql5.7",
+    "DBClusterParameterGroupName": "default.aurora-mysql8.0",
     "DBSubnetGroupName": {
      "Ref": "FromSnapshotSubnets9ED4B8EE"
     },
     "Engine": "aurora-mysql",
-    "EngineVersion": "5.7.mysql_aurora.2.10.2",
+    "EngineVersion": "8.0.mysql_aurora.3.04.0",
     "MasterUserPassword": {
      "Fn::Join": [
       "",
@@ -1552,7 +1568,7 @@
     "DBClusterIdentifier": {
      "Ref": "FromSnapshotEE0682C5"
     },
-    "DBInstanceClass": "db.t3.small",
+    "DBInstanceClass": "db.t3.medium",
     "DBSubnetGroupName": {
      "Ref": "FromSnapshotSubnets9ED4B8EE"
     },
@@ -1573,7 +1589,7 @@
     "DBClusterIdentifier": {
      "Ref": "FromSnapshotEE0682C5"
     },
-    "DBInstanceClass": "db.t3.small",
+    "DBInstanceClass": "db.t3.medium",
     "DBSubnetGroupName": {
      "Ref": "FromSnapshotSubnets9ED4B8EE"
     },
@@ -1672,119 +1688,140 @@
   }
  },
  "Mappings": {
-  "DefaultCrNodeVersionMap": {
+  "LatestNodeRuntimeMap": {
    "af-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-south-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-4": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-5": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-7": {
+    "value": "nodejs20.x"
    },
    "ca-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "ca-west-1": {
+    "value": "nodejs20.x"
    },
    "cn-north-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "cn-northwest-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "eu-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-central-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "eu-isoe-west-1": {
+    "value": "nodejs18.x"
    },
    "eu-north-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-south-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "il-central-1": {
+    "value": "nodejs20.x"
    },
    "me-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "me-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "mx-central-1": {
+    "value": "nodejs20.x"
    },
    "sa-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-east-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-gov-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "us-gov-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "us-iso-east-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-iso-west-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-isob-east-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-west-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    }
   },
   "FromSnapshotRotationSingleUserSARMapping4464D796": {
    "aws": {
     "applicationId": "arn:aws:serverlessrepo:us-east-1:297356227824:applications/SecretsManagerRDSMySQLRotationSingleUser",
-    "semanticVersion": "1.1.225"
+    "semanticVersion": "1.1.367"
    },
    "aws-cn": {
     "applicationId": "arn:aws-cn:serverlessrepo:cn-north-1:193023089310:applications/SecretsManagerRDSMySQLRotationSingleUser",
-    "semanticVersion": "1.1.37"
+    "semanticVersion": "1.1.237"
    },
    "aws-us-gov": {
     "applicationId": "arn:aws-us-gov:serverlessrepo:us-gov-west-1:023102451235:applications/SecretsManagerRDSMySQLRotationSingleUser",
-    "semanticVersion": "1.1.93"
+    "semanticVersion": "1.1.213"
    }
   }
  },

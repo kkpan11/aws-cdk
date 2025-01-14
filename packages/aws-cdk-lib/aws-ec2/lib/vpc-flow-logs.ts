@@ -4,8 +4,13 @@ import { ISubnet, IVpc } from './vpc';
 import * as iam from '../../aws-iam';
 import * as logs from '../../aws-logs';
 import * as s3 from '../../aws-s3';
-import { IResource, PhysicalName, RemovalPolicy, Resource, FeatureFlags, Stack, CfnResource } from '../../core';
+import { IResource, PhysicalName, RemovalPolicy, Resource, FeatureFlags, Stack, Tags, CfnResource } from '../../core';
 import { S3_CREATE_DEFAULT_LOGGING_POLICY } from '../../cx-api';
+
+/**
+ * Name tag constant
+ */
+const NAME_TAG: string = 'Name';
 
 /**
  * A FlowLog
@@ -36,7 +41,7 @@ export enum FlowLogTrafficType {
   /**
    * Only log rejects
    */
-  REJECT = 'REJECT'
+  REJECT = 'REJECT',
 }
 
 /**
@@ -51,7 +56,12 @@ export enum FlowLogDestinationType {
   /**
    * Send flow logs to S3 Bucket
    */
-  S3 = 's3'
+  S3 = 's3',
+
+  /**
+   * Send flow logs to Kinesis Data Firehose
+   */
+  KINESIS_DATA_FIREHOSE = 'kinesis-data-firehose',
 }
 
 /**
@@ -87,6 +97,26 @@ export abstract class FlowLogResourceType {
       resourceId: id,
     };
   }
+
+  /**
+   * The Transit Gateway to attach the Flow Log to
+   */
+  public static fromTransitGatewayId(id: string): FlowLogResourceType {
+    return {
+      resourceType: 'TransitGateway',
+      resourceId: id,
+    };
+  };
+
+  /**
+   * The Transit Gateway Attachment to attach the Flow Log to
+   */
+  public static fromTransitGatewayAttachmentId(id: string): FlowLogResourceType {
+    return {
+      resourceType: 'TransitGatewayAttachment',
+      resourceId: id,
+    };
+  };
 
   /**
    * The type of resource to attach a flow log to.
@@ -184,6 +214,18 @@ export abstract class FlowLogDestination {
   }
 
   /**
+   * Use Kinesis Data Firehose as the destination
+   *
+   * @param deliveryStreamArn the ARN of Kinesis Data Firehose delivery stream to publish logs to
+   */
+  public static toKinesisDataFirehoseDestination(deliveryStreamArn: string): FlowLogDestination {
+    return new KinesisDataFirehoseDestination({
+      logDestinationType: FlowLogDestinationType.KINESIS_DATA_FIREHOSE,
+      deliveryStreamArn,
+    });
+  }
+
+  /**
    * Generates a flow log destination configuration
    */
   public abstract bind(scope: Construct, flowLog: FlowLog): FlowLogDestinationConfig;
@@ -227,6 +269,13 @@ export interface FlowLogDestinationConfig {
    * @default - undefined
    */
   readonly keyPrefix?: string;
+
+  /**
+   * The ARN of Kinesis Data Firehose delivery stream to publish the flow logs to
+   *
+   * @default - undefined
+   */
+  readonly deliveryStreamArn?: string;
 
   /**
    * Options for writing flow logs to a supported destination
@@ -376,6 +425,27 @@ class CloudWatchLogsDestination extends FlowLogDestination {
       logDestinationType: FlowLogDestinationType.CLOUD_WATCH_LOGS,
       logGroup,
       iamRole,
+    };
+  }
+}
+
+/**
+ *
+ */
+class KinesisDataFirehoseDestination extends FlowLogDestination {
+  constructor(private readonly props: FlowLogDestinationConfig) {
+    super();
+  }
+
+  public bind(_scope: Construct, _flowLog: FlowLog): FlowLogDestinationConfig {
+    if (this.props.deliveryStreamArn === undefined) {
+      throw new Error('deliveryStreamArn is required');
+    }
+    const deliveryStreamArn = this.props.deliveryStreamArn;
+
+    return {
+      logDestinationType: FlowLogDestinationType.KINESIS_DATA_FIREHOSE,
+      deliveryStreamArn,
     };
   }
 }
@@ -577,6 +647,58 @@ export class LogFormat {
   public static readonly TRAFFIC_PATH = LogFormat.field('traffic-path');
 
   /**
+   * AWS Resource Name (ARN) of the ECS cluster if the traffic is from a running ECS task.
+   */
+  public static readonly ECS_CLUSTER_ARN = LogFormat.field('ecs-cluster-arn');
+
+  /**
+   * Name of the ECS cluster if the traffic is from a running ECS task.
+   */
+  public static readonly ECS_CLUSTER_NAME = LogFormat.field('ecs-cluster-name');
+
+  /**
+   * ARN of the ECS container instance if the traffic is from a running ECS task on an EC2 instance.
+   */
+  public static readonly ECS_CONTAINER_INSTANCE_ARN = LogFormat.field('ecs-container-instance-arn');
+
+  /**
+   * ID of the ECS container instance if the traffic is from a running ECS task on an EC2 instance.
+   */
+  public static readonly ECS_CONTAINER_INSTANCE_ID = LogFormat.field('ecs-container-instance-id');
+
+  /**
+   * Docker runtime ID of the container if the traffic is from a running ECS task.
+   * If there is one container or more in the ECS task, this will be the docker runtime ID of the first container.
+   */
+  public static readonly ECS_CONTAINER_ID = LogFormat.field('ecs-container-id');
+
+  /**
+   * Docker runtime ID of the container if the traffic is from a running ECS task.
+   * If there is more than one container in the ECS task, this will be the Docker runtime ID of the second container.
+   */
+  public static readonly ECS_SECOND_CONTAINER_ID = LogFormat.field('ecs-second-container-id');
+
+  /**
+   * Name of the ECS service if the traffic is from a running ECS task and the ECS task is started by an ECS service.
+   */
+  public static readonly ECS_SERVICE_NAME = LogFormat.field('ecs-service-name');
+
+  /**
+   * ARN of the ECS task definition if the traffic is from a running ECS task.
+   */
+  public static readonly ECS_TASK_DEFINITION_ARN = LogFormat.field('ecs-task-definition-arn');
+
+  /**
+   * ARN of the ECS task if the traffic is from a running ECS task.
+   */
+  public static readonly ECS_TASK_ARN = LogFormat.field('ecs-task-arn');
+
+  /**
+   * ID of the ECS task if the traffic is from a running ECS task.
+   */
+  public static readonly ECS_TASK_ID = LogFormat.field('ecs-task-id');
+
+  /**
    * The default format.
    */
   public static readonly ALL_DEFAULT_FIELDS = new LogFormat('${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}');
@@ -609,6 +731,9 @@ export class LogFormat {
 export interface FlowLogOptions {
   /**
    * The type of traffic to log. You can log traffic that the resource accepts or rejects, or all traffic.
+   * When the target is either `TransitGateway` or `TransitGatewayAttachment`, setting the traffic type is not possible.
+   *
+   * @see https://docs.aws.amazon.com/vpc/latest/tgw/working-with-flow-logs.html
    *
    * @default ALL
    */
@@ -638,7 +763,12 @@ export interface FlowLogOptions {
    * The maximum interval of time during which a flow of packets is captured
    * and aggregated into a flow log record.
    *
-   * @default FlowLogMaxAggregationInterval.TEN_MINUTES
+   * When creating flow logs for a Transit Gateway or Transit Gateway Attachment,
+   * this property must be ONE_MINUTES.
+   *
+   * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-flowlog.html#cfn-ec2-flowlog-maxaggregationinterval
+   *
+   * @default - FlowLogMaxAggregationInterval.ONE_MINUTES if creating flow logs for Transit Gateway, otherwise FlowLogMaxAggregationInterval.TEN_MINUTES.
    */
   readonly maxAggregationInterval?: FlowLogMaxAggregationInterval;
 }
@@ -650,10 +780,9 @@ export interface FlowLogProps extends FlowLogOptions {
   /**
    * The name of the FlowLog
    *
-   * It is not recommended to use an explicit name.
+   * Since the FlowLog resource doesn't support providing a physical name, the value provided here will be recorded in the `Name` tag.
    *
-   * @default If you don't specify a flowLogName, AWS CloudFormation generates a
-   * unique physical ID and uses that ID for the group name.
+   * @default CDK generated name
    */
   readonly flowLogName?: string;
 
@@ -718,10 +847,13 @@ export class FlowLog extends FlowLogBase {
    */
   public readonly logGroup?: logs.ILogGroup;
 
+  /**
+   * The ARN of the Kinesis Data Firehose delivery stream to publish flow logs to
+   */
+  public readonly deliveryStreamArn?: string;
+
   constructor(scope: Construct, id: string, props: FlowLogProps) {
-    super(scope, id, {
-      physicalName: props.flowLogName,
-    });
+    super(scope, id);
 
     const destination = props.destination || FlowLogDestination.toCloudWatchLogs();
 
@@ -730,16 +862,33 @@ export class FlowLog extends FlowLogBase {
     this.bucket = destinationConfig.s3Bucket;
     this.iamRole = destinationConfig.iamRole;
     this.keyPrefix = destinationConfig.keyPrefix;
+    this.deliveryStreamArn = destinationConfig.deliveryStreamArn;
+
+    Tags.of(this).add(NAME_TAG, props.flowLogName || this.node.path);
 
     let logDestination: string | undefined = undefined;
     if (this.bucket) {
       logDestination = this.keyPrefix ? this.bucket.arnForObjects(this.keyPrefix) : this.bucket.bucketArn;
+    }
+    if (this.deliveryStreamArn) {
+      logDestination = this.deliveryStreamArn;
     }
     let customLogFormat: string | undefined = undefined;
     if (props.logFormat) {
       customLogFormat = props.logFormat.map(elm => {
         return elm.value;
       }).join(' ');
+    }
+
+    let trafficType: FlowLogTrafficType | undefined = props.trafficType ?? FlowLogTrafficType.ALL;
+    if (props.resourceType.resourceType === 'TransitGateway' || props.resourceType.resourceType === 'TransitGatewayAttachment') {
+      if (props.trafficType) {
+        throw new Error('trafficType is not supported for Transit Gateway and Transit Gateway Attachment');
+      }
+      if (props.maxAggregationInterval && props.maxAggregationInterval !== FlowLogMaxAggregationInterval.ONE_MINUTE) {
+        throw new Error('maxAggregationInterval must be set to ONE_MINUTE for Transit Gateway and Transit Gateway Attachment');
+      }
+      trafficType = undefined;
     }
 
     const flowLog = new CfnFlowLog(this, 'FlowLog', {
@@ -750,9 +899,7 @@ export class FlowLog extends FlowLogBase {
       maxAggregationInterval: props.maxAggregationInterval,
       resourceId: props.resourceType.resourceId,
       resourceType: props.resourceType.resourceType,
-      trafficType: props.trafficType
-        ? props.trafficType
-        : FlowLogTrafficType.ALL,
+      trafficType,
       logFormat: customLogFormat,
       logDestination,
     });

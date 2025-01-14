@@ -1,5 +1,5 @@
 import { Construct } from 'constructs';
-import { Template } from '../../assertions';
+import { Match, Template } from '../../assertions';
 import * as dynamodb from '../../aws-dynamodb';
 import * as ec2 from '../../aws-ec2';
 import * as efs from '../../aws-efs';
@@ -76,6 +76,22 @@ test('create a selection', () => {
         ],
       },
     ],
+  });
+});
+
+test('no policy is attached if disableDefaultBackupPolicy is true', () => {
+  // WHEN
+  new BackupSelection(stack, 'Selection', {
+    backupPlan: plan,
+    resources: [
+      BackupResource.fromArn('arn1'),
+    ],
+    disableDefaultBackupPolicy: true,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::IAM::Role', {
+    ManagedPolicyArns: Match.absent(),
   });
 });
 
@@ -160,7 +176,7 @@ test('fromConstruct', () => {
 
       new rds.ServerlessCluster(this, 'ServerlessCluster', {
         engine: rds.DatabaseClusterEngine.AURORA_POSTGRESQL,
-        parameterGroup: rds.ParameterGroup.fromParameterGroupName(stack, 'ParameterGroup', 'default.aurora-postgresql10'),
+        parameterGroup: rds.ParameterGroup.fromParameterGroupName(stack, 'ParameterGroup', 'default.aurora-postgresql11'),
         vpc,
       });
     }
@@ -595,7 +611,7 @@ test('fromRdsServerlessCluster', () => {
   const vpc = new ec2.Vpc(stack, 'Vpc');
   const newCluster = new rds.ServerlessCluster(stack, 'New', {
     engine: rds.DatabaseClusterEngine.AURORA_POSTGRESQL,
-    parameterGroup: rds.ParameterGroup.fromParameterGroupName(stack, 'ParameterGroup', 'default.aurora-postgresql10'),
+    parameterGroup: rds.ParameterGroup.fromParameterGroupName(stack, 'ParameterGroup', 'default.aurora-postgresql11'),
     vpc,
   });
   const existingCluster = rds.ServerlessCluster.fromServerlessClusterAttributes(stack, 'Existing', {

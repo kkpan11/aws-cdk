@@ -1,5 +1,5 @@
 {
-  "version": "32.0.0",
+  "version": "36.0.5",
   "artifacts": {
     "integ-aurora-serverlessv2-cluster.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "integ-aurora-serverlessv2-cluster.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/bffc468fc464208b727e3300214b3102d30e6f4d749531331ef45d2da89cae51.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/06303e55f4ff5ddba824a80c77c1d7f4b726c1701aa3875fdb6f90bf33300b15.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -177,6 +178,18 @@
             "data": "IntegVPCRestrictDefaultSecurityGroupCustomResource42DF8AB1"
           }
         ],
+        "/integ-aurora-serverlessv2-cluster/LatestNodeRuntimeMap": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "LatestNodeRuntimeMap"
+          }
+        ],
+        "/integ-aurora-serverlessv2-cluster/Custom::VpcRestrictDefaultSGCustomResourceProvider": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-customResourceProvider",
+            "data": true
+          }
+        ],
         "/integ-aurora-serverlessv2-cluster/Custom::VpcRestrictDefaultSGCustomResourceProvider/Role": [
           {
             "type": "aws:cdk:logicalId",
@@ -297,12 +310,6 @@
             "data": "integauroraserverlessv21alarmE70B8A00"
           }
         ],
-        "/integ-aurora-serverlessv2-cluster/integ-aurora-serverlessv2-2/Integ-Cluster": [
-          {
-            "type": "aws:cdk:info",
-            "data": "..."
-          }
-        ],
         "/integ-aurora-serverlessv2-cluster/integ-aurora-serverlessv2-2/Integ-Cluster/Subnets/Default": [
           {
             "type": "aws:cdk:logicalId",
@@ -391,6 +398,7 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "integtestDefaultTestDeployAssert24D5C536.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",

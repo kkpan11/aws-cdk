@@ -1,12 +1,6 @@
 {
-  "version": "20.0.0",
+  "version": "35.0.0",
   "artifacts": {
-    "Tree": {
-      "type": "cdk:tree",
-      "properties": {
-        "file": "tree.json"
-      }
-    },
     "aws-ecs-integ-fargate-special-listener.assets": {
       "type": "cdk:asset-manifest",
       "properties": {
@@ -20,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "aws-ecs-integ-fargate-special-listener.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/e61b26737c79e2198c237e493ffec12a98fff97920697b9202dd8f96559e3ada.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/0513e23bd1a49df8085e81dc9017840ff9c7efb1ea2068985ad170eeae0d3e0d.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -379,6 +374,7 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "publicQueueProcessingFargateServiceTestDefaultTestDeployAssertD65416D6.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
@@ -412,6 +408,12 @@
         ]
       },
       "displayName": "publicQueueProcessingFargateServiceTest/DefaultTest/DeployAssert"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
     }
   }
 }

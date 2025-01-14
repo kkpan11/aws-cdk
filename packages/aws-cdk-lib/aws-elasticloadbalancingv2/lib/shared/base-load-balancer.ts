@@ -1,11 +1,12 @@
 import { Construct } from 'constructs';
+import { IpAddressType } from './enums';
 import { Attributes, ifUndefined, mapTagMapToCxschema, renderAttributes } from './util';
 import * as ec2 from '../../../aws-ec2';
 import * as iam from '../../../aws-iam';
 import { PolicyStatement, ServicePrincipal } from '../../../aws-iam';
 import * as s3 from '../../../aws-s3';
 import * as cxschema from '../../../cloud-assembly-schema';
-import { ContextProvider, IResource, Lazy, Resource, Stack, Token } from '../../../core';
+import { CfnResource, ContextProvider, IResource, Lazy, Resource, Stack, Token } from '../../../core';
 import * as cxapi from '../../../cx-api';
 import { RegionInfo } from '../../../region-info';
 import { CfnLoadBalancer } from '../elasticloadbalancingv2.generated';
@@ -47,6 +48,22 @@ export interface BaseLoadBalancerProps {
    * @default false
    */
   readonly deletionProtection?: boolean;
+
+  /**
+   * Indicates whether cross-zone load balancing is enabled.
+   *
+   * @default - false for Network Load Balancers and true for Application Load Balancers.
+   * This can not be `false` for Application Load Balancers.
+   * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-elasticloadbalancingv2-loadbalancer-loadbalancerattribute.html
+   */
+  readonly crossZoneEnabled?: boolean;
+
+  /**
+   * Indicates whether the load balancer blocks traffic through the Internet Gateway (IGW).
+   *
+   * @default - false for internet-facing load balancers and true for internal load balancers
+   */
+  readonly denyAllIgwTraffic?: boolean;
 }
 
 export interface ILoadBalancerV2 extends IResource {
@@ -130,7 +147,7 @@ export abstract class BaseLoadBalancer extends Resource {
       } as cxschema.LoadBalancerContextQuery,
       dummyValue: {
         ipAddressType: cxapi.LoadBalancerIpAddressType.DUAL_STACK,
-        // eslint-disable-next-line @aws-cdk/no-literal-partition
+        // eslint-disable-next-line @cdklabs/no-literal-partition
         loadBalancerArn: `arn:aws:elasticloadbalancing:us-west-2:123456789012:loadbalancer/${options.loadBalancerType}/my-load-balancer/50dc6c495c0c9188`,
         loadBalancerCanonicalHostedZoneId: 'Z3DZXE0EXAMPLE',
         loadBalancerDnsName: 'my-load-balancer-1234567890.us-west-2.elb.amazonaws.com',
@@ -217,6 +234,11 @@ export abstract class BaseLoadBalancer extends Resource {
 
     this.vpc = baseProps.vpc;
 
+    if (additionalProps.ipAddressType === IpAddressType.DUAL_STACK_WITHOUT_PUBLIC_IPV4 &&
+      additionalProps.type !== cxschema.LoadBalancerType.APPLICATION) {
+      throw new Error(`'ipAddressType' DUAL_STACK_WITHOUT_PUBLIC_IPV4 can only be used with Application Load Balancer, got ${additionalProps.type}`);
+    }
+
     const resource = new CfnLoadBalancer(this, 'Resource', {
       name: this.physicalName,
       subnets: subnetIds,
@@ -229,6 +251,18 @@ export abstract class BaseLoadBalancer extends Resource {
     }
 
     this.setAttribute('deletion_protection.enabled', baseProps.deletionProtection ? 'true' : 'false');
+
+    if (baseProps.crossZoneEnabled !== undefined) {
+      this.setAttribute('load_balancing.cross_zone.enabled', baseProps.crossZoneEnabled === true ? 'true' : 'false');
+    }
+
+    if (baseProps.denyAllIgwTraffic !== undefined) {
+      if (additionalProps.ipAddressType === IpAddressType.DUAL_STACK) {
+        this.setAttribute('ipv6.deny_all_igw_traffic', baseProps.denyAllIgwTraffic.toString());
+      } else {
+        throw new Error(`'denyAllIgwTraffic' may only be set on load balancers with ${IpAddressType.DUAL_STACK} addressing.`);
+      }
+    }
 
     this.loadBalancerCanonicalHostedZoneId = resource.attrCanonicalHostedZoneId;
     this.loadBalancerDnsName = resource.attrDnsName;
@@ -253,15 +287,13 @@ export abstract class BaseLoadBalancer extends Resource {
     this.setAttribute('access_logs.s3.prefix', prefix);
 
     const logsDeliveryServicePrincipal = new ServicePrincipal('delivery.logs.amazonaws.com');
-    bucket.addToResourcePolicy(
-      new PolicyStatement({
-        actions: ['s3:PutObject'],
-        principals: [this.resourcePolicyPrincipal()],
-        resources: [
-          bucket.arnForObjects(`${prefix ? prefix + '/' : ''}AWSLogs/${Stack.of(this).account}/*`),
-        ],
-      }),
-    );
+    bucket.addToResourcePolicy(new PolicyStatement({
+      actions: ['s3:PutObject'],
+      principals: [this.resourcePolicyPrincipal()],
+      resources: [
+        bucket.arnForObjects(`${prefix ? prefix + '/' : ''}AWSLogs/${Stack.of(this).account}/*`),
+      ],
+    }));
     bucket.addToResourcePolicy(
       new PolicyStatement({
         actions: ['s3:PutObject'],
@@ -283,7 +315,13 @@ export abstract class BaseLoadBalancer extends Resource {
     );
 
     // make sure the bucket's policy is created before the ALB (see https://github.com/aws/aws-cdk/issues/1633)
-    this.node.addDependency(bucket);
+    // at the L1 level to avoid creating a circular dependency (see https://github.com/aws/aws-cdk/issues/27528
+    // and https://github.com/aws/aws-cdk/issues/27928)
+    const lb = this.node.defaultChild;
+    const bucketPolicy = bucket.policy?.node.defaultChild;
+    if (lb && bucketPolicy && CfnResource.isCfnResource(lb) && CfnResource.isCfnResource(bucketPolicy)) {
+      lb.addDependency(bucketPolicy);
+    }
   }
 
   /**

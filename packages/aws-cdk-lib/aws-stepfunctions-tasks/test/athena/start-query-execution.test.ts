@@ -224,4 +224,271 @@ describe('Start Query Execution', () => {
       }),
     });
   });
+
+  test('execution parameters succeeds', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    // WHEN
+    const task = new AthenaStartQueryExecution(stack, 'Query', {
+      queryString: 'CREATE DATABASE ?',
+      clientRequestToken: 'unique-client-request-token',
+      queryExecutionContext: {
+        databaseName: 'mydatabase',
+        catalogName: 'AwsDataCatalog',
+      },
+      resultConfiguration: {
+        outputLocation: {
+          bucketName: 'query-results-bucket',
+          objectKey: 'folder',
+        },
+      },
+      workGroup: 'primary',
+      executionParameters: ['database'],
+    });
+
+    // THEN
+    expect(stack.resolve(task.toStateJson())).toEqual({
+      Type: 'Task',
+      Resource: {
+        'Fn::Join': [
+          '',
+          [
+            'arn:',
+            {
+              Ref: 'AWS::Partition',
+            },
+            ':states:::athena:startQueryExecution',
+          ],
+        ],
+      },
+      End: true,
+      Parameters: {
+        QueryString: 'CREATE DATABASE ?',
+        ClientRequestToken: 'unique-client-request-token',
+        QueryExecutionContext: {
+          Database: 'mydatabase',
+          Catalog: 'AwsDataCatalog',
+        },
+        ResultConfiguration: {
+          OutputLocation: 's3://query-results-bucket/folder/',
+        },
+        WorkGroup: 'primary',
+        ExecutionParameters: ['database'],
+      },
+    });
+  });
+
+  test('execution parameters succeeds with token', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    // WHEN
+    const task = new AthenaStartQueryExecution(stack, 'Query', {
+      queryString: 'CREATE DATABASE ?',
+      clientRequestToken: 'unique-client-request-token',
+      queryExecutionContext: {
+        databaseName: 'mydatabase',
+        catalogName: 'AwsDataCatalog',
+      },
+      resultConfiguration: {
+        outputLocation: {
+          bucketName: 'query-results-bucket',
+          objectKey: 'folder',
+        },
+      },
+      workGroup: 'primary',
+      executionParameters: sfn.JsonPath.listAt('$.executionParameters'),
+    });
+
+    // THEN
+    expect(stack.resolve(task.toStateJson())).toEqual({
+      Type: 'Task',
+      Resource: {
+        'Fn::Join': [
+          '',
+          [
+            'arn:',
+            {
+              Ref: 'AWS::Partition',
+            },
+            ':states:::athena:startQueryExecution',
+          ],
+        ],
+      },
+      End: true,
+      Parameters: {
+        'QueryString': 'CREATE DATABASE ?',
+        'ClientRequestToken': 'unique-client-request-token',
+        'QueryExecutionContext': {
+          Database: 'mydatabase',
+          Catalog: 'AwsDataCatalog',
+        },
+        'ResultConfiguration': {
+          OutputLocation: 's3://query-results-bucket/folder/',
+        },
+        'WorkGroup': 'primary',
+        'ExecutionParameters.$': '$.executionParameters',
+      },
+    });
+  });
+
+  test('execution parameters fails on too long string', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    expect(() => {
+      // WHEN
+      const task = new AthenaStartQueryExecution(stack, 'Query', {
+        queryString: 'CREATE DATABASE ?',
+        clientRequestToken: 'unique-client-request-token',
+        queryExecutionContext: {
+          databaseName: 'mydatabase',
+          catalogName: 'AwsDataCatalog',
+        },
+        resultConfiguration: {
+          outputLocation: {
+            bucketName: 'query-results-bucket',
+            objectKey: 'folder',
+          },
+        },
+        workGroup: 'primary',
+        executionParameters: ['valid1', 'database'.repeat(129), 'valid2'],
+      });
+      // THEN
+    }).toThrow(/length must be between 1 and 1024 characters/);
+  });
+
+  test('execution parameters fails on empty string', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    expect(() => {
+      // WHEN
+      const task = new AthenaStartQueryExecution(stack, 'Query', {
+        queryString: 'CREATE DATABASE ?',
+        clientRequestToken: 'unique-client-request-token',
+        queryExecutionContext: {
+          databaseName: 'mydatabase',
+          catalogName: 'AwsDataCatalog',
+        },
+        resultConfiguration: {
+          outputLocation: {
+            bucketName: 'query-results-bucket',
+            objectKey: 'folder',
+          },
+        },
+        workGroup: 'primary',
+        executionParameters: [''],
+      });
+      // THEN
+    }).toThrow(/length must be between 1 and 1024 characters/);
+  });
+
+  test('execution parameters fails on empty list', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    expect(() => {
+      // WHEN
+      const task = new AthenaStartQueryExecution(stack, 'Query', {
+        queryString: 'CREATE DATABASE ?',
+        clientRequestToken: 'unique-client-request-token',
+        queryExecutionContext: {
+          databaseName: 'mydatabase',
+          catalogName: 'AwsDataCatalog',
+        },
+        resultConfiguration: {
+          outputLocation: {
+            bucketName: 'query-results-bucket',
+            objectKey: 'folder',
+          },
+        },
+        workGroup: 'primary',
+        executionParameters: [],
+      });
+      // THEN
+    }).toThrow(/must be a non-empty list/);
+  });
+
+  test('task with valid resultReuseConfigurationMaxAge', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    // WHEN
+    const task = new AthenaStartQueryExecution(stack, 'Query', {
+      queryString: 'SELECT 1',
+      workGroup: 'primary',
+      resultConfiguration: {
+        encryptionConfiguration: { encryptionOption: EncryptionOption.S3_MANAGED },
+      },
+      resultReuseConfigurationMaxAge: cdk.Duration.minutes(60),
+    });
+
+    // THEN
+    expect(stack.resolve(task.toStateJson())).toEqual({
+      Type: 'Task',
+      Resource: {
+        'Fn::Join': [
+          '',
+          [
+            'arn:',
+            {
+              Ref: 'AWS::Partition',
+            },
+            ':states:::athena:startQueryExecution',
+          ],
+        ],
+      },
+      End: true,
+      Parameters: {
+        QueryString: 'SELECT 1',
+        WorkGroup: 'primary',
+        ResultConfiguration: {
+          EncryptionConfiguration: { EncryptionOption: EncryptionOption.S3_MANAGED },
+        },
+        ResultReuseConfiguration: {
+          ResultReuseByAgeConfiguration: {
+            Enabled: true,
+            MaxAgeInMinutes: 60,
+          },
+        },
+      },
+    });
+  });
+
+  test('invalid resultReuseConfigurationMaxAge', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    // WHEN
+    expect(() => {
+      new AthenaStartQueryExecution(stack, 'Query', {
+        queryString: 'SELECT 1',
+        workGroup: 'primary',
+        resultConfiguration: {
+          encryptionConfiguration: { encryptionOption: EncryptionOption.S3_MANAGED },
+        },
+        resultReuseConfigurationMaxAge: cdk.Duration.millis(200),
+      });
+    }).toThrow('resultReuseConfigurationMaxAge must be greater than or equal to 1 minute or be equal to 0, got 200 ms');
+  });
+
+  test('resultReuseConfigurationMaxAge exceeds max 10080 minutes', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    // WHEN
+    expect(() => {
+      new AthenaStartQueryExecution(stack, 'Query', {
+        queryString: 'SELECT 1',
+        workGroup: 'primary',
+        resultConfiguration: {
+          encryptionConfiguration: { encryptionOption: EncryptionOption.S3_MANAGED },
+        },
+        resultReuseConfigurationMaxAge: cdk.Duration.minutes(10090),
+      });
+    }).toThrow('resultReuseConfigurationMaxAge must either be 0 or between 1 and 10080 minutes, got 10090',
+    );
+  });
 });

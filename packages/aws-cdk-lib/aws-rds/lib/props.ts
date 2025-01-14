@@ -56,7 +56,7 @@ export interface InstanceProps {
   /**
    * Whether to enable Performance Insights for the DB instance.
    *
-   * @default - false, unless ``performanceInsightRentention`` or ``performanceInsightEncryptionKey`` is set.
+   * @default - false, unless ``performanceInsightRetention`` or ``performanceInsightEncryptionKey`` is set.
    */
   readonly enablePerformanceInsights?: boolean;
 
@@ -101,6 +101,17 @@ export interface InstanceProps {
    * @default - `true` if `vpcSubnets` is `subnetType: SubnetType.PUBLIC`, `false` otherwise
    */
   readonly publiclyAccessible?: boolean;
+
+  /**
+   * A preferred maintenance window day/time range. Should be specified as a range ddd:hh24:mi-ddd:hh24:mi (24H Clock UTC).
+   *
+   * Example: 'Sun:23:45-Mon:00:15'
+   *
+   * @default - 30-minute window selected at random from an 8-hour block of time for
+   * each AWS Region, occurring on a random day of the week.
+   * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_UpgradeDBInstance.Maintenance.html#Concepts.DBMaintenance
+   */
+  readonly preferredMaintenanceWindow?: string;
 }
 
 /**
@@ -499,6 +510,14 @@ export interface CommonRotationUserOptions {
    * @default - a new security group is created
    */
   readonly securityGroup?: ec2.ISecurityGroup;
+
+  /**
+   * Specifies whether to rotate the secret immediately or wait until the next
+   * scheduled rotation window.
+   *
+   * @default true
+   */
+  readonly rotateImmediatelyOnUpdate?: boolean;
 }
 
 /**

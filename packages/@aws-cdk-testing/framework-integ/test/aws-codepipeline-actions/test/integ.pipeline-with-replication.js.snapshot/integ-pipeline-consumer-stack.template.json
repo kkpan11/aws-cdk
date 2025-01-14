@@ -227,6 +227,47 @@
   "PipelineC660917D": {
    "Type": "AWS::CodePipeline::Pipeline",
    "Properties": {
+    "ArtifactStores": [
+     {
+      "ArtifactStore": {
+       "EncryptionKey": {
+        "Id": {
+         "Fn::GetAtt": [
+          "ExportsReader8B249524",
+          "/cdk/exports/integ-pipeline-consumer-stack/integpipelineproducerstackuseast1FnGetAttReplicationKeyFCE40BF4ArnFA0E5A73"
+         ]
+        },
+        "Type": "KMS"
+       },
+       "Location": {
+        "Fn::GetAtt": [
+         "ExportsReader8B249524",
+         "/cdk/exports/integ-pipeline-consumer-stack/integpipelineproducerstackuseast1RefReplicationBucket70D68737DB32483D"
+        ]
+       },
+       "Type": "S3"
+      },
+      "Region": "us-east-1"
+     },
+     {
+      "ArtifactStore": {
+       "EncryptionKey": {
+        "Id": {
+         "Fn::GetAtt": [
+          "PipelineArtifactsBucketEncryptionKey01D58D69",
+          "Arn"
+         ]
+        },
+        "Type": "KMS"
+       },
+       "Location": {
+        "Ref": "PipelineArtifactsBucket22248F97"
+       },
+       "Type": "S3"
+      },
+      "Region": "us-east-2"
+     }
+    ],
     "RoleArn": {
      "Fn::GetAtt": [
       "PipelineRoleD68726F7",
@@ -296,47 +337,6 @@
        }
       ],
       "Name": "stage2"
-     }
-    ],
-    "ArtifactStores": [
-     {
-      "ArtifactStore": {
-       "EncryptionKey": {
-        "Id": {
-         "Fn::GetAtt": [
-          "ExportsReader8B249524",
-          "/cdk/exports/integ-pipeline-consumer-stack/integpipelineproducerstackuseast1FnGetAttReplicationKeyFCE40BF4ArnFA0E5A73"
-         ]
-        },
-        "Type": "KMS"
-       },
-       "Location": {
-        "Fn::GetAtt": [
-         "ExportsReader8B249524",
-         "/cdk/exports/integ-pipeline-consumer-stack/integpipelineproducerstackuseast1RefReplicationBucket70D68737DB32483D"
-        ]
-       },
-       "Type": "S3"
-      },
-      "Region": "us-east-1"
-     },
-     {
-      "ArtifactStore": {
-       "EncryptionKey": {
-        "Id": {
-         "Fn::GetAtt": [
-          "PipelineArtifactsBucketEncryptionKey01D58D69",
-          "Arn"
-         ]
-        },
-        "Type": "KMS"
-       },
-       "Location": {
-        "Ref": "PipelineArtifactsBucket22248F97"
-       },
-       "Type": "S3"
-      },
-      "Region": "us-east-2"
      }
     ]
    },
@@ -551,7 +551,8 @@
        "Action": [
         "s3:DeleteObject*",
         "s3:GetBucket*",
-        "s3:List*"
+        "s3:List*",
+        "s3:PutBucketPolicy"
        ],
        "Effect": "Allow",
        "Principal": {
@@ -638,7 +639,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-us-east-2"
      },
-     "S3Key": "2575608c9455922c199396dd056f7479bb172f5c6068cd093f6d061160f48cee.zip"
+     "S3Key": "96ea260348625427bb7f28ab3b379f62da6f428bcd155cb13f9261aa6a404b0d.zip"
     },
     "Timeout": 900,
     "MemorySize": 128,
@@ -649,7 +650,7 @@
       "Arn"
      ]
     },
-    "Runtime": "nodejs16.x",
+    "Runtime": "nodejs20.x",
     "Description": {
      "Fn::Join": [
       "",
@@ -819,9 +820,18 @@
     "Artifacts": {
      "Type": "CODEPIPELINE"
     },
+    "Cache": {
+     "Type": "NO_CACHE"
+    },
+    "EncryptionKey": {
+     "Fn::GetAtt": [
+      "PipelineArtifactsBucketEncryptionKey01D58D69",
+      "Arn"
+     ]
+    },
     "Environment": {
      "ComputeType": "BUILD_GENERAL1_SMALL",
-     "Image": "aws/codebuild/standard:1.0",
+     "Image": "aws/codebuild/standard:7.0",
      "ImagePullCredentialsType": "CODEBUILD",
      "PrivilegedMode": false,
      "Type": "LINUX_CONTAINER"
@@ -834,15 +844,6 @@
     },
     "Source": {
      "Type": "CODEPIPELINE"
-    },
-    "Cache": {
-     "Type": "NO_CACHE"
-    },
-    "EncryptionKey": {
-     "Fn::GetAtt": [
-      "PipelineArtifactsBucketEncryptionKey01D58D69",
-      "Arn"
-     ]
     }
    }
   },
@@ -926,7 +927,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-us-east-2"
      },
-     "S3Key": "4b6a500a9b63c31028b69751201d80225328cfb9df5c4a6abaac18e7d4c48a8c.zip"
+     "S3Key": "db6125c17ee6883a5c42f4340b9dd79a7a8b098470e62fb5ae2048149a34e3cf.zip"
     },
     "Timeout": 900,
     "MemorySize": 128,
@@ -937,7 +938,7 @@
       "Arn"
      ]
     },
-    "Runtime": "nodejs16.x"
+    "Runtime": "nodejs20.x"
    },
    "DependsOn": [
     "CustomCrossRegionExportReaderCustomResourceProviderRole10531BBD"

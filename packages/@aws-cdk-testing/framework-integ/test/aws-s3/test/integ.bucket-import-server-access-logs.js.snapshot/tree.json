@@ -107,7 +107,8 @@
                               "Action": [
                                 "s3:DeleteObject*",
                                 "s3:GetBucket*",
-                                "s3:List*"
+                                "s3:List*",
+                                "s3:PutBucketPolicy"
                               ],
                               "Effect": "Allow",
                               "Principal": {
@@ -202,9 +203,9 @@
               "version": "0.0.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "aws-cdk-s3-access-logs-target/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "aws-cdk-s3-access-logs-target/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -240,7 +241,7 @@
               }
             },
             "constructInfo": {
-              "fqn": "aws-cdk-lib.CustomResourceProvider",
+              "fqn": "aws-cdk-lib.CustomResourceProviderBase",
               "version": "0.0.0"
             }
           },
@@ -259,7 +260,7 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.2.54"
+              "version": "10.3.0"
             }
           },
           "BootstrapVersion": {
@@ -393,7 +394,8 @@
                               "Action": [
                                 "s3:DeleteObject*",
                                 "s3:GetBucket*",
-                                "s3:List*"
+                                "s3:List*",
+                                "s3:PutBucketPolicy"
                               ],
                               "Effect": "Allow",
                               "Principal": {
@@ -467,9 +469,9 @@
               "version": "0.0.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "aws-cdk-s3-access-logs-delivery/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "aws-cdk-s3-access-logs-delivery/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -505,7 +507,7 @@
               }
             },
             "constructInfo": {
-              "fqn": "aws-cdk-lib.CustomResourceProvider",
+              "fqn": "aws-cdk-lib.CustomResourceProviderBase",
               "version": "0.0.0"
             }
           },
@@ -544,7 +546,7 @@
                 "path": "ServerAccessLogsImportTest/DefaultTest/Default",
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.2.54"
+                  "version": "10.3.0"
                 }
               },
               "DeployAssert": {
@@ -590,7 +592,7 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.2.54"
+          "version": "10.3.0"
         }
       }
     },

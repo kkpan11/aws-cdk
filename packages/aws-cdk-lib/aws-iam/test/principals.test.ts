@@ -144,9 +144,16 @@ test('use OpenID Connect principal from provider', () => {
   expect(stack.resolve(principal.federated)).toStrictEqual({ Ref: 'MyProvider730BA1C8' });
 });
 
-test('SAML principal', () => {
+test.each([
+  { name: 'SAML principal', region: 'us-east-1', expectedAud: 'https://signin.aws.amazon.com/saml' },
+  { name: 'SAML principal CN', region: 'cn-northwest-1', expectedAud: 'https://signin.amazonaws.cn/saml' },
+  { name: 'SAML principal UsGov', region: 'us-gov-east-1', expectedAud: 'https://signin.amazonaws-us-gov.com/saml' },
+  { name: 'SAML principal UsIso', region: 'us-iso-east-1', expectedAud: 'https://signin.c2shome.ic.gov/saml' },
+  { name: 'SAML principal UsIsoB', region: 'us-isob-east-1', expectedAud: 'https://signin.sc2shome.sgov.gov/saml' },
+])('$name', ({ region, expectedAud }) => {
   // GIVEN
-  const stack = new Stack();
+  const app = new App();
+  const stack = new Stack(app, 'TestStack', { env: { region } });
   const provider = new iam.SamlProvider(stack, 'MyProvider', {
     metadataDocument: iam.SamlMetadataDocument.fromXml('document'),
   });
@@ -166,7 +173,7 @@ test('SAML principal', () => {
           Action: 'sts:AssumeRoleWithSAML',
           Condition: {
             StringEquals: {
-              'SAML:aud': 'https://signin.aws.amazon.com/saml',
+              'SAML:aud': expectedAud,
             },
           },
           Effect: 'Allow',
@@ -357,28 +364,12 @@ describe('deprecated ServicePrincipal behavior', () => {
     const afSouthStack = new Stack(undefined, undefined, { env: { region: 'af-south-1' } });
     const principalName = iam.ServicePrincipal.servicePrincipalName('states.amazonaws.com');
 
-    expect(usEastStack.resolve(principalName)).toEqual('states.us-east-1.amazonaws.com');
-    expect(afSouthStack.resolve(principalName)).toEqual('states.af-south-1.amazonaws.com');
+    expect(usEastStack.resolve(principalName)).toEqual('states.amazonaws.com');
+    expect(afSouthStack.resolve(principalName)).toEqual('states.amazonaws.com');
   });
 
   test('Passing non-string as accountId parameter in AccountPrincipal constructor should throw error', () => {
-    expect(() => new iam.AccountPrincipal(1234)).toThrowError('accountId should be of type string');
-  });
-
-  test('ServicePrincipal in agnostic stack generates lookup table', () => {
-    // GIVEN
-    const stack = new Stack();
-
-    // WHEN
-    new iam.Role(stack, 'Role', {
-      assumedBy: new iam.ServicePrincipal('states.amazonaws.com'),
-    });
-
-    // THEN
-    const template = Template.fromStack(stack);
-    const mappings = template.findMappings('ServiceprincipalMap');
-    expect(mappings.ServiceprincipalMap['af-south-1']?.states).toEqual('states.af-south-1.amazonaws.com');
-    expect(mappings.ServiceprincipalMap['us-east-1']?.states).toEqual('states.us-east-1.amazonaws.com');
+    expect(() => new iam.AccountPrincipal(1234)).toThrow('accountId should be of type string');
   });
 });
 
@@ -389,9 +380,7 @@ describe('standardized Service Principal behavior', () => {
 
   let app: App;
   beforeEach(() => {
-    app = new App({
-      postCliContext: { [cxapi.IAM_STANDARDIZED_SERVICE_PRINCIPALS]: true },
-    });
+    app = new App();
   });
 
   test('no more regional service principals by default', () => {
@@ -439,6 +428,94 @@ test('Can enable session tags', () => {
           Principal: { Federated: 'cognito-identity.amazonaws.com' },
         },
       ],
+    },
+  });
+});
+
+test('Can enable session tags with conditions (order of calls is irrelevant)', () => {
+  // GIVEN
+  const stack = new Stack();
+
+  // WHEN
+  new iam.Role(stack, 'Role', {
+    assumedBy: new iam.ServicePrincipal(
+      's3.amazonaws.com')
+      .withConditions({
+        StringEquals: { hairColor: 'blond' },
+      })
+      .withSessionTags(),
+  });
+
+  new iam.Role(stack, 'Role2', {
+    assumedBy: new iam.ServicePrincipal(
+      's3.amazonaws.com')
+      .withSessionTags()
+      .withConditions({
+        StringEquals: { hairColor: 'blond' },
+      }),
+  });
+
+  // THEN
+  Template.fromStack(stack).resourcePropertiesCountIs('AWS::IAM::Role', {
+    AssumeRolePolicyDocument: {
+      Statement: [
+        {
+          Action: ['sts:AssumeRole', 'sts:TagSession'],
+          Condition: {
+            StringEquals: { hairColor: 'blond' },
+          },
+          Effect: 'Allow',
+          Principal: { Service: 's3.amazonaws.com' },
+        },
+      ],
+    },
+  }, 2);
+});
+
+test('Can use custom service principle name to create servicePrinciple', () => {
+  // GIVEN
+  const stack = new Stack();
+
+  // WHEN
+  new iam.Role(stack, 'Role', {
+    assumedBy: iam.ServicePrincipal.fromStaticServicePrincipleName('elasticmapreduce.amazonaws.com.cn'),
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::IAM::Role', {
+    AssumeRolePolicyDocument: {
+      Statement: [
+        {
+          Action: 'sts:AssumeRole',
+          Effect: 'Allow',
+          Principal: { Service: 'elasticmapreduce.amazonaws.com.cn' },
+        },
+      ],
+      Version: '2012-10-17',
+    },
+  });
+});
+
+test('ServicePrinciple construct by default reset the principle name to the default format', () => {
+  // GIVEN
+  const stack = new Stack();
+
+  // WHEN
+  new iam.Role(stack, 'Role', {
+    assumedBy: new iam.ServicePrincipal('elasticmapreduce.amazonaws.com.cn'),
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::IAM::Role', {
+    AssumeRolePolicyDocument: {
+      Statement: [
+        {
+          Action: 'sts:AssumeRole',
+          Effect: 'Allow',
+          Principal: { Service: 'elasticmapreduce.amazonaws.com' },
+        },
+      ],
+      Version: '2012-10-17',
     },
   });
 });

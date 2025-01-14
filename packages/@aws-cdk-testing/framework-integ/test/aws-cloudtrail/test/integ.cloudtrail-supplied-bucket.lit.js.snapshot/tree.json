@@ -50,7 +50,8 @@
                               "Action": [
                                 "s3:DeleteObject*",
                                 "s3:GetBucket*",
-                                "s3:List*"
+                                "s3:List*",
+                                "s3:PutBucketPolicy"
                               ],
                               "Effect": "Allow",
                               "Principal": {
@@ -124,9 +125,9 @@
               "version": "0.0.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "integ-cloudtrail/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "integ-cloudtrail/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -162,7 +163,7 @@
               }
             },
             "constructInfo": {
-              "fqn": "aws-cdk-lib.CustomResourceProvider",
+              "fqn": "aws-cdk-lib.CustomResourceProviderBase",
               "version": "0.0.0"
             }
           },
@@ -236,14 +237,14 @@
                     "code": {
                       "zipFile": "exports.handler = {}"
                     },
+                    "handler": "hello.handler",
                     "role": {
                       "Fn::GetAtt": [
                         "LambdaFunctionServiceRoleC555A460",
                         "Arn"
                       ]
                     },
-                    "handler": "hello.handler",
-                    "runtime": "nodejs14.x"
+                    "runtime": "nodejs18.x"
                   }
                 },
                 "constructInfo": {
@@ -299,7 +300,8 @@
                               "Action": [
                                 "s3:DeleteObject*",
                                 "s3:GetBucket*",
-                                "s3:List*"
+                                "s3:List*",
+                                "s3:PutBucketPolicy"
                               ],
                               "Effect": "Allow",
                               "Principal": {
@@ -426,10 +428,6 @@
                 "attributes": {
                   "aws:cdk:cloudformation:type": "AWS::CloudTrail::Trail",
                   "aws:cdk:cloudformation:props": {
-                    "isLogging": true,
-                    "s3BucketName": {
-                      "Ref": "S3486F821D"
-                    },
                     "enableLogFileValidation": true,
                     "eventSelectors": [
                       {
@@ -472,7 +470,11 @@
                       }
                     ],
                     "includeGlobalServiceEvents": true,
-                    "isMultiRegionTrail": true
+                    "isLogging": true,
+                    "isMultiRegionTrail": true,
+                    "s3BucketName": {
+                      "Ref": "S3486F821D"
+                    }
                   }
                 },
                 "constructInfo": {
@@ -513,7 +515,7 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.2.54"
+          "version": "10.3.0"
         }
       }
     },

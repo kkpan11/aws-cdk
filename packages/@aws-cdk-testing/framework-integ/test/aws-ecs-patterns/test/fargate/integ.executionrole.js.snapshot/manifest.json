@@ -1,12 +1,6 @@
 {
-  "version": "20.0.0",
+  "version": "35.0.0",
   "artifacts": {
-    "Tree": {
-      "type": "cdk:tree",
-      "properties": {
-        "file": "tree.json"
-      }
-    },
     "aws-ecs-integ-fargate-execrole.assets": {
       "type": "cdk:asset-manifest",
       "properties": {
@@ -20,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "aws-ecs-integ-fargate-execrole.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/7c5d858227db712c366fd41a2c5c0f44b7ddb2830e8388de5d887949a321d45c.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/a4b50942bc23984aec64756e04f9d9ec0f54d804ee07c9a279230f80ed0ff8b2.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -301,6 +296,7 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "executionRoleAlbFargateTestDefaultTestDeployAssert4C0F3ED3.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
@@ -334,6 +330,12 @@
         ]
       },
       "displayName": "executionRoleAlbFargateTest/DefaultTest/DeployAssert"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
     }
   }
 }

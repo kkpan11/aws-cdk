@@ -38,7 +38,7 @@ describe('rule', () => {
       }),
     });
 
-    Annotations.fromStack(stack).hasWarning('/Default/MyRule', "cron: If you don't pass 'minute', by default the event runs every minute. Pass 'minute: '*'' if that's what you intend, or 'minute: 0' to run once per hour instead.");
+    Annotations.fromStack(stack).hasWarning('/Default/MyRule', "cron: If you don't pass 'minute', by default the event runs every minute. Pass 'minute: '*'' if that's what you intend, or 'minute: 0' to run once per hour instead. [ack: @aws-cdk/aws-events:scheduleWillRunEveryMinute]");
   });
 
   test('rule does not display warning when minute is set to * in cron', () => {
@@ -70,6 +70,25 @@ describe('rule', () => {
     Template.fromStack(stack).hasResourceProperties('Test::Resource', {
       RuleName: { Ref: 'MyRuleA44AB831' },
     });
+  });
+
+  test('rule cannot have more than 5 targets', () => {
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app);
+    const resource = new Construct(stack, 'Resource');
+    const rule = new Rule(stack, 'MyRule', {
+      schedule: Schedule.rate(cdk.Duration.minutes(10)),
+      targets: [
+        new SomeTarget('T1', resource),
+        new SomeTarget('T2', resource),
+        new SomeTarget('T3', resource),
+        new SomeTarget('T4', resource),
+        new SomeTarget('T5', resource),
+        new SomeTarget('T6', resource),
+      ],
+    });
+
+    expect(() => app.synth()).toThrow(/Event rule cannot have more than 5 targets./);
   });
 
   test('get rate as token', () => {
@@ -578,6 +597,20 @@ describe('rule', () => {
     expect(importedRule.ruleName).toEqual('example');
   });
 
+  test('sets account for imported rule env by fromEventRuleArn', () => {
+    const stack = new cdk.Stack();
+    const importedRule = Rule.fromEventRuleArn(stack, 'Imported', 'arn:aws:events:us-west-2:999999999999:rule/example');
+
+    expect(importedRule.env.account).toEqual('999999999999');
+  });
+
+  test('sets region for imported rule env by fromEventRuleArn', () => {
+    const stack = new cdk.Stack();
+    const importedRule = Rule.fromEventRuleArn(stack, 'Imported', 'arn:aws:events:us-west-2:999999999999:rule/example');
+
+    expect(importedRule.env.region).toEqual('us-west-2');
+  });
+
   test('rule can be disabled', () => {
     // GIVEN
     const stack = new cdk.Stack();
@@ -647,6 +680,49 @@ describe('rule', () => {
           'Id': 'Target0',
           'SqsParameters': {
             'MessageGroupId': 'messageGroupId',
+          },
+        },
+      ],
+    });
+  });
+
+  test('redshiftDataParameters are generated when they are specified in target props', () => {
+    const stack = new cdk.Stack();
+    const t1: IRuleTarget = {
+      bind: () => ({
+        id: '',
+        arn: 'ARN1',
+        redshiftDataParameters: {
+          database: 'database',
+          dbUser: 'dbUser',
+          secretManagerArn: 'secretManagerArn',
+          sqls: ['sqls'],
+          statementName: 'statementName',
+          withEvent: true,
+        },
+      }),
+    };
+
+    new Rule(stack, 'EventRule', {
+      schedule: Schedule.rate(cdk.Duration.minutes(5)),
+      targets: [t1],
+    });
+
+    // eslint-disable-next-line no-console
+    console.log(Template.fromStack(stack).toJSON().Resources.EventRule5A491D2C.Properties.Targets[0]);
+
+    Template.fromStack(stack).hasResourceProperties('AWS::Events::Rule', {
+      Targets: [
+        {
+          'Arn': 'ARN1',
+          'Id': 'Target0',
+          'RedshiftDataParameters': {
+            'Database': 'database',
+            'DbUser': 'dbUser',
+            'SecretManagerArn': 'secretManagerArn',
+            'Sqls': ['sqls'],
+            'StatementName': 'statementName',
+            'WithEvent': true,
           },
         },
       ],
@@ -1118,7 +1194,7 @@ describe('rule', () => {
 });
 
 class SomeTarget implements IRuleTarget {
-  // eslint-disable-next-line @aws-cdk/no-core-construct
+  // eslint-disable-next-line @cdklabs/no-core-construct
   public constructor(private readonly id?: string, private readonly resource?: IConstruct) {
   }
 

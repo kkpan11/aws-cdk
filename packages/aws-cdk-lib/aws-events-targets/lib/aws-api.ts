@@ -1,15 +1,16 @@
-import * as path from 'path';
-import { metadata } from './sdk-api-metadata.generated';
 import { addLambdaPermission } from './util';
 import * as events from '../../aws-events';
 import * as iam from '../../aws-iam';
 import * as lambda from '../../aws-lambda';
-import { Annotations } from '../../core';
+import { Annotations, Duration } from '../../core';
+import { AwsApiSingletonFunction } from '../../custom-resource-handlers/dist/aws-events-targets/aws-api-provider.generated';
+import * as metadata from '../../custom-resources/lib/helpers-internal/sdk-v3-metadata.json';
 
+type AwsSdkMetadataItem = { iamPrefix: string };
 /**
  * AWS SDK service metadata.
  */
-export type AwsSdkMetadata = {[key: string]: any};
+export type AwsSdkMetadata = {[key: string]: AwsSdkMetadataItem | {}};
 
 const awsSdkMetadata: AwsSdkMetadata = metadata;
 
@@ -52,8 +53,7 @@ export interface AwsApiInput {
   /**
    * API version to use for the service
    *
-   * @see https://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/locking-api-versions.html
-   * @default - use latest available API version
+   * @deprecated the handler code was migrated to AWS SDK for JavaScript v3, which does not support this feature anymore
    */
   readonly apiVersion?: string;
 }
@@ -82,12 +82,9 @@ export class AwsApi implements events.IRuleTarget {
    * result from an EventBridge event.
    */
   public bind(rule: events.IRule, id?: string): events.RuleTargetConfig {
-    const handler = new lambda.SingletonFunction(rule as events.Rule, `${rule.node.id}${id}Handler`, {
-      code: lambda.Code.fromAsset(path.join(__dirname, 'aws-api-handler'), {
-        exclude: ['*.ts'],
-      }),
-      runtime: lambda.Runtime.NODEJS_14_X,
-      handler: 'index.handler',
+    const handler = new AwsApiSingletonFunction(rule as events.Rule, `${rule.node.id}${id}Handler`, {
+      timeout: Duration.seconds(60),
+      memorySize: 256,
       uuid: 'b4cf1abd-4e4f-4bc6-9944-1af7ccd9ec37',
       lambdaPurpose: 'AWS',
     });
@@ -129,7 +126,7 @@ export class AwsApi implements events.IRuleTarget {
 function checkServiceExists(service: string, handler: lambda.SingletonFunction) {
   const sdkService = awsSdkMetadata[service.toLowerCase()];
   if (!sdkService) {
-    Annotations.of(handler).addWarning(`Service ${service} does not exist in the AWS SDK. Check the list of available \
+    Annotations.of(handler).addWarningV2(`@aws-cdk/aws-events-targets:${service}DoesNotExist`, `Service ${service} does not exist in the AWS SDK. Check the list of available \
 services and actions from https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/index.html`);
   }
 }
@@ -139,7 +136,7 @@ services and actions from https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/in
  */
 function awsSdkToIamAction(service: string, action: string): string {
   const srv = service.toLowerCase();
-  const iamService = awsSdkMetadata[srv].prefix || srv;
+  const iamService = (awsSdkMetadata[srv] as AwsSdkMetadataItem).iamPrefix || srv;
   const iamAction = action.charAt(0).toUpperCase() + action.slice(1);
   return `${iamService}:${iamAction}`;
 }

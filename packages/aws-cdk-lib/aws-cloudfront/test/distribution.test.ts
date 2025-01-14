@@ -1,13 +1,16 @@
-import { defaultOrigin, defaultOriginGroup } from './test-origin';
-import { Match, Template } from '../../assertions';
+import { defaultOrigin, defaultOriginGroup, defaultOriginWithOriginAccessControl } from './test-origin';
+import { Annotations, Match, Template } from '../../assertions';
 import * as acm from '../../aws-certificatemanager';
+import * as cloudwatch from '../../aws-cloudwatch';
 import * as iam from '../../aws-iam';
+import * as kinesis from '../../aws-kinesis';
 import * as lambda from '../../aws-lambda';
 import * as s3 from '../../aws-s3';
-import { App, Duration, Stack } from '../../core';
+import { App, Aws, Duration, Stack } from '../../core';
 import {
   CfnDistribution,
   Distribution,
+  Endpoint,
   Function,
   FunctionCode,
   FunctionEventType,
@@ -16,6 +19,7 @@ import {
   IOrigin,
   LambdaEdgeEventType,
   PriceClass,
+  RealtimeLogConfig,
   SecurityPolicyProtocol,
   SSLMethod,
 } from '../lib';
@@ -32,7 +36,7 @@ beforeEach(() => {
 
 test('minimal example renders correctly', () => {
   const origin = defaultOrigin();
-  new Distribution(stack, 'MyDist', { defaultBehavior: { origin } });
+  const dist = new Distribution(stack, 'MyDist', { defaultBehavior: { origin } });
 
   Template.fromStack(stack).hasResourceProperties('AWS::CloudFront::Distribution', {
     DistributionConfig: {
@@ -54,6 +58,19 @@ test('minimal example renders correctly', () => {
       }],
     },
   });
+
+  expect(dist.distributionArn).toEqual(`arn:${Aws.PARTITION}:cloudfront::1234:distribution/${dist.distributionId}`);
+});
+
+test('existing distributions can be imported', () => {
+  const dist = Distribution.fromDistributionAttributes(stack, 'ImportedDist', {
+    domainName: 'd111111abcdef8.cloudfront.net',
+    distributionId: '012345ABCDEF',
+  });
+
+  expect(dist.distributionDomainName).toEqual('d111111abcdef8.cloudfront.net');
+  expect(dist.distributionId).toEqual('012345ABCDEF');
+  expect(dist.distributionArn).toEqual(`arn:${Aws.PARTITION}:cloudfront::1234:distribution/012345ABCDEF`);
 });
 
 test('exhaustive example of props renders correctly and SSL method sni-only', () => {
@@ -453,23 +470,23 @@ describe('certificates', () => {
     }).toThrow(/Distribution certificates must be in the us-east-1 region and the certificate you provided is in eu-west-1./);
   });
 
-  test('adding a certificate without a domain name throws', () => {
+  test('adding a certificate without a domain name', () => {
     const certificate = acm.Certificate.fromCertificateArn(stack, 'Cert', 'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012');
 
-    expect(() => {
-      new Distribution(stack, 'Dist1', {
-        defaultBehavior: { origin: defaultOrigin() },
-        certificate,
-      });
-    }).toThrow(/Must specify at least one domain name/);
+    new Distribution(stack, 'Dist1', {
+      defaultBehavior: { origin: defaultOrigin() },
+      certificate,
+    });
 
-    expect(() => {
-      new Distribution(stack, 'Dist2', {
-        defaultBehavior: { origin: defaultOrigin() },
-        domainNames: [],
-        certificate,
-      });
-    }).toThrow(/Must specify at least one domain name/);
+    Template.fromStack(stack).hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: {
+        Aliases: Match.absent(),
+        ViewerCertificate: {
+          AcmCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012',
+        },
+      },
+    });
+    Annotations.fromStack(stack).hasWarning('/Stack/Dist1', 'No domain names are specified. You will need to specify it after running associate-alias CLI command manually. See the "Moving an alternate domain name to a different distribution" section of module\'s README for more info. [ack: @aws-cdk/aws-cloudfront:emptyDomainNames]');
   });
 
   test('use the TLSv1.2_2021 security policy by default', () => {
@@ -663,7 +680,7 @@ describe('with Lambda@Edge functions', () => {
 
   beforeEach(() => {
     lambdaFunction = new lambda.Function(stack, 'Function', {
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
       code: lambda.Code.fromInline('whatever'),
       handler: 'index.handler',
     });
@@ -693,7 +710,7 @@ describe('with Lambda@Edge functions', () => {
               EventType: 'origin-request',
               IncludeBody: true,
               LambdaFunctionARN: {
-                Ref: 'FunctionCurrentVersion4E2B2261627f862ed5d048a0c695ee87fce6fb47',
+                Ref: Match.stringLikeRegexp(stack.getLogicalId(lambdaFunction.currentVersion.node.defaultChild as lambda.CfnVersion)),
               },
             },
           ],
@@ -763,7 +780,7 @@ describe('with Lambda@Edge functions', () => {
               {
                 EventType: 'viewer-request',
                 LambdaFunctionARN: {
-                  Ref: 'FunctionCurrentVersion4E2B2261627f862ed5d048a0c695ee87fce6fb47',
+                  Ref: Match.stringLikeRegexp(stack.getLogicalId(lambdaFunction.currentVersion.node.defaultChild as lambda.CfnVersion)),
                 },
               },
             ],
@@ -791,7 +808,7 @@ describe('with Lambda@Edge functions', () => {
 
   test('with removable env vars', () => {
     const envLambdaFunction = new lambda.Function(stack, 'EnvFunction', {
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
       code: lambda.Code.fromInline('whateverwithenv'),
       handler: 'index.handler',
     });
@@ -819,7 +836,7 @@ describe('with Lambda@Edge functions', () => {
 
   test('with incompatible env vars', () => {
     const envLambdaFunction = new lambda.Function(stack, 'EnvFunction', {
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
       code: lambda.Code.fromInline('whateverwithenv'),
       handler: 'index.handler',
       environment: {
@@ -845,7 +862,7 @@ describe('with Lambda@Edge functions', () => {
   test('with singleton function', () => {
     const singleton = new lambda.SingletonFunction(stack, 'Singleton', {
       uuid: 'singleton-for-cloudfront',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
       code: lambda.Code.fromInline('code'),
       handler: 'index.handler',
     });
@@ -869,7 +886,7 @@ describe('with Lambda@Edge functions', () => {
             {
               EventType: 'origin-request',
               LambdaFunctionARN: {
-                Ref: 'SingletonLambdasingletonforcloudfrontCurrentVersion0078406340d5752510648adb0d76f136b832c5bd',
+                Ref: Match.stringLikeRegexp(stack.getLogicalId(singleton.currentVersion.node.defaultChild as lambda.CfnVersion)),
               },
             },
           ],
@@ -1145,4 +1162,275 @@ test('grants createInvalidation', () => {
       ],
     },
   });
+});
+
+test('render distribution behavior with realtime log config', () => {
+  const role = new iam.Role(stack, 'Role', {
+    assumedBy: new iam.ServicePrincipal('cloudfront.amazonaws.com'),
+  });
+
+  const stream = new kinesis.Stream(stack, 'stream', {
+    streamMode: kinesis.StreamMode.ON_DEMAND,
+    encryption: kinesis.StreamEncryption.MANAGED,
+  });
+
+  const realTimeConfig = new RealtimeLogConfig(stack, 'RealtimeConfig', {
+    endPoints: [
+      Endpoint.fromKinesisStream(stream, role),
+    ],
+    fields: ['timestamp'],
+    realtimeLogConfigName: 'realtime-config',
+    samplingRate: 50,
+  });
+
+  new Distribution(stack, 'MyDist', {
+    defaultBehavior: {
+      origin: defaultOrigin(),
+      realtimeLogConfig: realTimeConfig,
+    },
+  });
+
+  Template.fromStack(stack).hasResourceProperties('AWS::CloudFront::Distribution',
+    Match.objectLike({
+      DistributionConfig: {
+        DefaultCacheBehavior: {
+          RealtimeLogConfigArn: {
+            'Fn::GetAtt': ['RealtimeConfigB6004E8E', 'Arn'],
+          },
+        },
+      },
+    }));
+});
+
+test('render distribution behavior with realtime log config - multiple behaviors', () => {
+  const role = new iam.Role(stack, 'Role', {
+    assumedBy: new iam.ServicePrincipal('cloudfront.amazonaws.com'),
+  });
+
+  const stream = new kinesis.Stream(stack, 'stream', {
+    streamMode: kinesis.StreamMode.ON_DEMAND,
+    encryption: kinesis.StreamEncryption.MANAGED,
+  });
+
+  const realTimeConfig = new RealtimeLogConfig(stack, 'RealtimeConfig', {
+    endPoints: [
+      Endpoint.fromKinesisStream(stream, role),
+    ],
+    fields: ['timestamp'],
+    realtimeLogConfigName: 'realtime-config',
+    samplingRate: 50,
+  });
+
+  const origin2 = defaultOrigin('origin2.example.com');
+
+  new Distribution(stack, 'MyDist', {
+    defaultBehavior: {
+      origin: defaultOrigin(),
+      realtimeLogConfig: realTimeConfig,
+    },
+    additionalBehaviors: {
+      '/api/*': {
+        origin: origin2,
+        realtimeLogConfig: realTimeConfig,
+      },
+    },
+  });
+
+  Template.fromStack(stack).hasResourceProperties('AWS::CloudFront::Distribution',
+    Match.objectLike({
+      DistributionConfig: {
+        DefaultCacheBehavior: {
+          RealtimeLogConfigArn: {
+            'Fn::GetAtt': ['RealtimeConfigB6004E8E', 'Arn'],
+          },
+          TargetOriginId: 'StackMyDistOrigin1D6D5E535',
+        },
+        CacheBehaviors: [{
+          PathPattern: '/api/*',
+          RealtimeLogConfigArn: {
+            'Fn::GetAtt': ['RealtimeConfigB6004E8E', 'Arn'],
+          },
+          TargetOriginId: 'StackMyDistOrigin20B96F3AD',
+        }],
+      },
+    }));
+});
+
+test('with publish additional metrics', () => {
+  const origin = defaultOrigin();
+  new Distribution(stack, 'MyDist', {
+    defaultBehavior: { origin },
+    publishAdditionalMetrics: true,
+  });
+
+  Template.fromStack(stack).hasResourceProperties('AWS::CloudFront::Distribution', {
+    DistributionConfig: {
+      DefaultCacheBehavior: {
+        CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
+        Compress: true,
+        TargetOriginId: 'StackMyDistOrigin1D6D5E535',
+        ViewerProtocolPolicy: 'allow-all',
+      },
+      Enabled: true,
+      HttpVersion: 'http2',
+      IPV6Enabled: true,
+      Origins: [{
+        DomainName: 'www.example.com',
+        Id: 'StackMyDistOrigin1D6D5E535',
+        CustomOriginConfig: {
+          OriginProtocolPolicy: 'https-only',
+        },
+      }],
+    },
+  });
+  Template.fromStack(stack).hasResourceProperties('AWS::CloudFront::MonitoringSubscription', {
+    DistributionId: {
+      Ref: 'MyDistDB88FD9A',
+    },
+    MonitoringSubscription: {
+      RealtimeMetricsSubscriptionConfig: {
+        RealtimeMetricsSubscriptionStatus: 'Enabled',
+      },
+    },
+  });
+});
+
+test('with origin access control id', () => {
+  const origin = defaultOriginWithOriginAccessControl();
+  new Distribution(stack, 'MyDist', {
+    defaultBehavior: { origin },
+    publishAdditionalMetrics: true,
+  });
+
+  Template.fromStack(stack).hasResourceProperties('AWS::CloudFront::Distribution', {
+    DistributionConfig: {
+      DefaultCacheBehavior: {
+        CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
+        Compress: true,
+        TargetOriginId: 'StackMyDistOrigin1D6D5E535',
+        ViewerProtocolPolicy: 'allow-all',
+      },
+      Enabled: true,
+      HttpVersion: 'http2',
+      IPV6Enabled: true,
+      Origins: [{
+        DomainName: 'www.example.com',
+        Id: 'StackMyDistOrigin1D6D5E535',
+        CustomOriginConfig: {
+          OriginProtocolPolicy: 'https-only',
+        },
+        OriginAccessControlId: 'test-origin-access-control-id',
+      }],
+    },
+  });
+});
+
+describe('Distribution metrics tests', () => {
+  const additionalMetrics = [
+    { name: 'OriginLatency', method: 'metricOriginLatency', statistic: 'Average', additionalMetricsRequired: true, errorMetricName: 'Origin latency' },
+    { name: 'CacheHitRate', method: 'metricCacheHitRate', statistic: 'Average', additionalMetricsRequired: true, errorMetricName: 'Cache hit rate' },
+    ...['401', '403', '404', '502', '503', '504'].map(errorCode => ({
+      name: `${errorCode}ErrorRate`,
+      method: `metric${errorCode}ErrorRate`,
+      statistic: 'Average',
+      additionalMetricsRequired: true,
+      errorMetricName: `${errorCode} error rate`,
+    })),
+  ];
+
+  const defaultMetrics = [
+    { name: 'Requests', method: 'metricRequests', statistic: 'Sum', additionalMetricsRequired: false, errorMetricName: '' },
+    { name: 'BytesDownloaded', method: 'metricBytesDownloaded', statistic: 'Sum', additionalMetricsRequired: false, errorMetricName: '' },
+    { name: 'BytesUploaded', method: 'metricBytesUploaded', statistic: 'Sum', additionalMetricsRequired: false, errorMetricName: '' },
+    { name: 'TotalErrorRate', method: 'metricTotalErrorRate', statistic: 'Average', additionalMetricsRequired: false, errorMetricName: '' },
+    { name: '4xxErrorRate', method: 'metric4xxErrorRate', statistic: 'Average', additionalMetricsRequired: false, errorMetricName: '' },
+    { name: '5xxErrorRate', method: 'metric5xxErrorRate', statistic: 'Average', additionalMetricsRequired: false, errorMetricName: '' },
+  ];
+
+  test.each(additionalMetrics.concat(defaultMetrics))('get %s metric', (metric) => {
+    const origin = defaultOrigin();
+    const dist = new Distribution(stack, 'MyDist', {
+      defaultBehavior: { origin },
+      publishAdditionalMetrics: metric.additionalMetricsRequired,
+    });
+
+    const metricObj = dist[metric.method]();
+
+    expect(metricObj).toEqual(new cloudwatch.Metric({
+      namespace: 'AWS/CloudFront',
+      metricName: metric.name,
+      dimensions: { DistributionId: dist.distributionId },
+      statistic: metric.statistic,
+      period: Duration.minutes(5),
+    }));
+  });
+
+  test.each(additionalMetrics)('throw error when trying to get %s metric without publishing additional metrics', (metric) => {
+    const origin = defaultOrigin();
+    const dist = new Distribution(stack, 'MyDist', {
+      defaultBehavior: { origin },
+      publishAdditionalMetrics: false,
+    });
+
+    expect(() => {
+      dist[metric.method]();
+    }).toThrow(new RegExp(`${metric.errorMetricName} metric is only available if 'publishAdditionalMetrics' is set 'true'`));
+  });
+});
+
+describe('attachWebAclId', () => {
+  test('can attach WebAcl to the distribution by the method', () => {
+    const origin = defaultOrigin();
+
+    const distribution = new Distribution(stack, 'MyDist', {
+      defaultBehavior: { origin },
+    });
+
+    distribution.attachWebAclId('473e64fd-f30b-4765-81a0-62ad96dd167a');
+
+    Template.fromStack(stack).hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: {
+        WebACLId: '473e64fd-f30b-4765-81a0-62ad96dd167a',
+      },
+    });
+  });
+
+  test('throws if a WebAcl is already attached to the distribution', () => {
+    const origin = defaultOrigin();
+
+    const distribution = new Distribution(stack, 'MyDist', {
+      defaultBehavior: { origin },
+      webAclId: '473e64fd-f30b-4765-81a0-62ad96dd167a',
+    });
+
+    expect(() => {
+      distribution.attachWebAclId('473e64fd-f30b-4765-81a0-62ad96dd167b');
+    }).toThrow(/A WebACL has already been attached to this distribution/);
+  });
+
+  describe('throws if the WebAcl is not in us-east-1 region', () => {
+    test('when try to attach WebACL using `attachWebAclId` method', () => {
+      const origin = defaultOrigin();
+
+      const distribution = new Distribution(stack, 'MyDist', {
+        defaultBehavior: { origin },
+      });
+
+      expect(() => {
+        distribution.attachWebAclId('arn:aws:wafv2:ap-northeast-1:123456789012:global/web-acl/MyWebAcl/473e64fd-f30b-4765-81a0-62ad96dd167a');
+      }).toThrow(/WebACL for CloudFront distributions must be created in the us-east-1 region; received ap-northeast-1/);
+    });
+
+    test('when try to attach WebACL by specifying value for props', () => {
+      const origin = defaultOrigin();
+
+      expect(() => {
+        new Distribution(stack, 'MyDist', {
+          defaultBehavior: { origin },
+          webAclId: 'arn:aws:wafv2:ap-northeast-1:123456789012:global/web-acl/MyWebAcl/473e64fd-f30b-4765-81a0-62ad96dd167a',
+        });
+      }).toThrow(/WebACL for CloudFront distributions must be created in the us-east-1 region; received ap-northeast-1/);
+    });
+  });
+
 });

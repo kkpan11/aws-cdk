@@ -30,6 +30,7 @@ const loadBalancedEcsService = new ecsPatterns.ApplicationLoadBalancedEc2Service
     entryPoint: ['entry', 'point'],
   },
   desiredCount: 2,
+  minHealthyPercent: 100,
 });
 ```
 
@@ -46,6 +47,7 @@ const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargat
     command: ['command'],
     entryPoint: ['entry', 'point'],
   },
+  minHealthyPercent: 100,
 });
 
 loadBalancedFargateService.targetGroup.configureHealthCheck({
@@ -59,6 +61,8 @@ If you deploy multiple services CDK will only create one cluster per VPC.
 You can omit `cluster` and `vpc` to let CDK create a new VPC with two AZs and create a cluster inside this VPC.
 
 You can customize the health check for your target group; otherwise it defaults to `HTTP` over port `80` hitting path `/`.
+
+You can customize the health check configuration of the container via the [`healthCheck`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_ecs.HealthCheck.html) property; otherwise it defaults to the health check configuration from the container.
 
 Fargate services will use the `LATEST` platform version by default, but you can override by providing a value for the `platformVersion` property in the constructor.
 
@@ -140,6 +144,7 @@ const loadBalancedEcsService = new ecsPatterns.NetworkLoadBalancedEc2Service(thi
     },
   },
   desiredCount: 2,
+  minHealthyPercent: 100,
 });
 ```
 
@@ -154,6 +159,7 @@ const loadBalancedFargateService = new ecsPatterns.NetworkLoadBalancedFargateSer
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
   },
+  minHealthyPercent: 100,
 });
 ```
 
@@ -270,6 +276,7 @@ const queueProcessingEc2Service = new ecsPatterns.QueueProcessingEc2Service(this
   },
   maxScalingCapacity: 5,
   containerName: 'test',
+  minHealthyPercent: 100,
 });
 ```
 
@@ -290,10 +297,52 @@ const queueProcessingFargateService = new ecsPatterns.QueueProcessingFargateServ
   },
   maxScalingCapacity: 5,
   containerName: 'test',
+  minHealthyPercent: 100,
 });
 ```
 
 when queue not provided by user, CDK will create a primary queue and a dead letter queue with default redrive policy and attach permission to the task to be able to access the primary queue.
+
+NOTE: `QueueProcessingFargateService` adds a CPU Based scaling strategy by default. You can turn this off by setting `disableCpuBasedScaling: true`.
+
+```ts
+declare const cluster: ecs.Cluster;
+const queueProcessingFargateService = new ecsPatterns.QueueProcessingFargateService(this, 'Service', {
+  cluster,
+  memoryLimitMiB: 512,
+  image: ecs.ContainerImage.fromRegistry('test'),
+  command: ["-c", "4", "amazon.com"],
+  enableLogging: false,
+  desiredTaskCount: 2,
+  environment: {
+    TEST_ENVIRONMENT_VARIABLE1: "test environment variable 1 value",
+    TEST_ENVIRONMENT_VARIABLE2: "test environment variable 2 value",
+  },
+  maxScalingCapacity: 5,
+  containerName: 'test',
+  minHealthyPercent: 100,
+  disableCpuBasedScaling: true,
+});
+```
+
+To specify a custom target CPU utilization percentage for the scaling strategy use the  `cpuTargetUtilizationPercent` property:
+
+```ts
+declare const cluster: ecs.Cluster;
+const queueProcessingFargateService = new ecsPatterns.QueueProcessingFargateService(this, 'Service', {
+  cluster,
+  memoryLimitMiB: 512,
+  image: ecs.ContainerImage.fromRegistry('test'),
+  command: ["-c", "4", "amazon.com"],
+  enableLogging: false,
+  desiredTaskCount: 2,
+  environment: {},
+  maxScalingCapacity: 5,
+  containerName: 'test',
+  minHealthyPercent: 100,
+  cpuTargetUtilizationPercent: 90,
+});
+```
 
 ## Scheduled Tasks
 
@@ -351,6 +400,7 @@ declare const cluster: ecs.Cluster;
 const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'Service', {
   vpc,
   cluster,
+  minHealthyPercent: 100,
   certificate,
   sslPolicy: SslPolicy.RECOMMENDED,
   domainName: 'api.example.com',
@@ -373,6 +423,7 @@ const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargat
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
   },
+  minHealthyPercent: 100,
   capacityProviderStrategies: [
     {
       capacityProvider: 'FARGATE_SPOT',
@@ -400,6 +451,7 @@ const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargat
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
   },
+  minHealthyPercent: 100,
 });
 
 const scalableTarget = loadBalancedFargateService.service.autoScaleTaskCount({
@@ -430,6 +482,7 @@ const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargat
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
   },
+  minHealthyPercent: 100,
 });
 
 const scalableTarget = loadBalancedFargateService.service.autoScaleTaskCount({
@@ -458,6 +511,7 @@ const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargat
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
   },
+  minHealthyPercent: 100,
   deploymentController: {
     type: ecs.DeploymentControllerType.CODE_DEPLOY,
   },
@@ -481,6 +535,7 @@ const service = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'Ser
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
   },
+  minHealthyPercent: 100,
   circuitBreaker: { rollback: true },
 });
 ```
@@ -512,6 +567,7 @@ const queueProcessingFargateService = new ecsPatterns.QueueProcessingFargateServ
   vpc,
   memoryLimitMiB: 512,
   image: ecs.ContainerImage.fromRegistry('test'),
+  minHealthyPercent: 100,
   securityGroups: [securityGroup],
   taskSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
 });
@@ -525,6 +581,7 @@ const queueProcessingFargateService = new ecsPatterns.QueueProcessingFargateServ
   vpc,
   memoryLimitMiB: 512,
   image: ecs.ContainerImage.fromRegistry('test'),
+  minHealthyPercent: 100,
   assignPublicIp: true,
 });
 ```
@@ -537,9 +594,27 @@ const queueProcessingFargateService = new ecsPatterns.QueueProcessingFargateServ
   vpc,
   memoryLimitMiB: 512,
   image: ecs.ContainerImage.fromRegistry('test'),
+  minHealthyPercent: 100,
   maxReceiveCount: 42,
   retentionPeriod: Duration.days(7),
   visibilityTimeout: Duration.minutes(5),
+});
+```
+
+### Set cooldown for QueueProcessingFargateService
+
+The cooldown period is the amount of time to wait for a previous scaling activity to take effect.
+To specify something other than the default cooldown period of 300 seconds, use the `cooldown` parameter: 
+
+```ts
+declare const vpc: ec2.Vpc;
+const queueProcessingFargateService = new ecsPatterns.QueueProcessingFargateService(this, 'Service', {
+  vpc,
+  memoryLimitMiB: 512,
+  image: ecs.ContainerImage.fromRegistry('test'),
+  minHealthyPercent: 100,
+  assignPublicIp: true,
+  cooldown: Duration.seconds(500),
 });
 ```
 
@@ -553,6 +628,7 @@ const queueProcessingFargateService = new ecsPatterns.QueueProcessingFargateServ
   cluster,
   memoryLimitMiB: 512,
   image: ecs.ContainerImage.fromRegistry('test'),
+  minHealthyPercent: 100,
   capacityProviderStrategies: [
     {
       capacityProvider: 'FARGATE_SPOT',
@@ -575,6 +651,7 @@ const queueProcessingFargateService = new ecsPatterns.QueueProcessingFargateServ
   vpc,
   memoryLimitMiB: 512,
   image: ecs.ContainerImage.fromRegistry('test'),
+  minHealthyPercent: 100,
   healthCheck: {
     command: [ "CMD-SHELL", "curl -f http://localhost/ || exit 1" ],
     // the properties below are optional
@@ -607,6 +684,7 @@ const queueProcessingEc2Service = new ecsPatterns.QueueProcessingEc2Service(this
   cluster,
   memoryLimitMiB: 512,
   image: ecs.ContainerImage.fromRegistry('test'),
+  minHealthyPercent: 100,
   capacityProviderStrategies: [
     {
       capacityProvider: capacityProvider.capacityProviderName,
@@ -627,6 +705,7 @@ const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargat
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
   },
+  minHealthyPercent: 100,
   taskSubnets: {
     subnets: [ec2.Subnet.fromSubnetId(this, 'subnet', 'VpcISOLATEDSubnet1Subnet80F07FA0')],
   },
@@ -645,6 +724,7 @@ const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargat
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
   },
+  minHealthyPercent: 100,
   idleTimeout: Duration.seconds(120),
 });
 ```
@@ -824,10 +904,45 @@ const applicationLoadBalancedFargateService = new ecsPatterns.ApplicationLoadBal
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
   },
+  minHealthyPercent: 100,
   runtimePlatform: {
     cpuArchitecture: ecs.CpuArchitecture.ARM64,
     operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
   },
+});
+```
+
+### Customize Container Name for ScheduledFargateTask
+
+```ts
+declare const cluster: ecs.Cluster;
+const scheduledFargateTask = new ecsPatterns.ScheduledFargateTask(this, 'ScheduledFargateTask', {
+  cluster,
+  scheduledFargateTaskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+    containerName: 'customContainerName',  
+    memoryLimitMiB: 512,
+  },
+  schedule: appscaling.Schedule.expression('rate(1 minute)'),
+  platformVersion: ecs.FargatePlatformVersion.LATEST,
+});
+```
+
+### Customize Container Name for ScheduledEc2Task
+
+```ts
+declare const cluster: ecs.Cluster;
+const ecsScheduledTask = new ecsPatterns.ScheduledEc2Task(this, 'ScheduledTask', {
+    cluster,
+    scheduledEc2TaskImageOptions: {
+        image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+        containerName: 'customContainerName',
+        memoryLimitMiB: 256,
+        environment: { name: 'TRIGGER', value: 'CloudWatch Events' },
+    },
+    schedule: appscaling.Schedule.expression('rate(1 minute)'),
+    enabled: true,
+    ruleName: 'sample-scheduled-task-rule',
 });
 ```
 
@@ -864,56 +979,6 @@ const scheduledFargateTask = new ecsPatterns.ScheduledFargateTask(this, 'Schedul
 });
 ```
 
-### Use the REMOVE_DEFAULT_DESIRED_COUNT feature flag
-
-The REMOVE_DEFAULT_DESIRED_COUNT feature flag is used to override the default desiredCount that is autogenerated by the CDK. This will set the desiredCount of any service created by any of the following constructs to be undefined.
-
-* ApplicationLoadBalancedEc2Service
-* ApplicationLoadBalancedFargateService
-* NetworkLoadBalancedEc2Service
-* NetworkLoadBalancedFargateService
-* QueueProcessingEc2Service
-* QueueProcessingFargateService
-
-If a desiredCount is not passed in as input to the above constructs, CloudFormation will either create a new service to start up with a desiredCount of 1, or update an existing service to start up with the same desiredCount as prior to the update.
-
-To enable the feature flag, ensure that the REMOVE_DEFAULT_DESIRED_COUNT flag within an application stack context is set to true, like so:
-
-```ts
-declare const stack: Stack;
-stack.node.setContext(cxapi.ECS_REMOVE_DEFAULT_DESIRED_COUNT, true);
-```
-
-The following is an example of an application with the REMOVE_DEFAULT_DESIRED_COUNT feature flag enabled:
-
-```ts nofixture
-import { Construct } from 'constructs';
-import { App, Stack } from 'aws-cdk-lib';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as ecs from 'aws-cdk-lib/aws-ecs';
-import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns';
-import * as cxapi from 'aws-cdk-lib/cx-api';
-import * as path from 'path';
-
-class MyStack extends Stack {
-  constructor(scope: Construct, id: string) {
-    super(scope, id);
-
-    this.node.setContext(cxapi.ECS_REMOVE_DEFAULT_DESIRED_COUNT, true);
-
-    const vpc = new ec2.Vpc(this, 'VPC', {
-      maxAzs: 2,
-    });
-
-    new ecsPatterns.QueueProcessingFargateService(this, 'QueueProcessingService', {
-      vpc,
-      memoryLimitMiB: 512,
-      image: new ecs.AssetImage(path.join(__dirname, '..', 'sqs-reader')),
-    });
-  }
-}
-```
-
 ### Deploy application and metrics sidecar
 
 The following is an example of deploying an application along with a metrics sidecar container that utilizes `dockerLabels` for discovery:
@@ -925,6 +990,7 @@ const service = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'Ser
   cluster,
   vpc,
   desiredCount: 1,
+  minHealthyPercent: 100,
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
     dockerLabels: {
@@ -951,6 +1017,7 @@ const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargat
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
   },
+  minHealthyPercent: 100,
   taskSubnets: {
     subnets: [ec2.Subnet.fromSubnetId(this, 'subnet', 'VpcISOLATEDSubnet1Subnet80F07FA0')],
   },
@@ -979,6 +1046,7 @@ const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargat
   taskImageOptions: {
     image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
   },
+  minHealthyPercent: 100,
   enableExecuteCommand: true
 });
 ```
@@ -1035,5 +1103,170 @@ const scheduledFargateTask = new ecsPatterns.ScheduledFargateTask(this, 'Schedul
       value: 'my-tag-value',
     },
   ],
+});
+```
+
+### Use custom ephemeral storage for ECS Fargate tasks
+
+You can pass a custom ephemeral storage (21GiB - 200GiB) to ECS Fargate tasks on Fargate Platform Version 1.4.0 or later. 
+
+```ts
+const vpc = new ec2.Vpc(this, 'Vpc', { maxAzs: 2, restrictDefaultSecurityGroup: false });
+const cluster = new ecs.Cluster(this, 'FargateCluster', { vpc });
+
+const applicationLoadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'ALBFargateServiceWithCustomEphemeralStorage', {
+  cluster,
+  memoryLimitMiB: 1024,
+  cpu: 512,
+  ephemeralStorageGiB: 21,
+  taskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+  },
+  minHealthyPercent: 100,
+});
+
+const networkLoadBalancedFargateService = new ecsPatterns.NetworkLoadBalancedFargateService(this, 'NLBFargateServiceWithCustomEphemeralStorage', {
+  cluster,
+  memoryLimitMiB: 1024,
+  cpu: 512,
+  ephemeralStorageGiB: 200,
+  taskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+  },
+  minHealthyPercent: 100,
+});
+```
+
+### Set securityGroups for NetworkLoadBalancedFargateService
+
+```ts
+declare const vpc: ec2.Vpc;
+declare const securityGroup: ec2.SecurityGroup;
+const queueProcessingFargateService = new ecsPatterns.NetworkLoadBalancedFargateService(this, 'Service', {
+  vpc,
+  memoryLimitMiB: 512,
+  taskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+  },
+  minHealthyPercent: 100,
+  securityGroups: [securityGroup],
+});
+```
+
+### Set TLS for NetworkLoadBalancedFargateService / NetworkLoadBalancedEc2Service
+
+To set up TLS listener in Network Load Balancer, you need to pass extactly one ACM certificate into the option `listenerCertificate`. The listener port and the target group port will also become 443 by default. You can override the listener's port with `listenerPort` and the target group's port with `taskImageOptions.containerPort`.
+
+```ts
+import { Certificate } from 'aws-cdk-lib/aws-certificatemanager';
+
+const certificate = Certificate.fromCertificateArn(this, 'Cert', 'arn:aws:acm:us-east-1:123456:certificate/abcdefg');
+const loadBalancedFargateService = new ecsPatterns.NetworkLoadBalancedFargateService(this, 'Service', {
+  // The default value of listenerPort is 443 if you pass in listenerCertificate
+  // It is configured to port 4443 here
+  listenerPort: 4443,
+  listenerCertificate: certificate,
+  taskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+    // The default value of containerPort is 443 if you pass in listenerCertificate
+    // It is configured to port 8443 here
+    containerPort: 8443,
+  },
+});
+```
+
+```ts
+import { Certificate } from 'aws-cdk-lib/aws-certificatemanager';
+
+declare const cluster: ecs.Cluster;
+const certificate = Certificate.fromCertificateArn(this, 'Cert', 'arn:aws:acm:us-east-1:123456:certificate/abcdefg');
+const loadBalancedEcsService = new ecsPatterns.NetworkLoadBalancedEc2Service(this, 'Service', {
+  cluster,
+  memoryLimitMiB: 1024,
+  // The default value of listenerPort is 443 if you pass in listenerCertificate
+  // It is configured to port 4443 here
+  listenerPort: 4443,
+  listenerCertificate: certificate,
+  taskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry('test'),
+    // The default value of containerPort is 443 if you pass in listenerCertificate
+    // It is configured to port 8443 here
+    containerPort: 8443,
+    environment: {
+      TEST_ENVIRONMENT_VARIABLE1: "test environment variable 1 value",
+      TEST_ENVIRONMENT_VARIABLE2: "test environment variable 2 value",
+    },
+  },
+  desiredCount: 2,
+});
+```
+
+### Use dualstack Load Balancer
+
+You can use dualstack IP address type for Application Load Balancer and Network Load Balancer.
+
+To use dualstack IP address type, you must have associated IPv6 CIDR blocks with the VPC and subnets and set the `ipAddressType` to `IpAddressType.DUAL_STACK` when creating the load balancer.
+
+### Application Load Balancer
+
+You can use dualstack Application Load Balancer for Fargate and EC2 services.
+
+```ts
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+
+// The VPC and subnet must have associated IPv6 CIDR blocks.
+const vpc = new ec2.Vpc(this, 'Vpc', {
+  ipProtocol: ec2.IpProtocol.DUAL_STACK,
+});
+const cluster = new ecs.Cluster(this, 'EcsCluster', { vpc });
+
+const service = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'myService', {
+  cluster,
+  taskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+  },
+  minHealthyPercent: 100,
+  ipAddressType: elbv2.IpAddressType.DUAL_STACK,
+});
+
+const applicationLoadBalancedEc2Service = new ecsPatterns.ApplicationLoadBalancedEc2Service(this, 'myService', {
+  cluster,
+  taskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+  },
+  minHealthyPercent: 100,
+  ipAddressType: elbv2.IpAddressType.DUAL_STACK,
+});
+```
+
+### Network Load Balancer
+
+You can use dualstack Network Load Balancer for Fargate and EC2 services.
+
+```ts
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+
+// The VPC and subnet must have associated IPv6 CIDR blocks.
+const vpc = new ec2.Vpc(this, 'Vpc', {
+  ipProtocol: ec2.IpProtocol.DUAL_STACK,
+});
+const cluster = new ecs.Cluster(this, 'EcsCluster', { vpc });
+
+const networkLoadbalancedFargateService = new ecsPatterns.NetworkLoadBalancedFargateService(this, 'NlbFargateService', {
+  cluster,
+  taskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+  },
+  minHealthyPercent: 100,
+  ipAddressType: elbv2.IpAddressType.DUAL_STACK,
+});
+
+const networkLoadbalancedEc2Service = new ecsPatterns.NetworkLoadBalancedEc2Service(this, 'NlbEc2Service', {
+  cluster,
+  taskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+  },
+  minHealthyPercent: 100,
+  ipAddressType: elbv2.IpAddressType.DUAL_STACK,
 });
 ```

@@ -1,3 +1,5 @@
+import { S3OnFailureDestination } from './s3-onfailuire-destination';
+import { IKey } from '../../aws-kms';
 import * as lambda from '../../aws-lambda';
 import { Duration } from '../../core';
 
@@ -42,6 +44,32 @@ export interface BaseStreamEventSourceProps{
    * @default true
    */
   readonly enabled?: boolean;
+
+  /**
+   * Configuration for provisioned pollers that read from the event source.
+   * When specified, allows control over the minimum and maximum number of pollers
+   * that can be provisioned to process events from the source.
+   * @default - no provisioned pollers
+   */
+  readonly provisionedPollerConfig?: ProvisionedPollerConfig;
+}
+
+/**
+ * (Amazon MSK and self-managed Apache Kafka only) The provisioned mode configuration for the event source.
+ */
+export interface ProvisionedPollerConfig {
+  /**
+   * The minimum number of pollers that should be provisioned.
+   *
+   * @default 1
+   */
+  readonly minimumPollers: number;
+  /**
+   * The maximum number of pollers that can be provisioned.
+   *
+   * @default 200
+   */
+  readonly maximumPollers: number;
 }
 
 /**
@@ -62,7 +90,11 @@ export interface StreamEventSourceProps extends BaseStreamEventSourceProps {
    * * Minimum value of 60 seconds
    * * Maximum value of 7 days
    *
-   * @default - the retention period configured on the stream
+   * The default value is -1, which sets the maximum age to infinite.
+   * When the value is set to infinite, Lambda never discards old records.
+   * Record are valid until it expires in the event source.
+   *
+   * @default -1
    */
   readonly maxRecordAge?: Duration;
 
@@ -72,7 +104,11 @@ export interface StreamEventSourceProps extends BaseStreamEventSourceProps {
    * * Minimum value of 0
    * * Maximum value of 10000
    *
-   * @default - retry until the record expires
+   * The default value is -1, which sets the maximum number of retries to infinite.
+   * When MaximumRetryAttempts is infinite, Lambda retries failed records until
+   * the record expires in the event source.
+   *
+   * @default -1
    */
   readonly retryAttempts?: number;
 
@@ -116,6 +152,24 @@ export interface StreamEventSourceProps extends BaseStreamEventSourceProps {
    * @default - None
    */
   readonly filters?: Array<{[key: string]: any}>;
+
+  /**
+   * Add Customer managed KMS key to encrypt Filter Criteria.
+   * @see https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventfiltering.html
+   * By default, Lambda will encrypt Filter Criteria using AWS managed keys
+   * @see https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#aws-managed-cmk
+   *
+   * @default - none
+   */
+  readonly filterEncryption?: IKey;
+
+  /**
+   * Configuration for enhanced monitoring metrics collection
+   * When specified, enables collection of additional metrics for the stream event source
+   *
+   * @default - Enhanced monitoring is disabled
+   */
+  readonly metricsConfig?: lambda.MetricsConfig;
 }
 
 /**
@@ -123,11 +177,33 @@ export interface StreamEventSourceProps extends BaseStreamEventSourceProps {
  */
 export abstract class StreamEventSource implements lambda.IEventSource {
   protected constructor(protected readonly props: StreamEventSourceProps) {
+    if (props.provisionedPollerConfig) {
+      const { minimumPollers, maximumPollers } = props.provisionedPollerConfig;
+      if (minimumPollers != undefined) {
+        if (minimumPollers < 1 || minimumPollers > 200) {
+          throw new Error('Minimum provisioned pollers must be between 1 and 200 inclusive');
+        }
+      }
+      if (maximumPollers != undefined) {
+        if (maximumPollers < 1 || maximumPollers > 2000) {
+          throw new Error('Maximum provisioned pollers must be between 1 and 2000 inclusive');
+        }
+      }
+      if (minimumPollers != undefined && maximumPollers != undefined) {
+        if (minimumPollers > maximumPollers) {
+          throw new Error('Minimum provisioned pollers must be less than or equal to maximum provisioned pollers');
+        }
+      }
+    }
   }
 
   public abstract bind(_target: lambda.IFunction): void;
 
   protected enrichMappingOptions(options: lambda.EventSourceMappingOptions): lambda.EventSourceMappingOptions {
+    // check if this event source support S3 as OnFailure, currently only kakfa source are supported
+    if (this.props.onFailure instanceof S3OnFailureDestination && !options.supportS3OnFailureDestination) {
+      throw new Error('S3 onFailure Destination is not supported for this event source');
+    }
     return {
       ...options,
       batchSize: this.props.batchSize || 100,
@@ -142,6 +218,7 @@ export abstract class StreamEventSource implements lambda.IEventSource {
       tumblingWindow: this.props.tumblingWindow,
       enabled: this.props.enabled,
       filters: this.props.filters,
+      filterEncryption: this.props.filterEncryption,
     };
   }
 }

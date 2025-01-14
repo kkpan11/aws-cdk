@@ -1,6 +1,8 @@
 import { BuildSpec } from './build-spec';
+import { ComputeType } from './compute-type';
+import { EnvironmentType } from './environment-type';
 import { runScriptLinuxBuildSpec } from './private/run-script-linux-build-spec';
-import { BuildEnvironment, ComputeType, IBuildImage, ImagePullPrincipalType } from './project';
+import { BuildEnvironment, IBuildImage, ImagePullPrincipalType, DockerImageOptions, isLambdaComputeType } from './project';
 import * as ecr from '../../aws-ecr';
 import * as secretsmanager from '../../aws-secretsmanager';
 
@@ -23,17 +25,37 @@ interface LinuxArmBuildImageProps {
  * You can also specify a custom image using the static method:
  *
  * - LinuxBuildImage.fromEcrRepository(repo[, tag])
+ * - LinuxBuildImage.fromDockerRegistry(image[, { secretsManagerCredentials }])
  *
  *
  * @see https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-available.html
  */
 export class LinuxArmBuildImage implements IBuildImage {
-  /** Image "aws/codebuild/amazonlinux2-aarch64-standard:1.0". */
+  /**
+   * Image "aws/codebuild/amazonlinux2-aarch64-standard:1.0".
+   * @deprecated Use {@link LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0} instead.
+   * */
   public static readonly AMAZON_LINUX_2_STANDARD_1_0 = LinuxArmBuildImage.fromCodeBuildImageId('aws/codebuild/amazonlinux2-aarch64-standard:1.0');
-  /** Image "aws/codebuild/amazonlinux2-aarch64-standard:2.0". */
+  /** Image "aws/codebuild/amazonlinux2-aarch64-standard:2.0" based on Amazon Linux 2. */
   public static readonly AMAZON_LINUX_2_STANDARD_2_0 = LinuxArmBuildImage.fromCodeBuildImageId('aws/codebuild/amazonlinux2-aarch64-standard:2.0');
-  /** Image "aws/codebuild/amazonlinux2-aarch64-standard:3.0". */
+  /** Image "aws/codebuild/amazonlinux2-aarch64-standard:3.0" based on Amazon Linux 2023. */
   public static readonly AMAZON_LINUX_2_STANDARD_3_0 = LinuxArmBuildImage.fromCodeBuildImageId('aws/codebuild/amazonlinux2-aarch64-standard:3.0');
+
+  /** Image "aws/codebuild/amazonlinux-aarch64-standard:2.0" based on Amazon Linux 2023. */
+  public static readonly AMAZON_LINUX_2023_STANDARD_2_0 = LinuxArmBuildImage.fromCodeBuildImageId('aws/codebuild/amazonlinux-aarch64-standard:2.0');
+  /** Image "aws/codebuild/amazonlinux-aarch64-standard:3.0" based on Amazon Linux 2023. */
+  public static readonly AMAZON_LINUX_2023_STANDARD_3_0 = LinuxArmBuildImage.fromCodeBuildImageId('aws/codebuild/amazonlinux-aarch64-standard:3.0');
+
+  /**
+   * @returns a aarch-64 Linux build image from a Docker Hub image.
+   */
+  public static fromDockerRegistry(name: string, options: DockerImageOptions = {}): IBuildImage {
+    return new LinuxArmBuildImage({
+      ...options,
+      imageId: name,
+      imagePullPrincipalType: ImagePullPrincipalType.SERVICE_ROLE,
+    });
+  }
 
   /**
    * Returns an ARM image running Linux from an ECR repository.
@@ -71,7 +93,7 @@ export class LinuxArmBuildImage implements IBuildImage {
     });
   }
 
-  public readonly type = 'ARM_CONTAINER';
+  public readonly type = EnvironmentType.ARM_CONTAINER as string;
   public readonly defaultComputeType = ComputeType.LARGE;
   public readonly imageId: string;
   public readonly imagePullPrincipalType?: ImagePullPrincipalType;
@@ -86,17 +108,13 @@ export class LinuxArmBuildImage implements IBuildImage {
   }
 
   /**
-   * Validates by checking the BuildEnvironment computeType as aarch64 images only support ComputeType.SMALL and
-   * ComputeType.LARGE
+   * Validates by checking the BuildEnvironments' images are not Lambda ComputeTypes
    * @param buildEnvironment BuildEnvironment
    */
   public validate(buildEnvironment: BuildEnvironment): string[] {
     const ret = [];
-    if (buildEnvironment.computeType &&
-        buildEnvironment.computeType !== ComputeType.SMALL &&
-        buildEnvironment.computeType !== ComputeType.LARGE) {
-      ret.push(`ARM images only support ComputeTypes '${ComputeType.SMALL}' and '${ComputeType.LARGE}' - ` +
-               `'${buildEnvironment.computeType}' was given`);
+    if (buildEnvironment.computeType && isLambdaComputeType(buildEnvironment.computeType)) {
+      ret.push(`ARM images do not support Lambda ComputeTypes, got ${buildEnvironment.computeType}`);
     }
     return ret;
   }

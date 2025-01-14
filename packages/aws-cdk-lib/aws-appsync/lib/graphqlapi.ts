@@ -1,39 +1,15 @@
 import { Construct } from 'constructs';
-import { CfnApiKey, CfnGraphQLApi, CfnGraphQLSchema, CfnDomainName, CfnDomainNameApiAssociation } from './appsync.generated';
-import { IGraphqlApi, GraphqlApiBase } from './graphqlapi-base';
-import { ISchema } from './schema';
+import { CfnApiKey, CfnGraphQLApi, CfnGraphQLSchema, CfnDomainName, CfnDomainNameApiAssociation, CfnSourceApiAssociation } from './appsync.generated';
+import { IGraphqlApi, GraphqlApiBase, Visibility, AuthorizationType } from './graphqlapi-base';
+import { ISchema, SchemaFile } from './schema';
+import { MergeType, addSourceApiAutoMergePermission, addSourceGraphQLPermission } from './source-api-association';
 import { ICertificate } from '../../aws-certificatemanager';
 import { IUserPool } from '../../aws-cognito';
-import { ManagedPolicy, Role, IRole, ServicePrincipal, Grant, IGrantable } from '../../aws-iam';
+import { ManagedPolicy, Role, IRole, ServicePrincipal } from '../../aws-iam';
 import { IFunction } from '../../aws-lambda';
 import { ILogGroup, LogGroup, LogRetention, RetentionDays } from '../../aws-logs';
-import { ArnFormat, CfnResource, Duration, Expiration, IResolvable, Stack } from '../../core';
-
-/**
- * enum with all possible values for AppSync authorization type
- */
-export enum AuthorizationType {
-  /**
-   * API Key authorization type
-   */
-  API_KEY = 'API_KEY',
-  /**
-   * AWS IAM authorization type. Can be used with Cognito Identity Pool federated credentials
-   */
-  IAM = 'AWS_IAM',
-  /**
-   * Cognito User Pool authorization type
-   */
-  USER_POOL = 'AMAZON_COGNITO_USER_POOLS',
-  /**
-   * OpenID Connect authorization type
-   */
-  OIDC = 'OPENID_CONNECT',
-  /**
-   * Lambda authorization type
-   */
-  LAMBDA = 'AWS_LAMBDA',
-}
+import { CfnResource, Duration, Expiration, FeatureFlags, IResolvable, Lazy, Stack, Token } from '../../core';
+import * as cxapi from '../../cx-api';
 
 /**
  * Interface to specify default or additional authorization(s)
@@ -210,15 +186,23 @@ export interface AuthorizationConfig {
  */
 export enum FieldLogLevel {
   /**
-   * No logging
+   * Resolver logging is disabled
    */
   NONE = 'NONE',
   /**
-   * Error logging
+   * Only Error messages appear in logs
    */
   ERROR = 'ERROR',
   /**
-   * All logging
+   * Info and Error messages appear in logs
+   */
+  INFO = 'INFO',
+  /**
+   * Debug, Info, and Error messages, appear in logs
+   */
+  DEBUG = 'DEBUG',
+  /**
+   * All messages (Debug, Error, Info, and Trace) appear in logs
    */
   ALL = 'ALL',
 }
@@ -255,22 +239,7 @@ export interface LogConfig {
   *
   * @default RetentionDays.INFINITE
   */
-  readonly retention?: RetentionDays
-}
-
-/**
- * Visibility type for a GraphQL API
- */
-export enum Visibility {
-
-  /**
-   * Public, open to the internet
-   */
-  GLOBAL = 'GLOBAL',
-  /**
-   * Only accessible through a VPC
-   */
-  PRIVATE = 'PRIVATE'
+  readonly retention?: RetentionDays;
 }
 
 /**
@@ -286,6 +255,91 @@ export interface DomainOptions {
    * The actual domain name. For example, `api.example.com`.
    */
   readonly domainName: string;
+}
+
+/**
+ * Additional API configuration for creating a AppSync Merged API
+ */
+export interface SourceApiOptions {
+  /**
+   * Definition of source APIs associated with this Merged API
+   */
+  readonly sourceApis: SourceApi[];
+
+  /**
+   * IAM Role used to validate access to source APIs at runtime and to update the merged API endpoint with the source API changes
+   *
+   * @default - An IAM Role with acccess to source schemas will be created
+   */
+  readonly mergedApiExecutionRole?: Role;
+}
+
+/**
+ * Configuration of source API
+*/
+export interface SourceApi {
+  /**
+   * Source API that is associated with the merged API
+   */
+  readonly sourceApi: IGraphqlApi;
+
+  /**
+   * Merging option used to associate the source API to the Merged API
+   *
+   * @default - Auto merge. The merge is triggered automatically when the source API has changed
+   */
+  readonly mergeType?: MergeType;
+
+  /**
+   * Description of the Source API asssociation.
+   */
+  readonly description?: string;
+}
+
+/**
+ * AppSync definition. Specify how you want to define your AppSync API.
+ */
+export abstract class Definition {
+  /**
+   * Schema from schema object.
+   * @param schema SchemaFile.fromAsset(filePath: string) allows schema definition through schema.graphql file
+   * @returns Definition with schema from file
+   */
+  public static fromSchema(schema: ISchema): Definition {
+    return {
+      schema,
+    };
+  }
+
+  /**
+   * Schema from file, allows schema definition through schema.graphql file
+   * @param filePath the file path of the schema file
+   * @returns Definition with schema from file
+   */
+  public static fromFile(filePath: string): Definition {
+    return this.fromSchema(SchemaFile.fromAsset(filePath));
+  }
+
+  /**
+   * Schema from existing AppSync APIs - used for creating a AppSync Merged API
+   * @param sourceApiOptions Configuration for AppSync Merged API
+   * @returns Definition with for AppSync Merged API
+   */
+  public static fromSourceApis(sourceApiOptions: SourceApiOptions): Definition {
+    return {
+      sourceApiOptions,
+    };
+  }
+
+  /**
+   * Schema, when AppSync API is created from schema file
+   */
+  readonly schema?: ISchema;
+
+  /**
+   * Source APIs for Merged API
+   */
+  readonly sourceApiOptions?: SourceApiOptions;
 }
 
 /**
@@ -312,14 +366,19 @@ export interface GraphqlApiProps {
   readonly logConfig?: LogConfig;
 
   /**
+   * Definition (schema file or source APIs) for this GraphQL Api
+   */
+  readonly definition?: Definition;
+
+  /**
    * GraphQL schema definition. Specify how you want to define your schema.
    *
-   * Schema.fromFile(filePath: string) allows schema definition through schema.graphql file
+   * SchemaFile.fromAsset(filePath: string) allows schema definition through schema.graphql file
    *
    * @default - schema will be generated code-first (i.e. addType, addObjectType, etc.)
-   *
+   * @deprecated use Definition.schema instead
    */
-  readonly schema: ISchema;
+  readonly schema?: ISchema;
   /**
    * A flag indicating whether or not X-Ray tracing is enabled for the GraphQL API.
    *
@@ -343,65 +402,52 @@ export interface GraphqlApiProps {
    * @default - no domain name
    */
   readonly domainName?: DomainOptions;
-}
-
-/**
- * A class used to generate resource arns for AppSync
- */
-export class IamResource {
-  /**
-   * Generate the resource names given custom arns
-   *
-   * @param arns The custom arns that need to be permissioned
-   *
-   * Example: custom('/types/Query/fields/getExample')
-   */
-  public static custom(...arns: string[]): IamResource {
-    if (arns.length === 0) {
-      throw new Error('At least 1 custom ARN must be provided.');
-    }
-    return new IamResource(arns);
-  }
 
   /**
-   * Generate the resource names given a type and fields
+   * A value indicating whether the API to enable (ENABLED) or disable (DISABLED) introspection.
    *
-   * @param type The type that needs to be allowed
-   * @param fields The fields that need to be allowed, if empty grant permissions to ALL fields
-   *
-   * Example: ofType('Query', 'GetExample')
+   * @default IntrospectionConfig.ENABLED
    */
-  public static ofType(type: string, ...fields: string[]): IamResource {
-    const arns = fields.length ? fields.map((field) => `types/${type}/fields/${field}`) : [`types/${type}/*`];
-    return new IamResource(arns);
-  }
+  readonly introspectionConfig?: IntrospectionConfig;
 
   /**
-   * Generate the resource names that accepts all types: `*`
+   * A number indicating the maximum depth resolvers should be accepted when handling queries.
+   * Value must be withing range of 0 to 75
+   *
+   * @default - The default value is 0 (or unspecified) which indicates no maximum depth.
    */
-  public static all(): IamResource {
-    return new IamResource(['*']);
-  }
-
-  private arns: string[];
-
-  private constructor(arns: string[]) {
-    this.arns = arns;
-  }
+  readonly queryDepthLimit?: number;
 
   /**
-   * Return the Resource ARN
+   * A number indicating the maximum number of resolvers that should be accepted when handling queries.
+   * Value must be withing range of 0 to 10000
    *
-   * @param api The GraphQL API to give permissions
+   * @default - The default value is 0 (or unspecified), which will set the limit to 10000
    */
-  public resourceArns(api: GraphqlApi): string[] {
-    return this.arns.map((arn) => Stack.of(api).formatArn({
-      service: 'appsync',
-      resource: `apis/${api.apiId}`,
-      arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
-      resourceName: `${arn}`,
-    }));
-  }
+  readonly resolverCountLimit?: number;
+
+  /**
+   * A map containing the list of resources with their properties and environment variables.
+   *
+   * There are a few rules you must follow when creating keys and values:
+   *   - Keys must begin with a letter.
+   *   - Keys must be between 2 and 64 characters long.
+   *   - Keys can only contain letters, numbers, and the underscore character (_).
+   *   - Values can be up to 512 characters long.
+   *   - You can configure up to 50 key-value pairs in a GraphQL API.
+   *
+   * @default - No environment variables.
+   */
+  readonly environmentVariables?: { [key: string]: string };
+
+  /**
+   * The owner contact information for an API resource.
+   *
+   * This field accepts any string input with a length of 0 - 256 characters.
+   *
+   * @default - No owner contact.
+   */
+  readonly ownerContact?: string;
 }
 
 /**
@@ -412,13 +458,49 @@ export interface GraphqlApiAttributes {
    * an unique AWS AppSync GraphQL API identifier
    * i.e. 'lxz775lwdrgcndgz3nurvac7oa'
    */
-  readonly graphqlApiId: string,
+  readonly graphqlApiId: string;
 
   /**
    * the arn for the GraphQL Api
    * @default - autogenerated arn
    */
-  readonly graphqlApiArn?: string,
+  readonly graphqlApiArn?: string;
+
+  /**
+   * The GraphQl endpoint arn for the GraphQL API
+   *
+   * @default - none, required to construct event rules from imported APIs
+   */
+  readonly graphQLEndpointArn?: string;
+
+  /**
+   * The GraphQl API visibility
+   *
+   * @default - GLOBAL
+   */
+  readonly visibility?: Visibility;
+
+  /**
+   * The Authorization Types for this GraphQL Api
+   *
+   * @default - none, required to construct event rules from imported APIs
+   */
+  readonly modes?: AuthorizationType[];
+}
+
+/**
+ * Introspection configuration  for a GraphQL API
+ */
+export enum IntrospectionConfig {
+  /**
+   * Enable introspection
+   */
+  ENABLED = 'ENABLED',
+
+  /**
+   * Disable introspection
+   */
+  DISABLED = 'DISABLED',
 }
 
 /**
@@ -442,6 +524,13 @@ export class GraphqlApi extends GraphqlApiBase {
     class Import extends GraphqlApiBase {
       public readonly apiId = attrs.graphqlApiId;
       public readonly arn = arn;
+
+      // the GraphQL endpoint ARN is not required to identify an AppSync GraphQL API
+      // this value is only needed to construct event rules.
+      public readonly graphQLEndpointArn = attrs.graphQLEndpointArn ?? '';
+      public readonly visibility = attrs.visibility ?? Visibility.GLOBAL;
+      public readonly modes = attrs.modes ?? [];
+
       constructor(s: Construct, i: string) {
         super(s, i);
       }
@@ -461,6 +550,11 @@ export class GraphqlApi extends GraphqlApiBase {
   public readonly arn: string;
 
   /**
+   * The GraphQL endpoint ARN
+   */
+  public readonly graphQLEndpointArn: string;
+
+  /**
    * the URL of the endpoint created by AppSync
    *
    * @attribute GraphQlUrl
@@ -473,9 +567,19 @@ export class GraphqlApi extends GraphqlApiBase {
   public readonly name: string;
 
   /**
-   * the schema attached to this api
+   * the visibility of the API
    */
-  public readonly schema: ISchema;
+  public readonly visibility: Visibility;
+
+  /**
+   * the schema attached to this api (only available for GraphQL APIs, not available for merged APIs)
+   */
+  public get schema(): ISchema {
+    if (this.definition.schema) {
+      return this.definition.schema;
+    }
+    throw new Error('Schema does not exist for AppSync merged APIs.');
+  }
 
   /**
    * The Authorization Types for this GraphQL Api
@@ -494,10 +598,13 @@ export class GraphqlApi extends GraphqlApiBase {
    */
   public readonly logGroup: ILogGroup;
 
-  private schemaResource: CfnGraphQLSchema;
+  private definition: Definition;
+  private schemaResource?: CfnGraphQLSchema;
   private api: CfnGraphQLApi;
   private apiKeyResource?: CfnApiKey;
   private domainNameResource?: CfnDomainName;
+  private mergedApiExecutionRole?: IRole;
+  private environmentVariables: { [key: string]: string } = {};
 
   constructor(scope: Construct, id: string, props: GraphqlApiProps) {
     super(scope, id);
@@ -511,6 +618,37 @@ export class GraphqlApi extends GraphqlApiBase {
 
     this.validateAuthorizationProps(modes);
 
+    if (!props.schema && !props.definition) {
+      throw new Error('You must specify a GraphQL schema or source APIs in property definition.');
+    }
+    if ((props.schema !== undefined) === (props.definition !== undefined)) {
+      throw new Error('You cannot specify both properties schema and definition.');
+    }
+    if (props.queryDepthLimit !== undefined && (props.queryDepthLimit < 0 || props.queryDepthLimit > 75)) {
+      throw new Error('You must specify a query depth limit between 0 and 75.');
+    }
+    if (props.resolverCountLimit !== undefined && (props.resolverCountLimit < 0 || props.resolverCountLimit > 10000)) {
+      throw new Error('You must specify a resolver count limit between 0 and 10000.');
+    }
+    if (!Token.isUnresolved(props.ownerContact) && props.ownerContact !== undefined && (props.ownerContact.length > 256)) {
+      throw new Error('You must specify `ownerContact` as a string of 256 characters or less.');
+    }
+
+    this.definition = props.schema ? Definition.fromSchema(props.schema) : props.definition!;
+
+    if (this.definition.sourceApiOptions) {
+      this.setupMergedApiExecutionRole(this.definition.sourceApiOptions);
+    }
+
+    if (props.environmentVariables !== undefined) {
+      Object.entries(props.environmentVariables).forEach(([key, value]) => {
+        this.addEnvironmentVariable(key, value);
+      });
+    }
+    this.node.addValidation({ validate: () => this.validateEnvironmentVariables() });
+
+    this.visibility = props.visibility ?? Visibility.GLOBAL;
+
     this.api = new CfnGraphQLApi(this, 'Resource', {
       name: props.name,
       authenticationType: defaultMode.authorizationType,
@@ -521,14 +659,26 @@ export class GraphqlApi extends GraphqlApiBase {
       additionalAuthenticationProviders: this.setupAdditionalAuthorizationModes(additionalModes),
       xrayEnabled: props.xrayEnabled,
       visibility: props.visibility,
+      mergedApiExecutionRoleArn: this.mergedApiExecutionRole?.roleArn,
+      apiType: this.definition.sourceApiOptions ? 'MERGED' : undefined,
+      introspectionConfig: props.introspectionConfig,
+      queryDepthLimit: props.queryDepthLimit,
+      resolverCountLimit: props.resolverCountLimit,
+      environmentVariables: Lazy.any({ produce: () => this.renderEnvironmentVariables() }),
+      ownerContact: props.ownerContact,
     });
 
     this.apiId = this.api.attrApiId;
     this.arn = this.api.attrArn;
     this.graphqlUrl = this.api.attrGraphQlUrl;
     this.name = this.api.name;
-    this.schema = props.schema;
-    this.schemaResource = new CfnGraphQLSchema(this, 'Schema', this.schema.bind(this));
+    this.graphQLEndpointArn = this.api.attrGraphQlEndpointArn;
+
+    if (this.definition.schema) {
+      this.schemaResource = new CfnGraphQLSchema(this, 'Schema', this.definition.schema.bind(this));
+    } else {
+      this.setupSourceApiAssociations();
+    }
 
     if (props.domainName) {
       this.domainNameResource = new CfnDomainName(this, 'DomainName', {
@@ -549,7 +699,9 @@ export class GraphqlApi extends GraphqlApiBase {
         return mode.authorizationType === AuthorizationType.API_KEY && mode.apiKeyConfig;
       })?.apiKeyConfig;
       this.apiKeyResource = this.createAPIKey(config);
-      this.apiKeyResource.addDependency(this.schemaResource);
+      if (this.schemaResource) {
+        this.apiKeyResource.addDependency(this.schemaResource);
+      }
       this.apiKey = this.apiKeyResource.attrApiKey;
     }
 
@@ -557,72 +709,79 @@ export class GraphqlApi extends GraphqlApiBase {
       const config = modes.find((mode: AuthorizationMode) => {
         return mode.authorizationType === AuthorizationType.LAMBDA && mode.lambdaAuthorizerConfig;
       })?.lambdaAuthorizerConfig;
-      config?.handler.addPermission(`${id}-appsync`, {
-        principal: new ServicePrincipal('appsync.amazonaws.com'),
-        action: 'lambda:InvokeFunction',
-      });
+
+      if (FeatureFlags.of(this).isEnabled(cxapi.APPSYNC_GRAPHQLAPI_SCOPE_LAMBDA_FUNCTION_PERMISSION)) {
+        config?.handler.addPermission(`${id}-appsync`, {
+          principal: new ServicePrincipal('appsync.amazonaws.com'),
+          action: 'lambda:InvokeFunction',
+          sourceArn: this.arn,
+        });
+      } else {
+        config?.handler.addPermission(`${id}-appsync`, {
+          principal: new ServicePrincipal('appsync.amazonaws.com'),
+          action: 'lambda:InvokeFunction',
+        });
+      }
     }
 
     const logGroupName = `/aws/appsync/apis/${this.apiId}`;
 
-    this.logGroup = LogGroup.fromLogGroupName(this, 'LogGroup', logGroupName);
-
-    if (props.logConfig?.retention) {
-      new LogRetention(this, 'LogRetention', {
-        logGroupName: this.logGroup.logGroupName,
-        retention: props.logConfig.retention,
+    if (props.logConfig) {
+      const logRetention = new LogRetention(this, 'LogRetention', {
+        logGroupName: logGroupName,
+        retention: props.logConfig?.retention ?? RetentionDays.INFINITE,
       });
-    };
+      this.logGroup = LogGroup.fromLogGroupArn(this, 'LogGroup', logRetention.logGroupArn);
+    } else {
+      this.logGroup = LogGroup.fromLogGroupName(this, 'LogGroup', logGroupName);
+    }
+
   }
 
-  /**
-   * Adds an IAM policy statement associated with this GraphQLApi to an IAM
-   * principal's policy.
-   *
-   * @param grantee The principal
-   * @param resources The set of resources to allow (i.e. ...:[region]:[accountId]:apis/GraphQLId/...)
-   * @param actions The actions that should be granted to the principal (i.e. appsync:graphql )
-   */
-  public grant(grantee: IGrantable, resources: IamResource, ...actions: string[]): Grant {
-    return Grant.addToPrincipal({
-      grantee,
-      actions,
-      resourceArns: resources.resourceArns(this),
-      scope: this,
+  private setupSourceApiAssociations() {
+    this.definition.sourceApiOptions?.sourceApis.forEach(sourceApiConfig => {
+      const mergeType = sourceApiConfig.mergeType ?? MergeType.AUTO_MERGE;
+      let sourceApiIdentifier = sourceApiConfig.sourceApi.apiId;
+      let mergedApiIdentifier = this.apiId;
+
+      // This is protected by a feature flag because if there is an existing source api association that used the api id,
+      // updating it to use ARN as identifier leads to a resource replacement. ARN is recommended going forward because it allows support
+      // for both same account and cross account use cases.
+      if (FeatureFlags.of(this).isEnabled(cxapi.APPSYNC_ENABLE_USE_ARN_IDENTIFIER_SOURCE_API_ASSOCIATION)) {
+        sourceApiIdentifier = sourceApiConfig.sourceApi.arn;
+        mergedApiIdentifier = this.arn;
+      }
+
+      const association = new CfnSourceApiAssociation(this, `${sourceApiConfig.sourceApi.node.id}Association`, {
+        sourceApiIdentifier: sourceApiIdentifier,
+        mergedApiIdentifier: mergedApiIdentifier,
+        sourceApiAssociationConfig: {
+          mergeType: mergeType,
+        },
+        description: sourceApiConfig.description,
+      });
+
+      // Add dependency because the schema must be created first to create the source api association.
+      sourceApiConfig.sourceApi.addSchemaDependency(association);
+
+      // Add permissions to merged api execution role
+      const executionRole = this.mergedApiExecutionRole as IRole;
+      addSourceGraphQLPermission(association, executionRole);
+
+      if (mergeType === MergeType.AUTO_MERGE) {
+        addSourceApiAutoMergePermission(association, executionRole);
+      }
     });
   }
 
-  /**
-   * Adds an IAM policy statement for Mutation access to this GraphQLApi to an IAM
-   * principal's policy.
-   *
-   * @param grantee The principal
-   * @param fields The fields to grant access to that are Mutations (leave blank for all)
-   */
-  public grantMutation(grantee: IGrantable, ...fields: string[]): Grant {
-    return this.grant(grantee, IamResource.ofType('Mutation', ...fields), 'appsync:GraphQL');
-  }
-
-  /**
-   * Adds an IAM policy statement for Query access to this GraphQLApi to an IAM
-   * principal's policy.
-   *
-   * @param grantee The principal
-   * @param fields The fields to grant access to that are Queries (leave blank for all)
-   */
-  public grantQuery(grantee: IGrantable, ...fields: string[]): Grant {
-    return this.grant(grantee, IamResource.ofType('Query', ...fields), 'appsync:GraphQL');
-  }
-
-  /**
-   * Adds an IAM policy statement for Subscription access to this GraphQLApi to an IAM
-   * principal's policy.
-   *
-   * @param grantee The principal
-   * @param fields The fields to grant access to that are Subscriptions (leave blank for all)
-   */
-  public grantSubscription(grantee: IGrantable, ...fields: string[]): Grant {
-    return this.grant(grantee, IamResource.ofType('Subscription', ...fields), 'appsync:GraphQL');
+  private setupMergedApiExecutionRole(sourceApiOptions: SourceApiOptions) {
+    if (sourceApiOptions.mergedApiExecutionRole) {
+      this.mergedApiExecutionRole = sourceApiOptions.mergedApiExecutionRole;
+    } else {
+      this.mergedApiExecutionRole = new Role(this, 'MergedApiExecutionRole', {
+        assumedBy: new ServicePrincipal('appsync.amazonaws.com'),
+      });
+    }
   }
 
   private validateAuthorizationProps(modes: AuthorizationMode[]) {
@@ -654,8 +813,43 @@ export class GraphqlApi extends GraphqlApiBase {
    * @param construct the dependee
    */
   public addSchemaDependency(construct: CfnResource): boolean {
-    construct.addDependency(this.schemaResource);
+    if (this.schemaResource) {
+      construct.addDependency(this.schemaResource);
+    };
     return true;
+  }
+
+  /**
+   * Add an environment variable to the construct.
+   */
+  public addEnvironmentVariable(key: string, value: string) {
+    if (this.definition.sourceApiOptions) {
+      throw new Error('Environment variables are not supported for merged APIs');
+    }
+    if (!Token.isUnresolved(key) && !/^[A-Za-z]+\w*$/.test(key)) {
+      throw new Error(`Key '${key}' must begin with a letter and can only contain letters, numbers, and underscores`);
+    }
+    if (!Token.isUnresolved(key) && (key.length < 2 || key.length > 64)) {
+      throw new Error(`Key '${key}' must be between 2 and 64 characters long, got ${key.length}`);
+    }
+    if (!Token.isUnresolved(value) && value.length > 512) {
+      throw new Error(`Value for '${key}' is too long. Values can be up to 512 characters long, got ${value.length}`);
+    }
+
+    this.environmentVariables[key] = value;
+  }
+
+  private validateEnvironmentVariables() {
+    const errors: string[] = [];
+    const entries = Object.entries(this.environmentVariables);
+    if (entries.length > 50) {
+      errors.push(`Only 50 environment variables can be set, got ${entries.length}`);
+    }
+    return errors;
+  }
+
+  private renderEnvironmentVariables() {
+    return Object.entries(this.environmentVariables).length > 0 ? this.environmentVariables : undefined;
   }
 
   private setupLogConfig(config?: LogConfig) {

@@ -1,5 +1,5 @@
 {
-  "version": "31.0.0",
+  "version": "36.0.0",
   "artifacts": {
     "ChatbotLogRetentionInteg.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "ChatbotLogRetentionInteg.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/7111cc2f79a329f0d0c572b1bd8adf03c7df8c633264608d9fb66119dc57c962.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/8324608ef0537409fe3fe296266576f4b13f5eb34a2ccbd6b9d30fad2c575d02.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -48,7 +49,10 @@
         "/ChatbotLogRetentionInteg/MySlackChannel/Resource": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "MySlackChannelA8E0B56C"
+            "data": "MySlackChannelA8E0B56C",
+            "trace": [
+              "!!DESTRUCTIVE_CHANGES: WILL_REPLACE"
+            ]
           }
         ],
         "/ChatbotLogRetentionInteg/MySlackChannel/LogRetention/Resource": [
@@ -75,10 +79,10 @@
             "data": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A"
           }
         ],
-        "/ChatbotLogRetentionInteg/DefaultCrNodeVersionMap": [
+        "/ChatbotLogRetentionInteg/LatestNodeRuntimeMap": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "DefaultCrNodeVersionMap"
+            "data": "LatestNodeRuntimeMap"
           }
         ],
         "/ChatbotLogRetentionInteg/BootstrapVersion": [

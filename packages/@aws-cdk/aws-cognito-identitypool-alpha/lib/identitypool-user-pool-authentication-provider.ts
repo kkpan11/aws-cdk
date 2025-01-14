@@ -61,7 +61,7 @@ export interface UserPoolAuthenticationProviderBindConfig {
   /**
    * Client Id of the Associated User Pool Client
    */
-  readonly clientId: string
+  readonly clientId: string;
 
   /**
    * The identity providers associated with the UserPool
@@ -92,7 +92,7 @@ export class UserPoolAuthenticationProvider implements IUserPoolAuthenticationPr
   /**
    * Whether to disable the pool's default server side token check
    */
-  private disableServerSideTokenCheck: boolean
+  private disableServerSideTokenCheck: boolean;
   constructor(props: UserPoolAuthenticationProviderProps) {
     this.userPool = props.userPool;
     this.userPoolClient = props.userPoolClient || this.userPool.addClient('UserPoolAuthenticationProviderClient');

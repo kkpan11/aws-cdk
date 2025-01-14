@@ -18,11 +18,11 @@ import { EC2_RESTRICT_DEFAULT_SECURITY_GROUP } from 'aws-cdk-lib/cx-api';
  */
 
 const app = new cdk.App();
-const stack = new cdk.Stack(app, 'aws-stepfunctions-tasks-emr-containers-start-job-run-test');
+const stack = new cdk.Stack(app, 'aws-stepfunctions-tasks-emr-containers-start-job-run');
 stack.node.setContext(EC2_RESTRICT_DEFAULT_SECURITY_GROUP, false);
 
 const eksCluster = new eks.Cluster(stack, 'integration-test-eks-cluster', {
-  version: eks.KubernetesVersion.V1_22,
+  version: eks.KubernetesVersion.V1_30,
   defaultCapacity: 3,
   defaultCapacityInstance: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE),
 });
@@ -99,8 +99,10 @@ new cdk.CfnOutput(stack, 'stateMachineArn', {
   value: sm.stateMachineArn,
 });
 
-new integ.IntegTest(app, 'aws-stepfunctions-tasks-emr-containers-start-job-run', {
+new integ.IntegTest(app, 'aws-stepfunctions-tasks-emr-containers-start-job-run-integ', {
   testCases: [stack],
+  // Test includes assets that are updated weekly. If not disabled, the upgrade PR will fail.
+  diffAssets: false,
   cdkCommandOptions: {
     deploy: {
       args: {

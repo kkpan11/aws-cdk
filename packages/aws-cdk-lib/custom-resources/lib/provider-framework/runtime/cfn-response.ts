@@ -3,6 +3,7 @@
 import * as url from 'url';
 import { httpRequest } from './outbound';
 import { log, withRetries } from './util';
+import { OnEventResponse } from '../types';
 
 export const CREATE_FAILED_PHYSICAL_ID_MARKER = 'AWSCDK::CustomResourceProviderFramework::CREATE_FAILED';
 export const MISSING_PHYSICAL_ID_MARKER = 'AWSCDK::CustomResourceProviderFramework::MISSING_PHYSICAL_ID';
@@ -18,7 +19,7 @@ export interface CloudFormationEventContext {
   PhysicalResourceId?: string;
   LogicalResourceId: string;
   ResponseURL: string;
-  Data?: any
+  Data?: any;
 }
 
 export async function submitResponse(status: 'SUCCESS' | 'FAILED', event: CloudFormationEventContext, options: CloudFormationResponseOptions = { }) {
@@ -33,11 +34,15 @@ export async function submitResponse(status: 'SUCCESS' | 'FAILED', event: CloudF
     Data: event.Data,
   };
 
-  log('submit response to cloudformation', json);
-
   const responseBody = JSON.stringify(json);
 
   const parsedUrl = url.parse(event.ResponseURL);
+  const loggingSafeUrl = `${parsedUrl.protocol}//${parsedUrl.hostname}/${parsedUrl.pathname}?***`;
+  if (options?.noEcho) {
+    log('submit redacted response to cloudformation', loggingSafeUrl, redactDataFromPayload(json));
+  } else {
+    log('submit response to cloudformation', loggingSafeUrl, json);
+  }
 
   const retryOptions = {
     attempts: 5,
@@ -99,6 +104,20 @@ export function safeHandler(block: (event: any) => Promise<void>) {
       });
     }
   };
+}
+
+export function redactDataFromPayload(payload: OnEventResponse) {
+  // Create a deep copy of the payload object
+  const redactedPayload: OnEventResponse = JSON.parse(JSON.stringify(payload));
+
+  // Redact the data in the copied payload object
+  if (redactedPayload.Data) {
+    const keys = Object.keys(redactedPayload.Data);
+    for (const key of keys) {
+      redactedPayload.Data[key] = '*****';
+    }
+  }
+  return redactedPayload;
 }
 
 export class Retry extends Error { }

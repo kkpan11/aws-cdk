@@ -1,7 +1,7 @@
 import { Construct } from 'constructs';
 import { UserPoolIdentityProviderProps } from './base';
-import { UserPoolIdentityProviderBase } from './private/user-pool-idp-base';
 import { CfnUserPoolIdentityProvider } from '../cognito.generated';
+import { UserPoolIdentityProviderBase } from './private/user-pool-idp-base';
 
 /**
  * Properties to initialize UserPoolFacebookIdentityProvider
@@ -12,12 +12,12 @@ export interface UserPoolIdentityProviderFacebookProps extends UserPoolIdentityP
    */
   readonly clientId: string;
   /**
-   * The client secret to be accompanied with clientUd for Facebook to authenticate the client.
+   * The client secret to be accompanied with clientId for Facebook to authenticate the client.
    * @see https://developers.facebook.com/docs/facebook-login/security#appsecret
    */
   readonly clientSecret: string;
   /**
-   * The list of facebook permissions to obtain for getting access to the Facebook profile.
+   * The list of Facebook permissions to obtain for getting access to the Facebook profile.
    * @see https://developers.facebook.com/docs/facebook-login/permissions
    * @default [ public_profile ]
    */
@@ -30,7 +30,7 @@ export interface UserPoolIdentityProviderFacebookProps extends UserPoolIdentityP
 }
 
 /**
- * Represents a identity provider that integrates with 'Facebook Login'
+ * Represents an identity provider that integrates with Facebook Login
  * @resource AWS::Cognito::UserPoolIdentityProvider
  */
 export class UserPoolIdentityProviderFacebook extends UserPoolIdentityProviderBase {

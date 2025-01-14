@@ -12,6 +12,7 @@ The following destinations are supported
 * SQS queue - Only standard SQS queues are supported for failure destinations, FIFO queues are not supported.
 * SNS topic
 * EventBridge event bus
+* S3 bucket
 
 Example with a SNS topic for successful invocations:
 
@@ -22,7 +23,7 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 const myTopic = new sns.Topic(this, 'Topic');
 
 const myFn = new lambda.Function(this, 'Fn', {
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: lambda.Runtime.NODEJS_LATEST,
   handler: 'index.handler',
   code: lambda.Code.fromAsset(path.join(__dirname, 'lambda-handler')),
   // sns topic for successful invocations
@@ -39,7 +40,7 @@ import * as sqs from 'aws-cdk-lib/aws-sqs';
 const deadLetterQueue = new sqs.Queue(this, 'DeadLetterQueue');
 
 const myFn = new lambda.Function(this, 'Fn', {
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: lambda.Runtime.NODEJS_LATEST,
   handler: 'index.handler',
   code: lambda.Code.fromInline('// your code'),
   // sqs queue for unsuccessful invocations
@@ -116,6 +117,8 @@ is either 'Lambda Function Invocation Result - Success' or 'Lambda Function Invo
 depending on whether the lambda function invocation succeeded or failed. The event field `resource`
 contains the function and destination ARNs. See [AWS Events](https://docs.aws.amazon.com/eventbridge/latest/userguide/aws-events.html)
 for the different event fields.
+* For S3 (`S3Destination`), the invocation record json is stored as a `File` in the destination bucket. The path of a destination 
+payload file in the configured bucket is `aws/lambda/async/<function-name>/YYYY/MM/DD/YYYY-MM-DDTHH.MM.SS-<Random UUID>`. 
 
 ### Auto-extract response payload with lambda destination
 
@@ -127,7 +130,7 @@ invocation record:
 declare const destinationFn: lambda.Function;
 
 const sourceFn = new lambda.Function(this, 'Source', {
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: lambda.Runtime.NODEJS_LATEST,
   handler: 'index.handler',
   code: lambda.Code.fromAsset(path.join(__dirname, 'lambda-handler')),
   // auto-extract on success

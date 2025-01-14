@@ -262,6 +262,22 @@ describe('CDK Include', () => {
     );
   });
 
+  test('can ingest a template with fn:: intrinsic function used in deletion policy', () => {
+    includeTestTemplate(stack, 'intrinsic-deletion-policy.json');
+
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('intrinsic-deletion-policy.json'),
+    );
+  });
+
+  test('can ingest a template with ref intrinsic functions used in deletion policy', () => {
+    includeTestTemplate(stack, 'intrinsic-deletion-policy-ref.json');
+
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('intrinsic-deletion-policy-ref.json'),
+    );
+  });
+
   test('can ingest a JSON template with string-form Fn::GetAtt, and output it unchanged', () => {
     includeTestTemplate(stack, 'get-att-string-form.json');
 
@@ -595,24 +611,91 @@ describe('CDK Include', () => {
     });
   });
 
-  test('correctly handles the CreationPolicy resource attribute', () => {
-    const cfnTemplate = includeTestTemplate(stack, 'resource-attribute-creation-policy.json');
-    const cfnBucket = cfnTemplate.getResource('Bucket');
+  test('Intrinsics can be used in the leaf nodes of autoscaling creation policy', () => {
+    const cfnTemplate = includeTestTemplate(stack, 'intrinsics-create-policy-autoscaling.json');
+    const cfnBucket = cfnTemplate.getResource('AutoScalingCreationPolicyIntrinsic');
 
     expect(cfnBucket.cfnOptions.creationPolicy).toBeDefined();
 
     Template.fromStack(stack).templateMatches(
-      loadTestFileToJsObject('resource-attribute-creation-policy.json'),
+      loadTestFileToJsObject('intrinsics-create-policy-autoscaling.json'),
     );
   });
 
-  test('correctly handles the UpdatePolicy resource attribute', () => {
-    const cfnTemplate = includeTestTemplate(stack, 'resource-attribute-update-policy.json');
-    const cfnBucket = cfnTemplate.getResource('Bucket');
+  test('Nested intrinsics can be used in the leaf nodes of autoscaling creation policy', () => {
+    const cfnTemplate = includeTestTemplate(stack, 'intrinsics-create-policy-complex.json');
+    const cfnBucket = cfnTemplate.getResource('ASG');
+
+    expect(cfnBucket.cfnOptions.creationPolicy).toBeDefined();
+
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('intrinsics-create-policy-complex.json'),
+    );
+  });
+
+  test('intrinsics can be used in the leaf nodes of autoscaling resource signal creation policy', () => {
+    const cfnTemplate = includeTestTemplate(stack, 'intrinsics-create-policy-resource-signal.json');
+    const cfnBucket = cfnTemplate.getResource('ResourceSignalIntrinsic');
+
+    expect(cfnBucket.cfnOptions.creationPolicy).toBeDefined();
+
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('intrinsics-create-policy-resource-signal.json'),
+    );
+  });
+
+  test('Intrinsics can be used in the leaf nodes of autoscaling rolling update policy', () => {
+    const cfnTemplate = includeTestTemplate(stack, 'intrinsics-update-policy-autoscaling-rolling-update.json');
+    const cfnBucket = cfnTemplate.getResource('ASG');
 
     expect(cfnBucket.cfnOptions.updatePolicy).toBeDefined();
+
     Template.fromStack(stack).templateMatches(
-      loadTestFileToJsObject('resource-attribute-update-policy.json'),
+      loadTestFileToJsObject('intrinsics-update-policy-autoscaling-rolling-update.json'),
+    );
+  });
+
+  test('Intrinsics can be used in the leaf nodes of autoscaling replacing update policy', () => {
+    const cfnTemplate = includeTestTemplate(stack, 'intrinsics-update-policy-autoscaling-replacing-update.json');
+    const cfnBucket = cfnTemplate.getResource('ASG');
+
+    expect(cfnBucket.cfnOptions.updatePolicy).toBeDefined();
+
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('intrinsics-update-policy-autoscaling-replacing-update.json'),
+    );
+  });
+
+  test('Intrinsics can be used in the leaf nodes of autoscaling scheduled-action update policy', () => {
+    const cfnTemplate = includeTestTemplate(stack, 'intrinsics-update-policy-autoscaling-scheduled-action.json');
+    const cfnBucket = cfnTemplate.getResource('ASG');
+
+    expect(cfnBucket.cfnOptions.updatePolicy).toBeDefined();
+
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('intrinsics-update-policy-autoscaling-scheduled-action.json'),
+    );
+  });
+
+  test('Intrinsics can be used in the leaf nodes of code deploy lambda alias update policy', () => {
+    const cfnTemplate = includeTestTemplate(stack, 'intrinsics-update-policy-code-deploy-lambda-alias-update.json');
+    const cfnBucket = cfnTemplate.getResource('Alias');
+
+    expect(cfnBucket.cfnOptions.updatePolicy).toBeDefined();
+
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('intrinsics-update-policy-code-deploy-lambda-alias-update.json'),
+    );
+  });
+
+  test('Nested Intrinsics can be used in the leaf nodes of autoscaling rolling update policy', () => {
+    const cfnTemplate = includeTestTemplate(stack, 'intrinsics-update-policy-complex.json');
+    const cfnBucket = cfnTemplate.getResource('ASG');
+
+    expect(cfnBucket.cfnOptions.updatePolicy).toBeDefined();
+
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('intrinsics-update-policy-complex.json'),
     );
   });
 
@@ -621,6 +704,20 @@ describe('CDK Include', () => {
 
     Template.fromStack(stack).templateMatches(
       loadTestFileToJsObject('non-existent-resource-attribute.json'),
+    );
+  });
+
+  test('preserves unknown policy attributes', () => {
+    const cfnTemplate = includeTestTemplate(stack, 'non-existent-policy-attribute.json');
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('non-existent-policy-attribute.json'),
+    );
+  });
+
+  test('correctly handles string arrays in policy attributes', () => {
+    const cfnTemplate = includeTestTemplate(stack, 'string-arrays-in-policy.json');
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('string-arrays-in-policy.json'),
     );
   });
 
@@ -727,7 +824,7 @@ describe('CDK Include', () => {
     const output = cfnTemplate.getOutput('Output1');
     output.value = 'a mutated value';
     output.description = undefined;
-    output.exportName = 'an export';
+    output.exportName = 'an-export';
     output.condition = new core.CfnCondition(stack, 'MyCondition', {
       expression: core.Fn.conditionIf('AlwaysFalseCond', core.Aws.NO_VALUE, true),
     });
@@ -755,7 +852,7 @@ describe('CDK Include', () => {
         "Output1": {
           "Value": "a mutated value",
           "Export": {
-            "Name": "an export",
+            "Name": "an-export",
           },
           "Condition": "MyCondition",
         },
@@ -1105,6 +1202,14 @@ describe('CDK Include', () => {
       loadTestFileToJsObject('fn-select-with-novalue.json'),
     );
   });
+
+  test('Fn::If can be used in Tags', () => {
+    includeTestTemplate(stack, 'tags-with-intrinsics.json');
+
+    Template.fromStack(stack).templateMatches(
+      loadTestFileToJsObject('tags-with-intrinsics.json'),
+    );
+  });
 });
 
 interface IncludeTestTemplateProps {
@@ -1112,7 +1217,7 @@ interface IncludeTestTemplateProps {
   readonly preserveLogicalIds?: boolean;
 
   /** @default {} */
-  readonly parameters?: { [parameterName: string]: any }
+  readonly parameters?: { [parameterName: string]: any };
 }
 
 function includeTestTemplate(scope: constructs.Construct, testTemplate: string, props: IncludeTestTemplateProps = {}): inc.CfnInclude {

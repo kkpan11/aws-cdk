@@ -53,7 +53,7 @@ test('bundling', () => {
       command: [
         'bash', '-c',
         [
-          'go build -o /asset-output/bootstrap ./cmd/api',
+          'go build -o "/asset-output/bootstrap" ./cmd/api',
         ].join(' && '),
       ],
     }),
@@ -81,7 +81,7 @@ test('bundling with file as entry', () => {
       command: [
         'bash', '-c',
         [
-          'go build -o /asset-output/bootstrap ./main.go',
+          'go build -o "/asset-output/bootstrap" ./main.go',
         ].join(' && '),
       ],
     }),
@@ -102,7 +102,7 @@ test('bundling with file in subdirectory as entry', () => {
       command: [
         'bash', '-c',
         [
-          'go build -o /asset-output/bootstrap ./cmd/api/main.go',
+          'go build -o "/asset-output/bootstrap" ./cmd/api/main.go',
         ].join(' && '),
       ],
     }),
@@ -123,7 +123,7 @@ test('bundling with file other than main.go in subdirectory as entry', () => {
       command: [
         'bash', '-c',
         [
-          'go build -o /asset-output/bootstrap ./cmd/api/api.go',
+          'go build -o "/asset-output/bootstrap" ./cmd/api/api.go',
         ].join(' && '),
       ],
     }),
@@ -185,7 +185,7 @@ test('Local bundling', () => {
     environment: {
       KEY: 'value',
     },
-    runtime: Runtime.PROVIDED_AL2,
+    runtime: Runtime.PROVIDED_AL2023,
     architecture: Architecture.X86_64,
   });
 
@@ -213,7 +213,7 @@ test('Incorrect go version', () => {
   const bundler = new Bundling({
     entry,
     moduleDir,
-    runtime: Runtime.PROVIDED_AL2,
+    runtime: Runtime.PROVIDED_AL2023,
     architecture: Architecture.X86_64,
   });
 
@@ -265,7 +265,7 @@ test('Go build flags can be passed', () => {
       command: [
         'bash', '-c',
         [
-          'go build -o /asset-output/bootstrap -ldflags "-s -w" ./cmd/api',
+          'go build -o "/asset-output/bootstrap" -ldflags "-s -w" ./cmd/api',
         ].join(' && '),
       ],
     }),
@@ -297,7 +297,7 @@ test('AssetHashType can be specified', () => {
       command: [
         'bash', '-c',
         [
-          'go build -o /asset-output/bootstrap ./cmd/api',
+          'go build -o "/asset-output/bootstrap" ./cmd/api',
         ].join(' && '),
       ],
     }),
@@ -308,7 +308,7 @@ test('with command hooks', () => {
   Bundling.bundle({
     entry,
     moduleDir,
-    runtime: Runtime.PROVIDED_AL2,
+    runtime: Runtime.PROVIDED_AL2023,
     architecture: Architecture.X86_64,
     commandHooks: {
       beforeBundling(inputDir: string, outputDir: string): string[] {

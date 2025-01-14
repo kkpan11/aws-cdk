@@ -63,8 +63,9 @@ export interface LambdaInvokeProps extends sfn.TaskStateBaseProps {
   /**
    * Whether to retry on Lambda service exceptions.
    *
-   * This handles `Lambda.ServiceException`, `Lambda.AWSLambdaException` and
-   * `Lambda.SdkClientException` with an interval of 2 seconds, a back-off rate
+   * This handles `Lambda.ServiceException`, `Lambda.AWSLambdaException`,
+   * `Lambda.SdkClientException`, and `Lambda.ClientExecutionTimeoutException`
+   * with an interval of 2 seconds, a back-off rate
    * of 2 and 6 maximum attempts.
    *
    * @see https://docs.aws.amazon.com/step-functions/latest/dg/bp-lambda-serviceexception.html
@@ -128,7 +129,7 @@ export class LambdaInvoke extends sfn.TaskStateBase {
     if (props.retryOnServiceExceptions ?? true) {
       // Best practice from https://docs.aws.amazon.com/step-functions/latest/dg/bp-lambda-serviceexception.html
       this.addRetry({
-        errors: ['Lambda.ServiceException', 'Lambda.AWSLambdaException', 'Lambda.SdkClientException'],
+        errors: ['Lambda.ClientExecutionTimeoutException', 'Lambda.ServiceException', 'Lambda.AWSLambdaException', 'Lambda.SdkClientException'],
         interval: cdk.Duration.seconds(2),
         maxAttempts: 6,
         backoffRate: 2,
@@ -186,5 +187,5 @@ export enum LambdaInvocationType {
   /**
    * Validate parameter values and verify that the user or role has permission to invoke the function.
    */
-  DRY_RUN = 'DryRun'
+  DRY_RUN = 'DryRun',
 }

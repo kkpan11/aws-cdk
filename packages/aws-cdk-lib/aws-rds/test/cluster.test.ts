@@ -1,19 +1,50 @@
 import { Annotations, Match, Template } from '../../assertions';
 import * as ec2 from '../../aws-ec2';
 import { ManagedPolicy, Role, ServicePrincipal } from '../../aws-iam';
+import * as iam from '../../aws-iam';
 import * as kms from '../../aws-kms';
 import * as logs from '../../aws-logs';
 import * as s3 from '../../aws-s3';
+import { Secret } from '../../aws-secretsmanager';
 import * as cdk from '../../core';
-import { RemovalPolicy, Stack } from '../../core';
+import { RemovalPolicy, Stack, Annotations as CoreAnnotations } from '../../core';
+import {
+  RDS_PREVENT_RENDERING_DEPRECATED_CREDENTIALS,
+  AURORA_CLUSTER_CHANGE_SCOPE_OF_INSTANCE_PARAMETER_GROUP_WITH_EACH_PARAMETERS,
+} from '../../cx-api';
 import {
   AuroraEngineVersion, AuroraMysqlEngineVersion, AuroraPostgresEngineVersion, CfnDBCluster, Credentials, DatabaseCluster,
   DatabaseClusterEngine, DatabaseClusterFromSnapshot, ParameterGroup, PerformanceInsightRetention, SubnetGroup, DatabaseSecret,
-  DatabaseInstanceEngine, SqlServerEngineVersion, SnapshotCredentials, InstanceUpdateBehaviour, NetworkType, ClusterInstance,
+  DatabaseInstanceEngine, SqlServerEngineVersion, SnapshotCredentials, InstanceUpdateBehaviour, NetworkType, ClusterInstance, CaCertificate,
+  IClusterEngine,
+  ClusterScalabilityType,
+  ClusterScailabilityType,
+  DBClusterStorageType,
 } from '../lib';
 
 describe('cluster new api', () => {
   describe('errors are thrown', () => {
+    test('when both clusterScalabilityType and clusterScailabilityType (deprecated) props are provided', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      expect(() => {
+        // WHEN
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA_MYSQL,
+          instanceProps: {
+            instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
+            vpc,
+          },
+          clusterScalabilityType: ClusterScalabilityType.STANDARD,
+          clusterScailabilityType: ClusterScailabilityType.STANDARD,
+          iamAuthentication: true,
+        });
+        // THEN
+      }).toThrow('You cannot specify both clusterScalabilityType and clusterScailabilityType (deprecated). Use clusterScalabilityType.');
+    });
+
     test('when old and new props are provided', () => {
       // GIVEN
       const stack = testStack();
@@ -22,7 +53,7 @@ describe('cluster new api', () => {
       expect(() => {
         // WHEN
         new DatabaseCluster(stack, 'Database', {
-          engine: DatabaseClusterEngine.AURORA,
+          engine: DatabaseClusterEngine.AURORA_MYSQL,
           instanceProps: {
             instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
             vpc,
@@ -42,7 +73,7 @@ describe('cluster new api', () => {
       expect(() => {
         // WHEN
         new DatabaseCluster(stack, 'Database', {
-          engine: DatabaseClusterEngine.AURORA,
+          engine: DatabaseClusterEngine.AURORA_MYSQL,
           vpc,
           iamAuthentication: true,
         });
@@ -57,12 +88,12 @@ describe('cluster new api', () => {
       expect(() => {
         // WHEN
         new DatabaseCluster(stack, 'Database', {
-          engine: DatabaseClusterEngine.AURORA,
+          engine: DatabaseClusterEngine.AURORA_MYSQL,
           writer: ClusterInstance.serverlessV2('writer'),
           iamAuthentication: true,
         });
         // THEN
-      }).toThrow(/If instanceProps is not provided then `vpc` must be provided./);
+      }).toThrow(/Provide either vpc or instanceProps.vpc, but not both/);
     });
 
     test('when both vpc and instanceProps.vpc are provided', () => {
@@ -73,7 +104,7 @@ describe('cluster new api', () => {
       expect(() => {
         // WHEN
         new DatabaseCluster(stack, 'Database', {
-          engine: DatabaseClusterEngine.AURORA,
+          engine: DatabaseClusterEngine.AURORA_MYSQL,
           instanceProps: {
             instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
             vpc,
@@ -93,7 +124,7 @@ describe('cluster new api', () => {
       expect(() => {
         // WHEN
         new DatabaseCluster(stack, 'Database', {
-          engine: DatabaseClusterEngine.AURORA,
+          engine: DatabaseClusterEngine.AURORA_MYSQL,
           instanceProps: {
             instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
             vpcSubnets: vpc.selectSubnets( { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS } ),
@@ -107,11 +138,10 @@ describe('cluster new api', () => {
     });
 
     test.each([
-      [0.5, 200, /serverlessV2MaxCapacity must be >= 0.5 & <= 128/],
-      [0.5, 0, /serverlessV2MaxCapacity must be >= 0.5 & <= 128/],
-      [0, 1, /serverlessV2MinCapacity must be >= 0.5 & <= 128/],
-      [200, 1, /serverlessV2MinCapacity must be >= 0.5 & <= 128/],
-      [0.5, 0.5, /If serverlessV2MinCapacity === 0.5 then serverlessV2MaxCapacity must be >=1/],
+      [0.5, 300, /serverlessV2MaxCapacity must be >= 1 & <= 256/],
+      [0.5, 0, /serverlessV2MaxCapacity must be >= 1 & <= 256/],
+      [-1, 1, /serverlessV2MinCapacity must be >= 0 & <= 256/],
+      [300, 1, /serverlessV2MinCapacity must be >= 0 & <= 256/],
       [10.1, 12, /serverlessV2MinCapacity & serverlessV2MaxCapacity must be in 0.5 step increments/],
       [12, 12.1, /serverlessV2MinCapacity & serverlessV2MaxCapacity must be in 0.5 step increments/],
       [5, 1, /serverlessV2MaxCapacity must be greater than serverlessV2MinCapacity/],
@@ -123,7 +153,7 @@ describe('cluster new api', () => {
       expect(() => {
         // WHEN
         new DatabaseCluster(stack, 'Database', {
-          engine: DatabaseClusterEngine.AURORA,
+          engine: DatabaseClusterEngine.AURORA_MYSQL,
           vpc,
           vpcSubnets: vpc.selectSubnets( { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS } ),
           serverlessV2MaxCapacity: maxCapacity,
@@ -136,6 +166,287 @@ describe('cluster new api', () => {
   });
 
   describe('cluster options', () => {
+    test.each([true, false])('specify auto minor version upgrade', (autoMinorVersionUpgrade) => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc,
+        autoMinorVersionUpgrade,
+        writer: ClusterInstance.serverlessV2('writer'),
+      });
+
+      // THEN
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::RDS::DBCluster', {
+        Engine: 'aurora-mysql',
+        AutoMinorVersionUpgrade: autoMinorVersionUpgrade,
+      });
+    });
+
+    test.each([
+      ['clusterScalabilityType', 'clusterScalabilityType', ClusterScalabilityType.STANDARD],
+      ['clusterScailabilityType (deprecated)', 'clusterScailabilityType', ClusterScailabilityType.STANDARD],
+    ])('cluster scalability option with %s', (_, propName, propValue) => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      new DatabaseCluster(stack, 'Cluster', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc,
+        writer: ClusterInstance.serverlessV2('writer'),
+        [propName]: propValue,
+      });
+
+      // THEN
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::RDS::DBCluster', {
+        ClusterScalabilityType: 'standard',
+      });
+    });
+
+    describe('limitless database', () => {
+      test.each([
+        ['clusterScalabilityType', 'clusterScalabilityType', ClusterScalabilityType.LIMITLESS],
+        ['clusterScailabilityType (deprecated)', 'clusterScailabilityType', ClusterScailabilityType.LIMITLESS],
+      ])('with default options using %s', (_, propName, propValue) => {
+        // GIVEN
+        const stack = testStack();
+        const vpc = new ec2.Vpc(stack, 'VPC');
+
+        // WHEN
+        new DatabaseCluster(stack, 'Cluster', {
+          engine: DatabaseClusterEngine.auroraPostgres({
+            version: AuroraPostgresEngineVersion.VER_16_4_LIMITLESS,
+          }),
+          vpc,
+          [propName]: propValue,
+          enablePerformanceInsights: true,
+          performanceInsightRetention: PerformanceInsightRetention.MONTHS_1,
+          monitoringInterval: cdk.Duration.minutes(1),
+          enableClusterLevelEnhancedMonitoring: true,
+          storageType: DBClusterStorageType.AURORA_IOPT1,
+          cloudwatchLogsExports: ['postgresql'],
+        });
+
+        // THEN
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::RDS::DBCluster', {
+          ClusterScalabilityType: 'limitless',
+          EnableCloudwatchLogsExports: ['postgresql'],
+          Engine: 'aurora-postgresql',
+          EngineVersion: '16.4-limitless',
+          MonitoringInterval: 60,
+          PerformanceInsightsEnabled: true,
+          PerformanceInsightsRetentionPeriod: 31,
+          StorageType: 'aurora-iopt1',
+        });
+      });
+
+      test.each([false, undefined])('throw error for disabling performance insights', (enablePerformanceInsights) => {
+        // GIVEN
+        const stack = testStack();
+        const vpc = new ec2.Vpc(stack, 'VPC');
+
+        // THEN
+        expect(() => {
+          // WHEN
+          new DatabaseCluster(stack, 'Cluster', {
+            engine: DatabaseClusterEngine.auroraPostgres({
+              version: AuroraPostgresEngineVersion.VER_16_4_LIMITLESS,
+            }),
+            vpc,
+            clusterScailabilityType: ClusterScailabilityType.LIMITLESS,
+            enablePerformanceInsights,
+            monitoringInterval: cdk.Duration.minutes(1),
+            enableClusterLevelEnhancedMonitoring: true,
+            storageType: DBClusterStorageType.AURORA_IOPT1,
+            cloudwatchLogsExports: ['postgresql'],
+          });
+        }).toThrow('Performance Insights must be enabled for Aurora Limitless Database.');
+      });
+
+      test('throw error for invalid performance insights retention period', () => {
+        // GIVEN
+        const stack = testStack();
+        const vpc = new ec2.Vpc(stack, 'VPC');
+
+        // THEN
+        expect(() => {
+          // WHEN
+          new DatabaseCluster(stack, 'Cluster', {
+            engine: DatabaseClusterEngine.auroraPostgres({
+              version: AuroraPostgresEngineVersion.VER_16_4_LIMITLESS,
+            }),
+            vpc,
+            clusterScailabilityType: ClusterScailabilityType.LIMITLESS,
+            enablePerformanceInsights: true,
+            performanceInsightRetention: PerformanceInsightRetention.DEFAULT,
+            monitoringInterval: cdk.Duration.minutes(1),
+            enableClusterLevelEnhancedMonitoring: true,
+            storageType: DBClusterStorageType.AURORA_IOPT1,
+            cloudwatchLogsExports: ['postgresql'],
+          });
+        }).toThrow('Performance Insights retention period must be set at least 31 days for Aurora Limitless Database.');
+      });
+
+      test('throw error for not specifying monitoring interval', () => {
+        // GIVEN
+        const stack = testStack();
+        const vpc = new ec2.Vpc(stack, 'VPC');
+
+        // THEN
+        expect(() => {
+          // WHEN
+          new DatabaseCluster(stack, 'Cluster', {
+            engine: DatabaseClusterEngine.auroraPostgres({
+              version: AuroraPostgresEngineVersion.VER_16_4_LIMITLESS,
+            }),
+            vpc,
+            clusterScailabilityType: ClusterScailabilityType.LIMITLESS,
+            enablePerformanceInsights: true,
+            performanceInsightRetention: PerformanceInsightRetention.MONTHS_1,
+            monitoringInterval: undefined,
+            enableClusterLevelEnhancedMonitoring: true,
+            storageType: DBClusterStorageType.AURORA_IOPT1,
+            cloudwatchLogsExports: ['postgresql'],
+          });
+        }).toThrow('Cluster level enhanced monitoring must be set for Aurora Limitless Database. Please set \'monitoringInterval\' and enable \'enableClusterLevelEnhancedMonitoring\'.');
+      });
+
+      test.each([false, undefined])('throw error for configuring enhanced monitoring at the instance level', (enableClusterLevelEnhancedMonitoring) => {
+        // GIVEN
+        const stack = testStack();
+        const vpc = new ec2.Vpc(stack, 'VPC');
+
+        // THEN
+        expect(() => {
+          // WHEN
+          new DatabaseCluster(stack, 'Cluster', {
+            engine: DatabaseClusterEngine.auroraPostgres({
+              version: AuroraPostgresEngineVersion.VER_16_4_LIMITLESS,
+            }),
+            vpc,
+            clusterScailabilityType: ClusterScailabilityType.LIMITLESS,
+            enablePerformanceInsights: true,
+            performanceInsightRetention: PerformanceInsightRetention.MONTHS_1,
+            monitoringInterval: cdk.Duration.minutes(1),
+            enableClusterLevelEnhancedMonitoring,
+            storageType: DBClusterStorageType.AURORA_IOPT1,
+            cloudwatchLogsExports: ['postgresql'],
+            instances: 1,
+          });
+        }).toThrow('Cluster level enhanced monitoring must be set for Aurora Limitless Database. Please set \'monitoringInterval\' and enable \'enableClusterLevelEnhancedMonitoring\'.');
+      });
+
+      test('throw error for specifying writer instance', () => {
+        // GIVEN
+        const stack = testStack();
+        const vpc = new ec2.Vpc(stack, 'VPC');
+
+        // THEN
+        expect(() => {
+          // WHEN
+          new DatabaseCluster(stack, 'Cluster', {
+            engine: DatabaseClusterEngine.auroraPostgres({
+              version: AuroraPostgresEngineVersion.VER_16_4_LIMITLESS,
+            }),
+            vpc,
+            clusterScailabilityType: ClusterScailabilityType.LIMITLESS,
+            enablePerformanceInsights: true,
+            performanceInsightRetention: PerformanceInsightRetention.MONTHS_1,
+            monitoringInterval: cdk.Duration.minutes(1),
+            enableClusterLevelEnhancedMonitoring: true,
+            storageType: DBClusterStorageType.AURORA_IOPT1,
+            cloudwatchLogsExports: ['postgresql'],
+            writer: ClusterInstance.serverlessV2('writer'),
+          });
+        }).toThrow('Aurora Limitless Database does not support readers or writer instances.');
+      });
+
+      test.each([
+        DatabaseClusterEngine.auroraMysql({
+          version: AuroraMysqlEngineVersion.VER_3_08_0,
+        }),
+        DatabaseClusterEngine.auroraPostgres({
+          version: AuroraPostgresEngineVersion.VER_16_4,
+        }),
+      ])('throw error for invalid engine', (engine) => {
+        // GIVEN
+        const stack = testStack();
+        const vpc = new ec2.Vpc(stack, 'VPC');
+
+        // THEN
+        expect(() => {
+          // WHEN
+          new DatabaseCluster(stack, 'Cluster', {
+            engine,
+            vpc,
+            clusterScailabilityType: ClusterScailabilityType.LIMITLESS,
+            enablePerformanceInsights: true,
+            performanceInsightRetention: PerformanceInsightRetention.MONTHS_1,
+            monitoringInterval: cdk.Duration.minutes(1),
+            enableClusterLevelEnhancedMonitoring: true,
+            storageType: DBClusterStorageType.AURORA_IOPT1,
+            cloudwatchLogsExports: ['postgresql'],
+          });
+        }).toThrow(`Aurora Limitless Database requires an engine version that supports it, got ${engine.engineVersion?.fullVersion}`);
+      });
+
+      test('throw error for invalid storage type', () => {
+        // GIVEN
+        const stack = testStack();
+        const vpc = new ec2.Vpc(stack, 'VPC');
+
+        // THEN
+        expect(() => {
+          // WHEN
+          new DatabaseCluster(stack, 'Cluster', {
+            engine: DatabaseClusterEngine.auroraPostgres({
+              version: AuroraPostgresEngineVersion.VER_16_4_LIMITLESS,
+            }),
+            vpc,
+            clusterScailabilityType: ClusterScailabilityType.LIMITLESS,
+            enablePerformanceInsights: true,
+            performanceInsightRetention: PerformanceInsightRetention.MONTHS_1,
+            monitoringInterval: cdk.Duration.minutes(1),
+            enableClusterLevelEnhancedMonitoring: true,
+            storageType: DBClusterStorageType.AURORA,
+            cloudwatchLogsExports: ['postgresql'],
+          });
+        }).toThrow('Aurora Limitless Database requires I/O optimized storage type, got: aurora');
+      });
+
+      test.each([[], undefined])('throw error for invalid cloudwatch log exports', (cloudwatchLogsExports) => {
+        // GIVEN
+        const stack = testStack();
+        const vpc = new ec2.Vpc(stack, 'VPC');
+
+        // THEN
+        expect(() => {
+          // WHEN
+          new DatabaseCluster(stack, 'Cluster', {
+            engine: DatabaseClusterEngine.auroraPostgres({
+              version: AuroraPostgresEngineVersion.VER_16_4_LIMITLESS,
+            }),
+            vpc,
+            clusterScailabilityType: ClusterScailabilityType.LIMITLESS,
+            enablePerformanceInsights: true,
+            performanceInsightRetention: PerformanceInsightRetention.MONTHS_1,
+            monitoringInterval: cdk.Duration.minutes(1),
+            enableClusterLevelEnhancedMonitoring: true,
+            storageType: DBClusterStorageType.AURORA_IOPT1,
+            cloudwatchLogsExports,
+          });
+        }).toThrow('Aurora Limitless Database requires CloudWatch Logs exports to be set.');
+      });
+    });
+
     test('with serverless instances', () => {
       // GIVEN
       const stack = testStack();
@@ -143,7 +454,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.serverlessV2('writer'),
         iamAuthentication: true,
@@ -170,6 +481,29 @@ describe('cluster new api', () => {
       });
     });
 
+    test.each([
+      ['MySQL', DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_0 })],
+      ['PostgreSQL', DatabaseClusterEngine.auroraPostgres({ version: AuroraPostgresEngineVersion.VER_16_4 })],
+    ])('set enableLocalWriteForwarding for aurora %s', (type: string, engine: IClusterEngine) => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      new DatabaseCluster(stack, type, {
+        engine,
+        vpc,
+        enableLocalWriteForwarding: true,
+        writer: ClusterInstance.serverlessV2('writer'),
+      });
+
+      // THEN
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::RDS::DBCluster', {
+        EnableLocalWriteForwarding: true,
+      });
+    });
+
     test('vpcSubnets can be provided', () => {
       // GIVEN
       const stack = testStack();
@@ -177,7 +511,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         vpcSubnets: vpc.selectSubnets({ subnetType: ec2.SubnetType.PUBLIC }),
         writer: ClusterInstance.serverlessV2('writer'),
@@ -204,10 +538,85 @@ describe('cluster new api', () => {
         ],
       });
     });
+
+    test('preferredMaintenanceWindow provided in InstanceProps', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      const PREFERRED_MAINTENANCE_WINDOW: string = 'Sun:12:00-Sun:13:00';
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        instanceProps: {
+          vpc: vpc,
+          preferredMaintenanceWindow: PREFERRED_MAINTENANCE_WINDOW,
+        },
+      });
+
+      // THEN
+      const template = Template.fromStack(stack);
+      // maintenance window is set
+      template.hasResourceProperties('AWS::RDS::DBInstance', Match.objectLike({
+        PreferredMaintenanceWindow: PREFERRED_MAINTENANCE_WINDOW,
+      }));
+    });
+    test('preferredMaintenanceWindow provided in writer', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      const PREFERRED_MAINTENANCE_WINDOW: string = 'Sun:12:00-Sun:13:00';
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc: vpc,
+        writer: ClusterInstance.provisioned('Instance1', {
+          preferredMaintenanceWindow: PREFERRED_MAINTENANCE_WINDOW,
+        }),
+      });
+
+      // THEN
+      const template = Template.fromStack(stack);
+      // maintenance window is set
+      template.hasResourceProperties('AWS::RDS::DBInstance', Match.objectLike({
+        PreferredMaintenanceWindow: PREFERRED_MAINTENANCE_WINDOW,
+      }));
+    });
+    test('preferredMaintenanceWindow provided in readers', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      const PREFERRED_MAINTENANCE_WINDOW: string = 'Sun:12:00-Sun:13:00';
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc: vpc,
+        writer: ClusterInstance.provisioned('Instance1', {
+          // No preferredMaintenanceWindow set
+        }),
+        readers: [
+          ClusterInstance.provisioned('Instance2', {
+            preferredMaintenanceWindow: PREFERRED_MAINTENANCE_WINDOW,
+          }),
+        ],
+      });
+
+      // THEN
+      const template = Template.fromStack(stack);
+      // maintenance window is set
+      template.hasResourceProperties('AWS::RDS::DBInstance', Match.objectLike({
+        PreferredMaintenanceWindow: PREFERRED_MAINTENANCE_WINDOW,
+      }));
+    });
   });
 
   describe('migrate from instanceProps', () => {
-    test('template contains no changes', () => {
+    test('template contains no changes (provisioned instances)', () => {
       // GIVEN
       const stack1 = testStack();
       const stack2 = testStack();
@@ -217,7 +626,7 @@ describe('cluster new api', () => {
 
         // WHEN
         const pg = new ParameterGroup(stack, 'pg', {
-          engine: DatabaseClusterEngine.AURORA,
+          engine: DatabaseClusterEngine.AURORA_MYSQL,
         });
         const sg = new ec2.SecurityGroup(stack, 'sg', {
           vpc,
@@ -237,13 +646,13 @@ describe('cluster new api', () => {
       const test1 = createCase(stack1);
       const test2 = createCase(stack2);
       new DatabaseCluster(stack1, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         instanceProps: test1,
         iamAuthentication: true,
       });
 
       new DatabaseCluster(stack2, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc: test2.vpc,
         securityGroups: test2.securityGroups,
         writer: ClusterInstance.provisioned('Instance1', {
@@ -268,6 +677,85 @@ describe('cluster new api', () => {
         test1Template,
       ).toEqual(Template.fromStack(stack2).toJSON());
     });
+
+    test('template contains no changes (serverless instances)', () => {
+      // GIVEN
+      const stack1 = testStack();
+      const stack2 = testStack();
+
+      function createCase(stack: Stack) {
+        const vpc = new ec2.Vpc(stack, 'VPC');
+
+        // WHEN
+        const pg = new ParameterGroup(stack, 'pg', {
+          engine: DatabaseClusterEngine.AURORA_MYSQL,
+        });
+        const sg = new ec2.SecurityGroup(stack, 'sg', {
+          vpc,
+        });
+        const instanceProps = {
+          instanceType: new ec2.InstanceType('serverless'),
+          vpc,
+          allowMajorVersionUpgrade: true,
+          autoMinorVersionUpgrade: true,
+          deleteAutomatedBackups: true,
+          enablePerformanceInsights: true,
+          parameterGroup: pg,
+          securityGroups: [sg],
+        };
+        return instanceProps;
+      }
+      const test1 = createCase(stack1);
+      const test2 = createCase(stack2);
+
+      // Create serverless cluster using workaround described here:
+      // https://github.com/aws/aws-cdk/issues/20197#issuecomment-1284485844
+      const workaroundCluster = new DatabaseCluster(stack1, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        instanceProps: test1,
+        iamAuthentication: true,
+      });
+
+      cdk.Aspects.of(workaroundCluster).add({
+        visit(node) {
+          if (node instanceof CfnDBCluster) {
+            node.serverlessV2ScalingConfiguration = {
+              minCapacity: 1,
+              maxCapacity: 12,
+            };
+          }
+        },
+      });
+
+      // Create serverless cluster using new/official approach.
+      // This should provide a non-breaking migration path from the workaround.
+      new DatabaseCluster(stack2, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc: test2.vpc,
+        securityGroups: test2.securityGroups,
+        writer: ClusterInstance.serverlessV2('Instance1', {
+          ...test2,
+          isFromLegacyInstanceProps: true,
+        }),
+        readers: [
+          ClusterInstance.serverlessV2('Instance2', {
+            ...test2,
+            scaleWithWriter: true,
+            isFromLegacyInstanceProps: true,
+          }),
+        ],
+        iamAuthentication: true,
+        serverlessV2MinCapacity: 1,
+        serverlessV2MaxCapacity: 12,
+      });
+
+      // THEN
+      const test1Template = Template.fromStack(stack1).toJSON();
+      // deleteAutomatedBackups is not needed on the instance, it is set on the cluster
+      delete test1Template.Resources.DatabaseInstance1844F58FD.Properties.DeleteAutomatedBackups;
+      delete test1Template.Resources.DatabaseInstance2AA380DEE.Properties.DeleteAutomatedBackups;
+      expect(test1Template).toEqual(Template.fromStack(stack2).toJSON());
+    });
   });
 
   describe('creates a writer instance', () => {
@@ -278,7 +766,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.serverlessV2('writer'),
         iamAuthentication: true,
@@ -291,7 +779,7 @@ describe('cluster new api', () => {
       template.hasResourceProperties('AWS::RDS::DBInstance', {
         DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
         DBInstanceClass: 'db.serverless',
-        Engine: 'aurora',
+        Engine: 'aurora-mysql',
         PromotionTier: 0,
       });
     });
@@ -304,13 +792,13 @@ describe('cluster new api', () => {
       // WHEN
       new DatabaseCluster(stack, 'Database', {
         removalPolicy: RemovalPolicy.RETAIN,
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.serverlessV2('writer', {
           allowMajorVersionUpgrade: true,
           autoMinorVersionUpgrade: true,
           enablePerformanceInsights: true,
-          parameterGroup: new ParameterGroup(stack, 'pg', { engine: DatabaseClusterEngine.AURORA }),
+          parameterGroup: new ParameterGroup(stack, 'pg', { engine: DatabaseClusterEngine.AURORA_MYSQL }),
         }),
       });
 
@@ -326,7 +814,7 @@ describe('cluster new api', () => {
           DBInstanceClass: 'db.serverless',
           DBParameterGroupName: { Ref: 'pg749EE6ED' },
           EnablePerformanceInsights: true,
-          Engine: 'aurora',
+          Engine: 'aurora-mysql',
           PerformanceInsightsRetentionPeriod: 7,
           PromotionTier: 0,
         },
@@ -342,7 +830,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.provisioned('writer'),
         iamAuthentication: true,
@@ -366,14 +854,14 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.provisioned('writer', {
           allowMajorVersionUpgrade: true,
           autoMinorVersionUpgrade: true,
           enablePerformanceInsights: true,
           instanceType: ec2.InstanceType.of(ec2.InstanceClass.C4, ec2.InstanceSize.LARGE ),
-          parameterGroup: new ParameterGroup(stack, 'pg', { engine: DatabaseClusterEngine.AURORA }),
+          parameterGroup: new ParameterGroup(stack, 'pg', { engine: DatabaseClusterEngine.AURORA_MYSQL }),
         }),
         iamAuthentication: true,
       });
@@ -390,10 +878,165 @@ describe('cluster new api', () => {
         DBInstanceClass: 'db.c4.large',
         DBParameterGroupName: { Ref: 'pg749EE6ED' },
         EnablePerformanceInsights: true,
-        Engine: 'aurora',
+        Engine: 'aurora-mysql',
         PerformanceInsightsRetentionPeriod: 7,
         PromotionTier: 0,
       });
+    });
+
+    test('readers always to be created after the writer', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc,
+        vpcSubnets: vpc.selectSubnets({ subnetType: ec2.SubnetType.PUBLIC }),
+        writer: ClusterInstance.serverlessV2('writer'),
+        readers: [
+          ClusterInstance.serverlessV2('reader1', { instanceIdentifier: 'reader1' }),
+          ClusterInstance.serverlessV2('reader2', { instanceIdentifier: 'reader2' }),
+        ],
+      });
+
+      // THEN
+      const template = Template.fromStack(stack);
+      // reader1 should depend on the writer
+      template.hasResource('AWS::RDS::DBInstance', {
+        Properties: {
+          DBInstanceIdentifier: 'reader1',
+        },
+        DependsOn: Match.arrayWith(['Databasewriter2462CC03']),
+      });
+      // reader2 should depend on the writer
+      template.hasResource('AWS::RDS::DBInstance', {
+        Properties: {
+          DBInstanceIdentifier: 'reader2',
+        },
+        DependsOn: Match.arrayWith(['Databasewriter2462CC03']),
+      });
+    });
+  });
+
+  describe('instanceIdentifiers', () => {
+    test('should contain writer and reader instance IDs', () => {
+      //GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      //WHEN
+      const cluster = new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc,
+        writer: ClusterInstance.serverlessV2('writer'),
+        readers: [ClusterInstance.serverlessV2('reader')],
+        iamAuthentication: true,
+      });
+
+      //THEN
+      expect(cluster.instanceIdentifiers).toHaveLength(2);
+      expect(stack.resolve(cluster.instanceIdentifiers[0])).toEqual({
+        Ref: 'Databasewriter2462CC03',
+      });
+    });
+  });
+
+  describe('instanceEndpoints', () => {
+    test('should contain writer and reader instance endpoints at DatabaseCluster', () => {
+      //GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      //WHEN
+      const cluster = new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc,
+        writer: ClusterInstance.serverlessV2('writer'),
+        readers: [ClusterInstance.serverlessV2('reader')],
+        iamAuthentication: true,
+      });
+
+      //THEN
+      expect(cluster.instanceEndpoints).toHaveLength(2);
+      expect(stack.resolve(cluster.instanceEndpoints)).toEqual([{
+        hostname: {
+          'Fn::GetAtt': ['Databasewriter2462CC03', 'Endpoint.Address'],
+        },
+        port: {
+          'Fn::GetAtt': ['DatabaseB269D8BB', 'Endpoint.Port'],
+        },
+        socketAddress: {
+          'Fn::Join': ['', [
+            { 'Fn::GetAtt': ['Databasewriter2462CC03', 'Endpoint.Address'] },
+            ':',
+            { 'Fn::GetAtt': ['DatabaseB269D8BB', 'Endpoint.Port'] },
+          ]],
+        },
+      }, {
+        hostname: {
+          'Fn::GetAtt': ['Databasereader13B43287', 'Endpoint.Address'],
+        },
+        port: {
+          'Fn::GetAtt': ['DatabaseB269D8BB', 'Endpoint.Port'],
+        },
+        socketAddress: {
+          'Fn::Join': ['', [
+            { 'Fn::GetAtt': ['Databasereader13B43287', 'Endpoint.Address'] },
+            ':',
+            { 'Fn::GetAtt': ['DatabaseB269D8BB', 'Endpoint.Port'] },
+          ]],
+        },
+      }]);
+    });
+
+    test('should contain writer and reader instance endpoints at DatabaseClusterFromSnapshot', () => {
+      //GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      //WHEN
+      const cluster = new DatabaseClusterFromSnapshot(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc,
+        snapshotIdentifier: 'snapshot-identifier',
+        iamAuthentication: true,
+        writer: ClusterInstance.serverlessV2('writer'),
+        readers: [ClusterInstance.serverlessV2('reader')],
+      });
+
+      //THEN
+      expect(cluster.instanceEndpoints).toHaveLength(2);
+      expect(stack.resolve(cluster.instanceEndpoints)).toEqual([{
+        hostname: {
+          'Fn::GetAtt': ['Databasewriter2462CC03', 'Endpoint.Address'],
+        },
+        port: {
+          'Fn::GetAtt': ['DatabaseB269D8BB', 'Endpoint.Port'],
+        },
+        socketAddress: {
+          'Fn::Join': ['', [
+            { 'Fn::GetAtt': ['Databasewriter2462CC03', 'Endpoint.Address'] },
+            ':',
+            { 'Fn::GetAtt': ['DatabaseB269D8BB', 'Endpoint.Port'] },
+          ]],
+        },
+      }, {
+        hostname: {
+          'Fn::GetAtt': ['Databasereader13B43287', 'Endpoint.Address'],
+        },
+        port: {
+          'Fn::GetAtt': ['DatabaseB269D8BB', 'Endpoint.Port'],
+        },
+        socketAddress: {
+          'Fn::Join': ['', [
+            { 'Fn::GetAtt': ['Databasereader13B43287', 'Endpoint.Address'] },
+            ':',
+            { 'Fn::GetAtt': ['DatabaseB269D8BB', 'Endpoint.Port'] },
+          ]],
+        },
+      }]);
     });
   });
 
@@ -405,7 +1048,7 @@ describe('cluster new api', () => {
 
       // WHEN
       const cluster = new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.provisioned('writer'),
         readers: [ClusterInstance.serverlessV2('reader')],
@@ -431,6 +1074,89 @@ describe('cluster new api', () => {
         `Cluster ${cluster.node.id} only has serverless readers and no reader is in promotion tier 0-1.`+
         'Serverless readers in promotion tiers >= 2 will NOT scale with the writer, which can lead to '+
         'availability issues if a failover event occurs. It is recommended that at least one reader '+
+        'has `scaleWithWriter` set to true [ack: @aws-cdk/aws-rds:noFailoverServerlessReaders]',
+      );
+    });
+
+    test('serverless reader in promotion tier 2 does not throws', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      const cluster = new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc,
+        writer: ClusterInstance.provisioned('writer'),
+        readers: [ClusterInstance.serverlessV2('reader')],
+        iamAuthentication: true,
+      });
+
+      CoreAnnotations.of(stack).acknowledgeWarning('RDSNoFailoverServerlessReaders');
+      // THEN
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::RDS::DBInstance', 2);
+      template.hasResourceProperties('AWS::RDS::DBInstance', {
+        DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
+        DBInstanceClass: 'db.t3.medium',
+        PromotionTier: 0,
+      });
+
+      template.hasResourceProperties('AWS::RDS::DBInstance', {
+        DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
+        DBInstanceClass: 'db.serverless',
+        PromotionTier: 2,
+      });
+
+      Annotations.fromStack(stack).hasNoWarning('*',
+        `Cluster ${cluster.node.id} only has serverless readers and no reader is in promotion tier 0-1.`+
+        'Serverless readers in promotion tiers >= 2 will NOT scale with the writer, which can lead to '+
+        'availability issues if a failover event occurs. It is recommended that at least one reader '+
+        'has `scaleWithWriter` set to true',
+      );
+    });
+
+    test('serverless reader in promotion tier 2 does not throws with root context', () => {
+      // GIVEN
+      const app = new cdk.App({
+        context: {
+          ACKNOWLEDGEMENTS_CONTEXT_KEY: {
+            RDSNoFailoverServerlessReaders: ['Default/Database'],
+
+          },
+        },
+      });
+      const stack = testStack(app);
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      const cluster = new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc,
+        writer: ClusterInstance.provisioned('writer'),
+        readers: [ClusterInstance.serverlessV2('reader')],
+        iamAuthentication: true,
+      });
+
+      // THEN
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::RDS::DBInstance', 2);
+      template.hasResourceProperties('AWS::RDS::DBInstance', {
+        DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
+        DBInstanceClass: 'db.t3.medium',
+        PromotionTier: 0,
+      });
+
+      template.hasResourceProperties('AWS::RDS::DBInstance', {
+        DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
+        DBInstanceClass: 'db.serverless',
+        PromotionTier: 2,
+      });
+
+      Annotations.fromStack(stack).hasNoWarning('*',
+        `Cluster ${cluster.node.id} only has serverless readers and no reader is in promotion tier 0-1.`+
+        'Serverless readers in promotion tiers >= 2 will NOT scale with the writer, which can lead to '+
+        'availability issues if a failover event occurs. It is recommended that at least one reader '+
         'has `scaleWithWriter` set to true',
       );
     });
@@ -442,7 +1168,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.provisioned('writer'),
         readers: [ClusterInstance.serverlessV2('reader', { scaleWithWriter: true })],
@@ -483,7 +1209,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.provisioned('writer', {
           instanceType,
@@ -512,7 +1238,7 @@ describe('cluster new api', () => {
         'For high availability any serverless instances in promotion tiers 0-1 '+
         'should be able to scale to match the provisioned instance capacity.\n'+
         'Serverless instance reader is in promotion tier 1,\n'+
-        `But can not scale to match the provisioned writer instance (${instanceType.toString()})`,
+        `But can not scale to match the provisioned writer instance (${instanceType.toString()}) [ack: @aws-cdk/aws-rds:serverlessInstanceCantScaleWithWriter]`,
       );
     });
   });
@@ -525,7 +1251,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.provisioned('writer', {
           // instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE24 ),
@@ -558,7 +1284,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.provisioned('writer', {
           instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE24 ),
@@ -595,7 +1321,7 @@ describe('cluster new api', () => {
         'InstanceSize as the writer. Any of these instances could be chosen as the new writer in the event '+
         'of a failover.\n'+
         'Writer InstanceSize: m5.24xlarge\n'+
-        'Reader InstanceSizes: t3.medium, m5.xlarge',
+        'Reader InstanceSizes: t3.medium, m5.xlarge [ack: @aws-cdk/aws-rds:provisionedReadersDontMatchWriter]',
       );
     });
 
@@ -606,7 +1332,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.provisioned('writer', {
           instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE24 ),
@@ -641,6 +1367,46 @@ describe('cluster new api', () => {
 
       Annotations.fromStack(stack).hasNoWarning('*', '*');
     });
+
+    test('can create with multiple readers with each parameters', () => {
+      // GIVEN
+      const stack = testStack();
+      stack.node.setContext(AURORA_CLUSTER_CHANGE_SCOPE_OF_INSTANCE_PARAMETER_GROUP_WITH_EACH_PARAMETERS, true);
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc,
+        writer: ClusterInstance.provisioned('writer', {}),
+        readers: [
+          ClusterInstance.provisioned('reader', {
+            parameters: {},
+          }),
+          ClusterInstance.provisioned('reader2', {
+            parameters: {},
+          }),
+        ],
+      });
+
+      // THEN
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::RDS::DBInstance', 3);
+      template.resourceCountIs('AWS::RDS::DBParameterGroup', 2);
+      template.hasResourceProperties('AWS::RDS::DBInstance', {
+        DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
+      });
+      template.hasResourceProperties('AWS::RDS::DBInstance', {
+        DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
+        DBParameterGroupName: { Ref: 'DatabasereaderInstanceParameterGroupA66BCEF9' },
+      });
+      template.hasResourceProperties('AWS::RDS::DBInstance', {
+        DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
+        DBParameterGroupName: { Ref: 'Databasereader2InstanceParameterGroupD35BEBC4' },
+      });
+
+      Annotations.fromStack(stack).hasNoWarning('*', '*');
+    });
   });
 
   describe('mixed readers', () => {
@@ -651,7 +1417,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.provisioned('writer', {
           instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE24 ),
@@ -694,7 +1460,7 @@ describe('cluster new api', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
         writer: ClusterInstance.provisioned('writer', {
           instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE24 ),
@@ -729,7 +1495,7 @@ describe('cluster new api', () => {
       Annotations.fromStack(stack).hasWarning('*',
         'There are serverlessV2 readers in tier 2. Since there are no instances in a higher tier, '+
         'any instance in this tier is a failover target. Since this tier is > 1 the serverless reader will not scale '+
-        'with the writer which could lead to availability issues during failover.',
+        'with the writer which could lead to availability issues during failover. [ack: @aws-cdk/aws-rds:serverlessInHighestTier2-15]',
       );
 
       Annotations.fromStack(stack).hasWarning('*',
@@ -737,8 +1503,56 @@ describe('cluster new api', () => {
         'InstanceSize as the writer. Any of these instances could be chosen as the new writer in the event '+
         'of a failover.\n'+
         'Writer InstanceSize: m5.24xlarge\n'+
-        'Reader InstanceSizes: m5.xlarge',
+        'Reader InstanceSizes: m5.xlarge [ack: @aws-cdk/aws-rds:provisionedReadersDontMatchWriter]',
       );
+    });
+
+    test('support CA certificate identifier on writer and readers', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        vpc,
+        writer: ClusterInstance.provisioned('writer', {
+          instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE24 ),
+          caCertificate: CaCertificate.RDS_CA_RSA4096_G1,
+        }),
+        readers: [
+          ClusterInstance.serverlessV2('reader', {
+            caCertificate: CaCertificate.RDS_CA_RSA2048_G1,
+          }),
+          ClusterInstance.provisioned('reader2', {
+            promotionTier: 1,
+            instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE24 ),
+            caCertificate: CaCertificate.of('custom-ca-id'),
+          }),
+        ],
+      });
+
+      // THEN
+      const template = Template.fromStack(stack);
+      template.resourceCountIs('AWS::RDS::DBInstance', 3);
+      template.hasResourceProperties('AWS::RDS::DBInstance', {
+        DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
+        DBInstanceClass: 'db.m5.24xlarge',
+        PromotionTier: 0,
+        CACertificateIdentifier: 'rds-ca-rsa4096-g1',
+      });
+      template.hasResourceProperties('AWS::RDS::DBInstance', {
+        DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
+        DBInstanceClass: 'db.serverless',
+        PromotionTier: 2,
+        CACertificateIdentifier: 'rds-ca-rsa2048-g1',
+      });
+      template.hasResourceProperties('AWS::RDS::DBInstance', {
+        DBClusterIdentifier: { Ref: 'DatabaseB269D8BB' },
+        DBInstanceClass: 'db.m5.24xlarge',
+        PromotionTier: 1,
+        CACertificateIdentifier: 'custom-ca-id',
+      });
     });
   });
 });
@@ -751,7 +1565,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       credentials: {
         username: 'admin',
         password: cdk.SecretValue.unsafePlainText('tooshort'),
@@ -766,7 +1580,7 @@ describe('cluster', () => {
     // THEN
     Template.fromStack(stack).hasResource('AWS::RDS::DBCluster', {
       Properties: {
-        Engine: 'aurora',
+        Engine: 'aurora-mysql',
         DBSubnetGroupName: { Ref: 'DatabaseSubnets56F17B9A' },
         MasterUsername: 'admin',
         MasterUserPassword: 'tooshort',
@@ -793,7 +1607,7 @@ describe('cluster', () => {
     expect(() => {
       new DatabaseCluster(stack, 'Database', {
         instances: parameter.valueAsNumber,
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         instanceProps: {
           vpc,
         },
@@ -808,7 +1622,7 @@ describe('cluster', () => {
 
     // WHEN
     const cluster = new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -822,7 +1636,7 @@ describe('cluster', () => {
 
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
-      Engine: 'aurora',
+      Engine: 'aurora-mysql',
       DBSubnetGroupName: { Ref: 'DatabaseSubnets56F17B9A' },
       MasterUsername: 'admin',
       MasterUserPassword: 'tooshort',
@@ -860,7 +1674,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 5,
       instanceProps: {
         vpc,
@@ -893,7 +1707,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -908,7 +1722,7 @@ describe('cluster', () => {
 
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
-      Engine: 'aurora',
+      Engine: 'aurora-mysql',
       DBSubnetGroupName: { Ref: 'DatabaseSubnets56F17B9A' },
       MasterUsername: 'admin',
       MasterUserPassword: 'tooshort',
@@ -923,14 +1737,14 @@ describe('cluster', () => {
 
     // WHEN
     const group = new ParameterGroup(stack, 'Params', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       description: 'bye',
       parameters: {
         param: 'value',
       },
     });
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       credentials: {
         username: 'admin',
         password: cdk.SecretValue.unsafePlainText('tooshort'),
@@ -954,7 +1768,7 @@ describe('cluster', () => {
 
     new DatabaseCluster(stack, 'Cluster', {
       credentials: { username: 'admin' },
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: {
         instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.LARGE),
         vpc,
@@ -1058,7 +1872,7 @@ describe('cluster', () => {
     const stack = testStack();
     const vpc = new ec2.Vpc(stack, 'VPC');
     const parameterGroup = new ParameterGroup(stack, 'ParameterGroup', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       parameters: {
         key: 'value',
       },
@@ -1066,7 +1880,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       credentials: {
         username: 'admin',
       },
@@ -1091,7 +1905,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       parameters: {
         locks: '100',
       },
@@ -1110,7 +1924,7 @@ describe('cluster', () => {
     });
 
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBClusterParameterGroup', {
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         locks: '100',
       },
@@ -1123,7 +1937,7 @@ describe('cluster', () => {
     });
 
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBParameterGroup', {
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         locks: '200',
       },
@@ -1145,7 +1959,7 @@ describe('cluster', () => {
 
     expect(() => {
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         parameters: {
           locks: '100',
         },
@@ -1175,7 +1989,7 @@ describe('cluster', () => {
 
     expect(() => {
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         parameters: {
           locks: '100',
         },
@@ -1228,7 +2042,436 @@ describe('cluster', () => {
     });
   });
 
-  describe('performance insights', () => {
+  describe('performance insights for cluster', () => {
+    function setTestStack() {
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+      const key = new kms.Key(stack, 'Key');
+      const importedKey = kms.Key.fromKeyArn(stack, 'ImportedKey', 'arn:aws:kms:us-east-1:123456789012:key/imported');
+      return { stack, vpc, key, importedKey };
+    }
+    // Needs to be declared first, not just beforeEach, for use in `test.each` arguments
+    let { stack, vpc, key, importedKey } = setTestStack();
+
+    beforeEach(() => {
+      ({ stack, vpc, key, importedKey } = setTestStack());
+    });
+
+    test('cluster with all performance insights properties', () => {
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA,
+        vpc,
+        writer: ClusterInstance.provisioned('writer'),
+        enablePerformanceInsights: true,
+        performanceInsightRetention: PerformanceInsightRetention.LONG_TERM,
+        performanceInsightEncryptionKey: key,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
+        PerformanceInsightsEnabled: true,
+        PerformanceInsightsRetentionPeriod: 731,
+        PerformanceInsightsKmsKeyId: { 'Fn::GetAtt': ['Key961B73FD', 'Arn'] },
+      });
+    });
+
+    test('setting `enablePerformanceInsights` without other performance insights fields enables performance insights', () => {
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA,
+        vpc,
+        writer: ClusterInstance.provisioned('writer'),
+        enablePerformanceInsights: true,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
+        PerformanceInsightsEnabled: true,
+        PerformanceInsightsRetentionPeriod: 7, // default period is set by the construct if the `PerformanceInsightsEnabled` is enabled
+        PerformanceInsightsKmsKeyId: Match.absent(), // KMS key is not set by default
+      });
+    });
+
+    test('setting performanceInsightRetention enables performance insights', () => {
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA,
+        vpc,
+        writer: ClusterInstance.provisioned('writer'),
+        performanceInsightRetention: PerformanceInsightRetention.LONG_TERM,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
+        PerformanceInsightsEnabled: true,
+        PerformanceInsightsRetentionPeriod: 731,
+      });
+    });
+
+    test('setting performanceInsightEncryptionKey enables performance insights', () => {
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA,
+        vpc,
+        writer: ClusterInstance.provisioned('writer'),
+        performanceInsightEncryptionKey: key,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
+        PerformanceInsightsEnabled: true,
+        PerformanceInsightsKmsKeyId: { 'Fn::GetAtt': ['Key961B73FD', 'Arn'] },
+      });
+    });
+
+    test('throws if performanceInsightRetention is set but performance insights is disabled', () => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          vpc,
+          writer: ClusterInstance.provisioned('writer'),
+          enablePerformanceInsights: false,
+          performanceInsightRetention: PerformanceInsightRetention.DEFAULT,
+        });
+      }).toThrow(/`enablePerformanceInsights` disabled, but `performanceInsightRetention` or `performanceInsightEncryptionKey` was set/);
+    });
+
+    test('throws if performanceInsightEncryptionKey is set but performance insights is disabled', () => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          vpc,
+          writer: ClusterInstance.provisioned('writer'),
+          enablePerformanceInsights: false,
+          performanceInsightRetention: PerformanceInsightRetention.DEFAULT,
+        });
+      }).toThrow(/`enablePerformanceInsights` disabled, but `performanceInsightRetention` or `performanceInsightEncryptionKey` was set/);
+    });
+
+    test('warn if performance insights is enabled at cluster level but disabled on writer and reader instances', () => {
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA,
+        vpc,
+        writer: ClusterInstance.provisioned('writer', {
+          enablePerformanceInsights: false,
+        }),
+        readers: [
+          ClusterInstance.provisioned('reader1', {
+            enablePerformanceInsights: true,
+          }),
+          ClusterInstance.provisioned('reader2', {
+            enablePerformanceInsights: false,
+          }),
+        ],
+        enablePerformanceInsights: true,
+      });
+
+      // THEN
+      Annotations.fromStack(stack).hasWarning('*',
+        'Performance Insights is enabled on cluster \'Database\' at cluster level, but disabled for instance \'writer\'. '+
+        'However, Performance Insights for this instance will also be automatically enabled if enabled at cluster level. [ack: @aws-cdk/aws-rds:instancePerformanceInsightsOverridden]',
+      );
+      Annotations.fromStack(stack).hasWarning('*',
+        'Performance Insights is enabled on cluster \'Database\' at cluster level, but disabled for instance \'reader2\'. '+
+        'However, Performance Insights for this instance will also be automatically enabled if enabled at cluster level. [ack: @aws-cdk/aws-rds:instancePerformanceInsightsOverridden]',
+      );
+    });
+
+    test('does not warn if performance insights is enabled on cluster on instances', () => {
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA,
+        vpc,
+        writer: ClusterInstance.provisioned('writer', {
+          enablePerformanceInsights: true,
+        }),
+        readers: [
+          ClusterInstance.provisioned('reader1', {
+            enablePerformanceInsights: true,
+          }),
+        ],
+        enablePerformanceInsights: true,
+      });
+
+      // THEN
+      Annotations.fromStack(stack).hasNoWarning('*', '*');
+    });
+
+    test('throws if performanceInsightRetention on instance conflicts with cluster level parameter', () => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          vpc,
+          performanceInsightRetention: PerformanceInsightRetention.LONG_TERM,
+          writer: ClusterInstance.provisioned('writer', {
+            performanceInsightRetention: PerformanceInsightRetention.MONTHS_12,
+          }),
+        });
+      }).toThrow(/`performanceInsightRetention` for each instance must be the same as the one at cluster level, got instance 'writer': 372, cluster: 731/);
+    });
+
+    test('throws if explicit default performanceInsightRetention on instance conflicts with cluster level parameter', () => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          vpc,
+          performanceInsightRetention: PerformanceInsightRetention.LONG_TERM,
+          writer: ClusterInstance.provisioned('writer', {
+            enablePerformanceInsights: true, // default period is set by the construct if the `enablePerformanceInsights` is enabled
+          }),
+        });
+      }).toThrow(/`performanceInsightRetention` for each instance must be the same as the one at cluster level, got instance 'writer': 7, cluster: 731/);
+    });
+
+    test('throws if performanceInsightRetention on instance conflicts with cluster level parameter as explicit default value', () => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          vpc,
+          enablePerformanceInsights: true, // default period is set by the construct if the `enablePerformanceInsights` is enabled
+          writer: ClusterInstance.provisioned('writer', {
+            performanceInsightRetention: PerformanceInsightRetention.MONTHS_12,
+          }),
+        });
+      }).toThrow(/`performanceInsightRetention` for each instance must be the same as the one at cluster level, got instance 'writer': 372, cluster: 7/);
+    });
+
+    test('throws if performanceInsightEncryptionKey on instance conflicts with cluster level parameter as token', () => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          vpc,
+          performanceInsightEncryptionKey: new kms.Key(stack, 'Key1'),
+          writer: ClusterInstance.provisioned('writer', {
+            performanceInsightEncryptionKey: new kms.Key(stack, 'Key2'),
+          }),
+        });
+      }).toThrow(/`performanceInsightEncryptionKey` for each instance must be the same as the one at cluster level/);
+    });
+
+    test('throws if performanceInsightEncryptionKey on instance conflicts with cluster level parameter as non-token', () => {
+      const importedKey1 = kms.Key.fromKeyArn(stack, 'Key1', 'arn:aws:kms:us-east-1:123456789012:key/1');
+      const importedKey2 = kms.Key.fromKeyArn(stack, 'Key2', 'arn:aws:kms:us-east-1:123456789012:key/2');
+
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          vpc,
+          performanceInsightEncryptionKey: importedKey1,
+          writer: ClusterInstance.provisioned('writer', {
+            performanceInsightEncryptionKey: importedKey2,
+          }),
+        });
+      }).toThrow(/`performanceInsightEncryptionKey` for each instance must be the same as the one at cluster level, got instance 'writer': 'arn:aws:kms:us-east-1:123456789012:key\/2', cluster: 'arn:aws:kms:us-east-1:123456789012:key\/1'/);
+    });
+
+    test.each([
+      [
+        undefined, PerformanceInsightRetention.LONG_TERM, undefined, // cluster props
+        undefined, PerformanceInsightRetention.LONG_TERM, undefined, // instance props
+      ],
+      [
+        undefined, PerformanceInsightRetention.DEFAULT, undefined, // cluster props
+        true, undefined, undefined, // instance props
+      ],
+      [
+        true, undefined, undefined, // cluster props
+        undefined, PerformanceInsightRetention.DEFAULT, undefined, // instance props
+      ],
+      [
+        true, undefined, key, // cluster props
+        undefined, PerformanceInsightRetention.DEFAULT, key, // instance props
+      ],
+      [
+        true, undefined, importedKey, // cluster props
+        undefined, PerformanceInsightRetention.DEFAULT, importedKey, // instance props
+      ],
+    ])('does not throw if clusterPerformanceInsightsEnabled is \'%s\', clusterPerformanceInsightRetention is \'%s\', clusterPerformanceInsightEncryptionKey is \'%s\', instancePerformanceInsightsEnabled is \'%s\', instancePerformanceInsightRetention is \'%s\' and instancePerformanceInsightEncryptionKey is \'%s\', ', (
+      clusterPerformanceInsightsEnabled?: boolean,
+      clusterPerformanceInsightRetention?: PerformanceInsightRetention,
+      clusterPerformanceInsightEncryptionKey?: kms.IKey,
+      instancePerformanceInsightsEnabled?: boolean,
+      instancePerformanceInsightRetention?: PerformanceInsightRetention,
+      instancePerformanceInsightEncryptionKey?: kms.IKey,
+    ) => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          vpc,
+          enablePerformanceInsights: clusterPerformanceInsightsEnabled,
+          performanceInsightRetention: clusterPerformanceInsightRetention, // default period is set if the `enablePerformanceInsights` is enabled, even if unspecified.
+          performanceInsightEncryptionKey: clusterPerformanceInsightEncryptionKey,
+          writer: ClusterInstance.provisioned('writer', {
+            enablePerformanceInsights: instancePerformanceInsightsEnabled,
+            performanceInsightRetention: instancePerformanceInsightRetention, // default period is set if the `enablePerformanceInsights` is enabled, even if unspecified.
+            performanceInsightEncryptionKey: instancePerformanceInsightEncryptionKey,
+          }),
+        });
+      }).not.toThrow();
+    });
+  });
+
+  describe('performance insights for cluster with instanceProps', () => {
+    function setTestStack() {
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+      const key = new kms.Key(stack, 'Key');
+      const importedKey = kms.Key.fromKeyArn(stack, 'ImportedKey', 'arn:aws:kms:us-east-1:123456789012:key/imported');
+      return { stack, vpc, key, importedKey };
+    }
+    // Needs to be declared first, not just beforeEach, for use in `test.each` arguments
+    let { stack, vpc, key, importedKey } = setTestStack();
+
+    beforeEach(() => {
+      ({ stack, vpc, key, importedKey } = setTestStack());
+    });
+
+    test('warn if performance insights is enabled at cluster level but disabled on instanceProps', () => {
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA,
+        enablePerformanceInsights: true,
+        instanceProps: {
+          vpc,
+          enablePerformanceInsights: false,
+        },
+      });
+
+      // THEN
+      Annotations.fromStack(stack).hasWarning('*',
+        'Performance Insights is enabled on cluster \'Database\' at cluster level, but disabled for `instanceProps`. '+
+        'However, Performance Insights for this instance will also be automatically enabled if enabled at cluster level. [ack: @aws-cdk/aws-rds:instancePerformanceInsightsOverridden]',
+      );
+    });
+
+    test('does not warn if performance insights is enabled on cluster on instanceProps', () => {
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA,
+        enablePerformanceInsights: true,
+        instanceProps: {
+          vpc,
+          enablePerformanceInsights: true,
+        },
+      });
+
+      // THEN
+      Annotations.fromStack(stack).hasNoWarning('*', '*');
+    });
+
+    test('throws if performanceInsightRetention on instanceProps conflicts with cluster level parameter', () => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          performanceInsightRetention: PerformanceInsightRetention.LONG_TERM,
+          instanceProps: {
+            vpc,
+            performanceInsightRetention: PerformanceInsightRetention.MONTHS_12,
+          },
+        });
+      }).toThrow(/`performanceInsightRetention` for each instance must be the same as the one at cluster level, got `instanceProps`: 372, cluster: 731/);
+    });
+
+    test('throws if explicit default performanceInsightRetention on instanceProps conflicts with cluster level parameter', () => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          performanceInsightRetention: PerformanceInsightRetention.LONG_TERM,
+          instanceProps: {
+            vpc,
+            enablePerformanceInsights: true, // default period is set by the construct if the `enablePerformanceInsights` is enabled
+          },
+        });
+      }).toThrow(/`performanceInsightRetention` for each instance must be the same as the one at cluster level, got `instanceProps`: 7, cluster: 731/);
+    });
+
+    test('throws if performanceInsightRetention on instanceProps conflicts with cluster level parameter as explicit default value', () => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          enablePerformanceInsights: true, // default period is set by the construct if the `enablePerformanceInsights` is enabled
+          instanceProps: {
+            vpc,
+            performanceInsightRetention: PerformanceInsightRetention.MONTHS_12,
+          },
+        });
+      }).toThrow(/`performanceInsightRetention` for each instance must be the same as the one at cluster level, got `instanceProps`: 372, cluster: 7/);
+    });
+
+    test('throws if performanceInsightEncryptionKey on instanceProps conflicts with cluster level parameter as token', () => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          performanceInsightEncryptionKey: new kms.Key(stack, 'Key1'),
+          instanceProps: {
+            vpc,
+            performanceInsightEncryptionKey: new kms.Key(stack, 'Key2'),
+          },
+        });
+      }).toThrow(/`performanceInsightEncryptionKey` for each instance must be the same as the one at cluster level/);
+    });
+
+    test('throws if performanceInsightEncryptionKey on instanceProps conflicts with cluster level parameter as non-token', () => {
+      const importedKey1 = kms.Key.fromKeyArn(stack, 'Key1', 'arn:aws:kms:us-east-1:123456789012:key/1');
+      const importedKey2 = kms.Key.fromKeyArn(stack, 'Key2', 'arn:aws:kms:us-east-1:123456789012:key/2');
+
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          performanceInsightEncryptionKey: importedKey1,
+          instanceProps: {
+            vpc,
+            performanceInsightEncryptionKey: importedKey2,
+          },
+        });
+      }).toThrow(/`performanceInsightEncryptionKey` for each instance must be the same as the one at cluster level, got `instanceProps`: 'arn:aws:kms:us-east-1:123456789012:key\/2', cluster: 'arn:aws:kms:us-east-1:123456789012:key\/1'/);
+    });
+
+    test.each([
+      [
+        undefined, PerformanceInsightRetention.LONG_TERM, undefined, // cluster props
+        undefined, PerformanceInsightRetention.LONG_TERM, undefined, // instance props
+      ],
+      [
+        undefined, PerformanceInsightRetention.DEFAULT, undefined, // cluster props
+        true, undefined, undefined, // instance props
+      ],
+      [
+        true, undefined, undefined, // cluster props
+        undefined, PerformanceInsightRetention.DEFAULT, undefined, // instance props
+      ],
+      [
+        true, undefined, key, // cluster props
+        undefined, PerformanceInsightRetention.DEFAULT, key, // instance props
+      ],
+      [
+        true, undefined, importedKey, // cluster props
+        undefined, PerformanceInsightRetention.DEFAULT, importedKey, // instance props
+      ],
+    ])('does not throw if clusterPerformanceInsightsEnabled is \'%s\', clusterPerformanceInsightRetention is \'%s\', clusterPerformanceInsightEncryptionKey is \'%s\', instancePerformanceInsightsEnabled is \'%s\', instancePerformanceInsightRetention is \'%s\' and instancePerformanceInsightEncryptionKey is \'%s\', ', (
+      clusterPerformanceInsightsEnabled?: boolean,
+      clusterPerformanceInsightRetention?: PerformanceInsightRetention,
+      clusterPerformanceInsightEncryptionKey?: kms.IKey,
+      instancePerformanceInsightsEnabled?: boolean,
+      instancePerformanceInsightRetention?: PerformanceInsightRetention,
+      instancePerformanceInsightEncryptionKey?: kms.IKey,
+    ) => {
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.AURORA,
+          enablePerformanceInsights: clusterPerformanceInsightsEnabled,
+          performanceInsightRetention: clusterPerformanceInsightRetention, // default period is set if the `enablePerformanceInsights` is enabled, even if unspecified.
+          performanceInsightEncryptionKey: clusterPerformanceInsightEncryptionKey,
+          instanceProps: {
+            vpc,
+            enablePerformanceInsights: instancePerformanceInsightsEnabled,
+            performanceInsightRetention: instancePerformanceInsightRetention, // default period is set if the `enablePerformanceInsights` is enabled, even if unspecified.
+            performanceInsightEncryptionKey: instancePerformanceInsightEncryptionKey,
+          },
+        });
+      }).not.toThrow();
+    });
+  });
+
+  describe('performance insights for instances', () => {
     test('cluster with all performance insights properties', () => {
       // GIVEN
       const stack = testStack();
@@ -1236,7 +2479,7 @@ describe('cluster', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         credentials: {
           username: 'admin',
         },
@@ -1262,7 +2505,7 @@ describe('cluster', () => {
 
       // WHEN
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         credentials: {
           username: 'admin',
         },
@@ -1285,7 +2528,7 @@ describe('cluster', () => {
 
       expect(() => {
         new DatabaseCluster(stack, 'Database', {
-          engine: DatabaseClusterEngine.AURORA,
+          engine: DatabaseClusterEngine.AURORA_MYSQL,
           credentials: {
             username: 'admin',
           },
@@ -1306,7 +2549,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: {
         autoMinorVersionUpgrade: false,
         vpc,
@@ -1325,7 +2568,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: {
         allowMajorVersionUpgrade: true,
         vpc,
@@ -1344,7 +2587,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: {
         deleteAutomatedBackups: false,
         vpc,
@@ -1415,7 +2658,7 @@ describe('cluster', () => {
 
     // WHEN
     const cluster = new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       credentials: {
         username: 'admin',
       },
@@ -1506,7 +2749,7 @@ describe('cluster', () => {
     const vpc = new ec2.Vpc(stack, 'VPC');
 
     const cluster = new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_02_0 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       credentials: {
         username: 'admin',
         password: cdk.SecretValue.unsafePlainText('tooshort'),
@@ -1527,96 +2770,305 @@ describe('cluster', () => {
     });
   });
 
-  test('cluster with enabled monitoring', () => {
-    // GIVEN
-    const stack = testStack();
-    const vpc = new ec2.Vpc(stack, 'VPC');
+  describe('enhanced monitoring', () => {
+    test('cluster with enabled monitoring (legacy)', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
 
-    // WHEN
-    new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
-      instances: 1,
-      credentials: {
-        username: 'admin',
-      },
-      instanceProps: {
-        instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
-        vpc,
-      },
-      monitoringInterval: cdk.Duration.minutes(1),
-    });
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        instances: 1,
+        credentials: {
+          username: 'admin',
+        },
+        instanceProps: {
+          instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
+          vpc,
+        },
+        monitoringInterval: cdk.Duration.minutes(1),
+      });
 
-    // THEN
-    Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
-      MonitoringInterval: 60,
-      MonitoringRoleArn: {
-        'Fn::GetAtt': ['DatabaseMonitoringRole576991DA', 'Arn'],
-      },
-    });
+      // THEN
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
+        MonitoringInterval: 60,
+        MonitoringRoleArn: {
+          'Fn::GetAtt': ['DatabaseMonitoringRole576991DA', 'Arn'],
+        },
+      });
 
-    Template.fromStack(stack).hasResourceProperties('AWS::IAM::Role', {
-      AssumeRolePolicyDocument: {
-        Statement: [
-          {
-            Action: 'sts:AssumeRole',
-            Effect: 'Allow',
-            Principal: {
-              Service: 'monitoring.rds.amazonaws.com',
+      Template.fromStack(stack).hasResourceProperties('AWS::IAM::Role', {
+        AssumeRolePolicyDocument: {
+          Statement: [
+            {
+              Action: 'sts:AssumeRole',
+              Effect: 'Allow',
+              Principal: {
+                Service: 'monitoring.rds.amazonaws.com',
+              },
             },
+          ],
+          Version: '2012-10-17',
+        },
+        ManagedPolicyArns: [
+          {
+            'Fn::Join': [
+              '',
+              [
+                'arn:',
+                {
+                  Ref: 'AWS::Partition',
+                },
+                ':iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole',
+              ],
+            ],
           },
         ],
-        Version: '2012-10-17',
-      },
-      ManagedPolicyArns: [
-        {
-          'Fn::Join': [
-            '',
-            [
-              'arn:',
-              {
-                Ref: 'AWS::Partition',
-              },
-              ':iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole',
-            ],
-          ],
-        },
-      ],
-    });
-  });
-
-  test('create a cluster with imported monitoring role', () => {
-    // GIVEN
-    const stack = testStack();
-    const vpc = new ec2.Vpc(stack, 'VPC');
-
-    const monitoringRole = new Role(stack, 'MonitoringRole', {
-      assumedBy: new ServicePrincipal('monitoring.rds.amazonaws.com'),
-      managedPolicies: [
-        ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonRDSEnhancedMonitoringRole'),
-      ],
+      });
     });
 
-    // WHEN
-    new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
-      instances: 1,
-      credentials: {
-        username: 'admin',
-      },
-      instanceProps: {
-        instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
+    test('cluster with enabled monitoring should create default role with new api', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         vpc,
-      },
-      monitoringInterval: cdk.Duration.minutes(1),
-      monitoringRole,
+        writer: ClusterInstance.serverlessV2('writer'),
+        iamAuthentication: true,
+        monitoringInterval: cdk.Duration.minutes(1),
+      });
+
+      // THEN
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
+        MonitoringInterval: 60,
+        MonitoringRoleArn: {
+          'Fn::GetAtt': ['DatabaseMonitoringRole576991DA', 'Arn'],
+        },
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::IAM::Role', {
+        AssumeRolePolicyDocument: {
+          Statement: [
+            {
+              Action: 'sts:AssumeRole',
+              Effect: 'Allow',
+              Principal: {
+                Service: 'monitoring.rds.amazonaws.com',
+              },
+            },
+          ],
+          Version: '2012-10-17',
+        },
+        ManagedPolicyArns: [
+          {
+            'Fn::Join': [
+              '',
+              [
+                'arn:',
+                {
+                  Ref: 'AWS::Partition',
+                },
+                ':iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole',
+              ],
+            ],
+          },
+        ],
+      });
     });
 
-    // THEN
-    Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
-      MonitoringInterval: 60,
-      MonitoringRoleArn: {
-        'Fn::GetAtt': ['MonitoringRole90457BF9', 'Arn'],
-      },
+    test('create a cluster with imported monitoring role', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      const monitoringRole = new Role(stack, 'MonitoringRole', {
+        assumedBy: new ServicePrincipal('monitoring.rds.amazonaws.com'),
+        managedPolicies: [
+          ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonRDSEnhancedMonitoringRole'),
+        ],
+      });
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        instances: 1,
+        credentials: {
+          username: 'admin',
+        },
+        instanceProps: {
+          instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
+          vpc,
+        },
+        monitoringInterval: cdk.Duration.minutes(1),
+        monitoringRole,
+      });
+
+      // THEN
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
+        MonitoringInterval: 60,
+        MonitoringRoleArn: {
+          'Fn::GetAtt': ['MonitoringRole90457BF9', 'Arn'],
+        },
+      });
+    });
+
+    test('enable enhanced monitoring at the cluster level', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
+        credentials: {
+          username: 'admin',
+          password: cdk.SecretValue.unsafePlainText('tooshort'),
+        },
+        vpc,
+        writer: ClusterInstance.serverlessV2('writer'),
+        monitoringInterval: cdk.Duration.minutes(1),
+        enableClusterLevelEnhancedMonitoring: true,
+      });
+
+      // THEN
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
+        MonitoringInterval: 60,
+        MonitoringRoleArn: {
+          'Fn::GetAtt': ['DatabaseMonitoringRole576991DA', 'Arn'],
+        },
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::IAM::Role', {
+        AssumeRolePolicyDocument: {
+          Statement: [
+            {
+              Action: 'sts:AssumeRole',
+              Effect: 'Allow',
+              Principal: {
+                Service: 'monitoring.rds.amazonaws.com',
+              },
+            },
+          ],
+          Version: '2012-10-17',
+        },
+        ManagedPolicyArns: [
+          {
+            'Fn::Join': [
+              '',
+              [
+                'arn:',
+                {
+                  Ref: 'AWS::Partition',
+                },
+                ':iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole',
+              ],
+            ],
+          },
+        ],
+      });
+    });
+
+    test('enable enhanced monitoring at the cluster level (legacy)', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
+        instances: 1,
+        credentials: {
+          username: 'admin',
+        },
+        instanceProps: {
+          instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
+          vpc,
+        },
+        monitoringInterval: cdk.Duration.minutes(1),
+        enableClusterLevelEnhancedMonitoring: true,
+      });
+
+      // THEN
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
+        MonitoringInterval: 60,
+        MonitoringRoleArn: {
+          'Fn::GetAtt': ['DatabaseMonitoringRole576991DA', 'Arn'],
+        },
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::IAM::Role', {
+        AssumeRolePolicyDocument: {
+          Statement: [
+            {
+              Action: 'sts:AssumeRole',
+              Effect: 'Allow',
+              Principal: {
+                Service: 'monitoring.rds.amazonaws.com',
+              },
+            },
+          ],
+          Version: '2012-10-17',
+        },
+        ManagedPolicyArns: [
+          {
+            'Fn::Join': [
+              '',
+              [
+                'arn:',
+                {
+                  Ref: 'AWS::Partition',
+                },
+                ':iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole',
+              ],
+            ],
+          },
+        ],
+      });
+    });
+
+    test('throw error for not setting monitoring interval when enabling enhanced monitoring at the cluster level', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
+          credentials: {
+            username: 'admin',
+            password: cdk.SecretValue.unsafePlainText('tooshort'),
+          },
+          vpc,
+          writer: ClusterInstance.serverlessV2('writer'),
+          enableClusterLevelEnhancedMonitoring: true,
+        });
+      }).toThrow('`monitoringInterval` must be set when `enableClusterLevelEnhancedMonitoring` is true.');
+    });
+
+    test.each([
+      cdk.Duration.seconds(2),
+      cdk.Duration.minutes(2),
+    ])('throw error for invalid monitoring interval %s', (monitoringInterval) => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      expect(() => {
+        new DatabaseCluster(stack, 'Database', {
+          engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
+          credentials: {
+            username: 'admin',
+            password: cdk.SecretValue.unsafePlainText('tooshort'),
+          },
+          vpc,
+          writer: ClusterInstance.serverlessV2('writer'),
+          monitoringInterval,
+        });
+      }).toThrow(`'monitoringInterval' must be one of 0, 1, 5, 10, 15, 30, or 60 seconds, got: ${monitoringInterval.toSeconds()} seconds.`);
     });
   });
 
@@ -1646,7 +3098,7 @@ describe('cluster', () => {
         ],
       },
       RotationRules: {
-        AutomaticallyAfterDays: 30,
+        ScheduleExpression: 'rate(30 days)',
       },
     });
   });
@@ -1677,7 +3129,7 @@ describe('cluster', () => {
         ],
       },
       RotationRules: {
-        AutomaticallyAfterDays: 30,
+        ScheduleExpression: 'rate(30 days)',
       },
     });
 
@@ -1729,7 +3181,7 @@ describe('cluster', () => {
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::SecretsManager::RotationSchedule', {
       RotationRules: {
-        AutomaticallyAfterDays: 15,
+        ScheduleExpression: 'rate(15 days)',
       },
     });
 
@@ -1796,7 +3248,7 @@ describe('cluster', () => {
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::SecretsManager::RotationSchedule', {
       RotationRules: {
-        AutomaticallyAfterDays: 15,
+        ScheduleExpression: 'rate(15 days)',
       },
     });
 
@@ -1877,6 +3329,72 @@ describe('cluster', () => {
     });
   });
 
+  test('addRotationSingleUser() without immediate rotation', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+    const cluster = new DatabaseCluster(stack, 'Database', {
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
+      writer: ClusterInstance.serverlessV2('writer'),
+      vpc,
+    });
+
+    // WHEN
+    cluster.addRotationSingleUser({ rotateImmediatelyOnUpdate: false });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::SecretsManager::RotationSchedule', {
+      SecretId: {
+        Ref: 'DatabaseSecretAttachmentE5D1B020',
+      },
+      RotationLambdaARN: {
+        'Fn::GetAtt': [
+          'DatabaseRotationSingleUser65F55654',
+          'Outputs.RotationLambdaARN',
+        ],
+      },
+      RotationRules: {
+        ScheduleExpression: 'rate(30 days)',
+      },
+      RotateImmediatelyOnUpdate: false,
+    });
+  });
+
+  test('addRotationMultiUser() without immediate rotation', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+    const cluster = new DatabaseCluster(stack, 'Database', {
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
+      writer: ClusterInstance.serverlessV2('writer'),
+      vpc,
+    });
+    const userSecret = new DatabaseSecret(stack, 'UserSecret', { username: 'user' });
+
+    // WHEN
+    cluster.addRotationMultiUser('user', {
+      secret: userSecret.attach(cluster),
+      rotateImmediatelyOnUpdate: false,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::SecretsManager::RotationSchedule', {
+      SecretId: {
+        Ref: 'UserSecretAttachment16ACBE6D',
+      },
+      RotationLambdaARN: {
+        'Fn::GetAtt': [
+          'DatabaseuserECD1FB0C',
+          'Outputs.RotationLambdaARN',
+        ],
+      },
+      RotationRules: {
+        ScheduleExpression: 'rate(30 days)',
+      },
+      RotateImmediatelyOnUpdate: false,
+    });
+  });
+
   test('throws when trying to add rotation to a cluster without secret', () => {
     // GIVEN
     const stack = new cdk.Stack();
@@ -1930,7 +3448,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -1955,7 +3473,7 @@ describe('cluster', () => {
     });
 
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBClusterParameterGroup', {
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         aurora_load_from_s3_role: {
           'Fn::GetAtt': [
@@ -1976,7 +3494,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -2001,7 +3519,7 @@ describe('cluster', () => {
     });
 
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBClusterParameterGroup', {
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         aurora_load_from_s3_role: {
           'Fn::GetAtt': [
@@ -2179,7 +3697,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -2204,7 +3722,7 @@ describe('cluster', () => {
     });
 
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBClusterParameterGroup', {
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         aurora_select_into_s3_role: {
           'Fn::GetAtt': [
@@ -2225,7 +3743,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -2250,7 +3768,7 @@ describe('cluster', () => {
     });
 
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBClusterParameterGroup', {
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         aurora_select_into_s3_role: {
           'Fn::GetAtt': [
@@ -2317,7 +3835,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -2351,7 +3869,7 @@ describe('cluster', () => {
     });
 
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBClusterParameterGroup', {
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         aurora_load_from_s3_role: {
           'Fn::GetAtt': [
@@ -2375,7 +3893,7 @@ describe('cluster', () => {
     const vpc = new ec2.Vpc(stack, 'VPC');
 
     const parameterGroup = new ParameterGroup(stack, 'ParameterGroup', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       parameters: {
         key: 'value',
       },
@@ -2386,7 +3904,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -2421,7 +3939,7 @@ describe('cluster', () => {
     });
 
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBClusterParameterGroup', {
-      Family: 'aurora5.6',
+      Family: 'aurora-mysql5.7',
       Parameters: {
         key: 'value',
         aurora_load_from_s3_role: {
@@ -2614,7 +4132,7 @@ describe('cluster', () => {
 
     // THEN
     expect(() => new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -2640,7 +4158,7 @@ describe('cluster', () => {
 
     // THEN
     expect(() => new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -2661,7 +4179,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       credentials: {
         username: 'admin',
         password: cdk.SecretValue.unsafePlainText('tooshort'),
@@ -2685,8 +4203,8 @@ describe('cluster', () => {
     const vpc = new ec2.Vpc(stack, 'VPC');
 
     // WHEN
-    new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+    const cluster = new DatabaseCluster(stack, 'Database', {
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       credentials: {
         username: 'admin',
         password: cdk.SecretValue.unsafePlainText('tooshort'),
@@ -2720,6 +4238,9 @@ describe('cluster', () => {
       LogGroupName: { 'Fn::Join': ['', ['/aws/rds/cluster/', { Ref: 'DatabaseB269D8BB' }, '/general']] },
       RetentionInDays: 90,
     });
+    expect(Object.keys(cluster.cloudwatchLogGroups).length).toEqual(2);
+    expect(cluster.cloudwatchLogGroups.error.logGroupName).toEqual(`/aws/rds/cluster/${cluster.clusterIdentifier}/error`);
+    expect(cluster.cloudwatchLogGroups.general.logGroupName).toEqual(`/aws/rds/cluster/${cluster.clusterIdentifier}/general`);
   });
 
   test('throws if given unsupported CloudWatch log exports', () => {
@@ -2729,7 +4250,7 @@ describe('cluster', () => {
 
     expect(() => {
       new DatabaseCluster(stack, 'Database', {
-        engine: DatabaseClusterEngine.AURORA,
+        engine: DatabaseClusterEngine.AURORA_MYSQL,
         credentials: {
           username: 'admin',
           password: cdk.SecretValue.unsafePlainText('tooshort'),
@@ -2750,7 +4271,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       credentials: {
         username: 'admin',
         password: cdk.SecretValue.unsafePlainText('tooshort'),
@@ -2776,7 +4297,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instances: 1,
       credentials: {
         username: 'admin',
@@ -2802,7 +4323,7 @@ describe('cluster', () => {
 
     // WHEN
     const cluster = new DatabaseClusterFromSnapshot(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       instanceProps: {
         vpc,
       },
@@ -2813,8 +4334,8 @@ describe('cluster', () => {
     // THEN
     Template.fromStack(stack).hasResource('AWS::RDS::DBCluster', {
       Properties: {
-        Engine: 'aurora',
-        EngineVersion: '5.6.mysql_aurora.1.22.2',
+        Engine: 'aurora-mysql',
+        EngineVersion: '8.0.mysql_aurora.3.07.1',
         DBSubnetGroupName: { Ref: 'DatabaseSubnets56F17B9A' },
         VpcSecurityGroupIds: [{ 'Fn::GetAtt': ['DatabaseSecurityGroup5C91FDCB', 'GroupId'] }],
         SnapshotIdentifier: 'mySnapshot',
@@ -2858,7 +4379,7 @@ describe('cluster', () => {
     const vpc = new ec2.Vpc(stack, 'VPC');
 
     new DatabaseClusterFromSnapshot(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       instanceProps: {
         vpc,
       },
@@ -2896,7 +4417,7 @@ describe('cluster', () => {
     const vpc = new ec2.Vpc(stack, 'VPC');
 
     new DatabaseClusterFromSnapshot(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       instanceProps: {
         vpc,
       },
@@ -2920,7 +4441,7 @@ describe('cluster', () => {
     const vpc = new ec2.Vpc(stack, 'VPC');
 
     expect(() => new DatabaseClusterFromSnapshot(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       instanceProps: {
         vpc,
       },
@@ -2938,7 +4459,7 @@ describe('cluster', () => {
       encryptionKey: new kms.Key(stack, 'PasswordKey'),
     });
     new DatabaseClusterFromSnapshot(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       instanceProps: {
         vpc,
       },
@@ -2954,13 +4475,63 @@ describe('cluster', () => {
     });
   });
 
+  test('secret from deprecated credentials is created with feature flag unset', () => {
+    // GIVEN
+    const stack = testStack();
+    stack.node.setContext(RDS_PREVENT_RENDERING_DEPRECATED_CREDENTIALS, false);
+
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    const secret = new DatabaseSecret(stack, 'DBSecret', {
+      username: 'admin',
+      encryptionKey: new kms.Key(stack, 'PasswordKey'),
+    });
+
+    // WHEN
+    new DatabaseClusterFromSnapshot(stack, 'Database', {
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
+      snapshotIdentifier: 'mySnapshot',
+      snapshotCredentials: SnapshotCredentials.fromSecret(secret),
+      writer: ClusterInstance.serverlessV2('writer'),
+      vpc,
+    });
+
+    // THEN
+    Template.fromStack(stack).resourceCountIs('AWS::SecretsManager::Secret', 2);
+  });
+
+  test('secret from deprecated credentials is not created with feature flag set', () => {
+    // GIVEN
+    const stack = testStack();
+    stack.node.setContext(RDS_PREVENT_RENDERING_DEPRECATED_CREDENTIALS, true);
+
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    const secret = new DatabaseSecret(stack, 'DBSecret', {
+      username: 'admin',
+      encryptionKey: new kms.Key(stack, 'PasswordKey'),
+    });
+
+    // WHEN
+    new DatabaseClusterFromSnapshot(stack, 'Database', {
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
+      snapshotIdentifier: 'mySnapshot',
+      snapshotCredentials: SnapshotCredentials.fromSecret(secret),
+      writer: ClusterInstance.serverlessV2('writer'),
+      vpc,
+    });
+
+    // THEN
+    Template.fromStack(stack).resourceCountIs('AWS::SecretsManager::Secret', 1);
+  });
+
   test('create a cluster from a snapshot with encrypted storage', () => {
     const stack = testStack();
     const vpc = new ec2.Vpc(stack, 'VPC');
 
     // WHEN
     new DatabaseClusterFromSnapshot(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       instanceProps: {
         vpc,
       },
@@ -2981,7 +4552,7 @@ describe('cluster', () => {
     const vpc = new ec2.Vpc(stack, 'VPC');
 
     const cluster = new DatabaseClusterFromSnapshot(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       instanceProps: {
         vpc,
       },
@@ -2994,7 +4565,7 @@ describe('cluster', () => {
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::SecretsManager::RotationSchedule', {
       RotationRules: {
-        AutomaticallyAfterDays: 30,
+        ScheduleExpression: 'rate(30 days)',
       },
     });
   });
@@ -3005,7 +4576,7 @@ describe('cluster', () => {
     const vpc = new ec2.Vpc(stack, 'VPC');
 
     const cluster = new DatabaseClusterFromSnapshot(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       instanceProps: {
         vpc,
       },
@@ -3025,7 +4596,7 @@ describe('cluster', () => {
     const vpc = new ec2.Vpc(stack, 'VPC');
 
     const cluster = new DatabaseClusterFromSnapshot(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       instanceProps: {
         vpc,
       },
@@ -3048,7 +4619,7 @@ describe('cluster', () => {
         ],
       },
       RotationRules: {
-        AutomaticallyAfterDays: 30,
+        ScheduleExpression: 'rate(30 days)',
       },
     });
 
@@ -3068,7 +4639,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       credentials: {
         username: 'admin',
       },
@@ -3092,7 +4663,7 @@ describe('cluster', () => {
 
     // WHEN
     const cluster = new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       credentials: {
         username: 'admin',
       },
@@ -3112,7 +4683,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       credentials: Credentials.fromGeneratedSecret('admin'),
       instanceProps: {
         vpc,
@@ -3144,7 +4715,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       credentials: Credentials.fromGeneratedSecret('admin', {
         replicaRegions: [{ region: 'eu-west-1' }],
       }),
@@ -3175,7 +4746,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       credentials: Credentials.fromSecret(secret),
       instanceProps: {
         vpc,
@@ -3196,7 +4767,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.aurora({ version: AuroraEngineVersion.VER_1_22_2 }),
+      engine: DatabaseClusterEngine.auroraMysql({ version: AuroraMysqlEngineVersion.VER_3_07_1 }),
       credentials: Credentials.fromGeneratedSecret('admin', { secretName }),
       instanceProps: {
         vpc,
@@ -3216,7 +4787,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: {
         vpc,
         vpcSubnets: {
@@ -3227,7 +4798,7 @@ describe('cluster', () => {
     });
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
-      Engine: 'aurora',
+      Engine: 'aurora-mysql',
       PubliclyAccessible: true,
     });
   });
@@ -3239,7 +4810,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: {
         vpc,
         vpcSubnets: {
@@ -3250,7 +4821,7 @@ describe('cluster', () => {
     });
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
-      Engine: 'aurora',
+      Engine: 'aurora-mysql',
       PubliclyAccessible: false,
     });
   });
@@ -3262,7 +4833,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: {
         vpc,
         vpcSubnets: {
@@ -3272,8 +4843,78 @@ describe('cluster', () => {
     });
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
-      Engine: 'aurora',
+      Engine: 'aurora-mysql',
       PubliclyAccessible: true,
+    });
+  });
+
+  test('providing a writer to the cluster in a public subnet should by default have publiclyAccessible set to true', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    // WHEN
+    new DatabaseCluster(stack, 'Database', {
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
+      writer: ClusterInstance.serverlessV2('writer'),
+      vpc,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PUBLIC,
+      },
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
+      Engine: 'aurora-mysql',
+      PubliclyAccessible: true,
+    });
+  });
+
+  test('providing a writer to the cluster in a public subnet should use writer provided publiclyAccessible as true', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    // WHEN
+    new DatabaseCluster(stack, 'Database', {
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
+      writer: ClusterInstance.serverlessV2('writer', {
+        publiclyAccessible: true,
+      }),
+      vpc,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PUBLIC,
+      },
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
+      Engine: 'aurora-mysql',
+      PubliclyAccessible: true,
+    });
+  });
+
+  test('providing a writer to the cluster in a public subnet should use writer provided publiclyAccessible as false', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    // WHEN
+    new DatabaseCluster(stack, 'Database', {
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
+      writer: ClusterInstance.serverlessV2('writer', {
+        publiclyAccessible: false,
+      }),
+      vpc,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PUBLIC,
+      },
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBInstance', {
+      Engine: 'aurora-mysql',
+      PubliclyAccessible: false,
     });
   });
 
@@ -3285,7 +4926,7 @@ describe('cluster', () => {
     // WHEN
     const clusterIdentifier = 'TestClusterIdentifier';
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: { vpc },
       clusterIdentifier,
     });
@@ -3305,7 +4946,7 @@ describe('cluster', () => {
     // WHEN
     const clusterIdentifier = 'TestClusterIdentifier';
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: { vpc },
       clusterIdentifier,
     });
@@ -3323,7 +4964,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: {
         vpc,
       },
@@ -3342,7 +4983,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: {
         vpc,
       },
@@ -3362,7 +5003,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       copyTagsToSnapshot: true,
       instanceProps: {
         vpc,
@@ -3382,7 +5023,7 @@ describe('cluster', () => {
 
     // WHEN
     new DatabaseCluster(stack, 'Database', {
-      engine: DatabaseClusterEngine.AURORA,
+      engine: DatabaseClusterEngine.AURORA_MYSQL,
       instanceProps: {
         vpc,
       },
@@ -3410,6 +5051,316 @@ describe('cluster', () => {
       EngineVersion: Match.absent(),
     });
   });
+
+  test('grantConnect', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+    const role = new Role(stack, 'Role', {
+      assumedBy: new ServicePrincipal('service.amazonaws.com'),
+    });
+
+    // WHEN
+    const cluster = new DatabaseCluster(stack, 'Database', {
+      engine: DatabaseClusterEngine.auroraPostgres({ version: AuroraPostgresEngineVersion.VER_14_3 }),
+      instanceProps: { vpc },
+    });
+    cluster.grantConnect(role, 'someUser');
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+      Roles: [{ Ref: 'Role1ABCC5F0' }],
+      PolicyDocument: {
+        Statement: [{
+          Action: 'rds-db:connect',
+          Effect: 'Allow',
+          Resource: {
+            'Fn::Join': [
+              '',
+              [
+                'arn:',
+                {
+                  Ref: 'AWS::Partition',
+                },
+                ':rds-db:us-test-1:12345:dbuser:',
+                {
+                  'Fn::GetAtt': [
+                    'DatabaseB269D8BB',
+                    'DBClusterResourceId',
+                  ],
+                },
+                '/someUser',
+              ],
+            ],
+          },
+        }],
+      },
+    });
+  });
+
+  test('setup kerberos authentication with domainRole', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    const role = new iam.Role(stack, 'Role', {
+      roleName: 'directoryServiceRoleName',
+      assumedBy: new iam.CompositePrincipal(
+        new iam.ServicePrincipal('rds.amazonaws.com'),
+        new iam.ServicePrincipal('directoryservice.rds.amazonaws.com'),
+      ),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonRDSDirectoryServiceAccess'),
+      ],
+    });
+
+    // WHEN
+    new DatabaseCluster(stack, 'Database', {
+      engine: DatabaseClusterEngine.auroraPostgres({ version: AuroraPostgresEngineVersion.VER_14_3 }),
+      instanceProps: { vpc },
+      domain: 'domain.com',
+      domainRole: role,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
+      DBClusterParameterGroupName: 'default.aurora-postgresql14',
+      Domain: 'domain.com',
+      DomainIAMRoleName: { Ref: 'Role1ABCC5F0' },
+    });
+  });
+
+  test('setup kerberos authentication without domainRole', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    // WHEN
+    new DatabaseCluster(stack, 'Database', {
+      engine: DatabaseClusterEngine.auroraPostgres({ version: AuroraPostgresEngineVersion.VER_14_3 }),
+      instanceProps: { vpc },
+      domain: 'domain.com',
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
+      DBClusterParameterGroupName: 'default.aurora-postgresql14',
+      Domain: 'domain.com',
+      DomainIAMRoleName: {
+        Ref: 'DatabaseRDSClusterDirectoryServiceRole6E1B0FFE',
+      },
+    });
+    Template.fromStack(stack).hasResourceProperties('AWS::IAM::Role', {
+      AssumeRolePolicyDocument: {
+        Statement: [{
+          Action: 'sts:AssumeRole',
+          Effect: 'Allow',
+          Principal: {
+            Service: 'rds.amazonaws.com',
+          },
+        }, {
+          Action: 'sts:AssumeRole',
+          Effect: 'Allow',
+          Principal: {
+            Service: 'directoryservice.rds.amazonaws.com',
+          },
+        }],
+        Version: '2012-10-17',
+      },
+      ManagedPolicyArns: [
+        {
+          'Fn::Join': ['', ['arn:', { Ref: 'AWS::Partition' }, ':iam::aws:policy/service-role/AmazonRDSDirectoryServiceAccess']],
+        },
+      ],
+    });
+  });
+
+  test('clusterArn property', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = ec2.Vpc.fromLookup(stack, 'VPC', { isDefault: true });
+    const cluster = new DatabaseCluster(stack, 'Database', {
+      engine: DatabaseClusterEngine.auroraPostgres({ version: AuroraPostgresEngineVersion.VER_14_3 }),
+      instanceProps: { vpc },
+    });
+    const exportName = 'DbCluterArn';
+
+    // WHEN
+    new cdk.CfnOutput(stack, exportName, {
+      exportName,
+      value: cluster.clusterArn,
+    });
+
+    // THEN
+    expect(
+      stack.resolve(cluster.clusterArn),
+    ).toEqual({
+      'Fn::Join': [
+        '',
+        [
+          'arn:',
+          { Ref: 'AWS::Partition' },
+          ':rds:us-test-1:12345:cluster:',
+          { Ref: 'DatabaseB269D8BB' },
+        ],
+      ],
+    });
+  });
+
+  describe('data api', () => {
+    test('enable data api by `enableDataApi` props', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+
+      // WHEN
+      new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.auroraPostgres({ version: AuroraPostgresEngineVersion.VER_14_3 }),
+        enableDataApi: true,
+        vpc,
+        writer: ClusterInstance.serverlessV2('writer'),
+      });
+
+      // THEN
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
+        EnableHttpEndpoint: true,
+      });
+    });
+
+    test('enable data api by calling `grantDataApiAccess()`', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+      const role = new iam.Role(stack, 'Role', {
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      });
+
+      // WHEN
+      const cluster = new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.auroraPostgres({ version: AuroraPostgresEngineVersion.VER_14_3 }),
+        vpc,
+        writer: ClusterInstance.serverlessV2('writer'),
+      });
+      cluster.grantDataApiAccess(role);
+
+      // THEN
+      Template.fromStack(stack).hasResourceProperties('AWS::RDS::DBCluster', {
+        EnableHttpEndpoint: true,
+      });
+      Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: [
+            {
+              Action: [
+                'rds-data:BatchExecuteStatement',
+                'rds-data:BeginTransaction',
+                'rds-data:CommitTransaction',
+                'rds-data:ExecuteStatement',
+                'rds-data:RollbackTransaction',
+              ],
+              Effect: 'Allow',
+              Resource: {
+                'Fn::Join': [
+                  '',
+                  [
+                    'arn:',
+                    { Ref: 'AWS::Partition' },
+                    ':rds:us-test-1:12345:cluster:',
+                    { Ref: 'DatabaseB269D8BB' },
+                  ],
+                ],
+              },
+            },
+            {
+              Action: [
+                'secretsmanager:GetSecretValue',
+                'secretsmanager:DescribeSecret',
+              ],
+              Effect: 'Allow',
+              Resource: {
+                Ref: 'DatabaseSecretAttachmentE5D1B020',
+              },
+            },
+          ],
+        },
+      });
+    });
+
+    test('can grant DataApi access to an imported cluster with data api enabled', () => {
+      // GIVEN
+      const stack = testStack();
+      const role = new iam.Role(stack, 'Role', {
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      });
+      const secret = new Secret(stack, 'Secret');
+
+      // WHEN
+      const importedCluster = DatabaseCluster.fromDatabaseClusterAttributes(stack, 'ImportedCluster', {
+        clusterIdentifier: 'clusterIdentifier',
+        secret,
+        dataApiEnabled: true,
+      });
+      importedCluster.grantDataApiAccess(role);
+
+      // THEN
+      Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: [
+            {
+              Action: [
+                'rds-data:BatchExecuteStatement',
+                'rds-data:BeginTransaction',
+                'rds-data:CommitTransaction',
+                'rds-data:ExecuteStatement',
+                'rds-data:RollbackTransaction',
+              ],
+              Effect: 'Allow',
+              Resource: {
+                'Fn::Join': [
+                  '',
+                  [
+                    'arn:',
+                    { Ref: 'AWS::Partition' },
+                    ':rds:us-test-1:12345:cluster:clusterIdentifier',
+                  ],
+                ],
+              },
+            },
+            {
+              Action: [
+                'secretsmanager:GetSecretValue',
+                'secretsmanager:DescribeSecret',
+              ],
+              Effect: 'Allow',
+              Resource: {
+                Ref: 'SecretA720EF05',
+              },
+            },
+          ],
+        },
+      });
+    });
+
+    test('throw error for calling `grantDataApiAccess()` with `enableDataApi` props set to false', () => {
+      // GIVEN
+      const stack = testStack();
+      const vpc = new ec2.Vpc(stack, 'VPC');
+      const role = new iam.Role(stack, 'Role', {
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      });
+
+      // WHEN
+      const cluster = new DatabaseCluster(stack, 'Database', {
+        engine: DatabaseClusterEngine.auroraPostgres({ version: AuroraPostgresEngineVersion.VER_14_3 }),
+        enableDataApi: false,
+        vpc,
+        writer: ClusterInstance.serverlessV2('writer'),
+      });
+
+      // THEN
+      expect(() => cluster.grantDataApiAccess(role)).toThrow('Cannot grant Data API access when the Data API is disabled');
+    });
+  });
 });
 
 test.each([
@@ -3422,7 +5373,7 @@ test.each([
   // WHEN
   new DatabaseCluster(stack, 'Cluster', {
     credentials: { username: 'admin' },
-    engine: DatabaseClusterEngine.AURORA,
+    engine: DatabaseClusterEngine.AURORA_MYSQL,
     instanceProps: {
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.LARGE),
       vpc: new ec2.Vpc(stack, 'Vpc'),
@@ -3456,7 +5407,7 @@ test.each([
   // WHEN
   new DatabaseCluster(stack, 'Cluster', {
     credentials: { username: 'admin' },
-    engine: DatabaseClusterEngine.AURORA,
+    engine: DatabaseClusterEngine.AURORA_MYSQL,
     instanceProps: {
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.LARGE),
       vpc: new ec2.Vpc(stack, 'Vpc'),

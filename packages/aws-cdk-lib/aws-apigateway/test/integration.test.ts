@@ -14,6 +14,7 @@ describe('integration', () => {
     // THEN
     expect(() => new apigw.Integration({
       type: apigw.IntegrationType.AWS_PROXY,
+      integrationHttpMethod: 'ANY',
       options: {
         credentialsPassthrough: true,
         credentialsRole: role,
@@ -192,7 +193,7 @@ describe('integration', () => {
       options: {
         timeout: cdk.Duration.millis(2),
       },
-    })).toThrow(/Integration timeout must be between 50 milliseconds and 29 seconds/);
+    })).toThrow(/Integration timeout must be greater than 50 milliseconds/);
 
     expect(() => new apigw.Integration({
       type: apigw.IntegrationType.HTTP_PROXY,
@@ -200,7 +201,7 @@ describe('integration', () => {
       options: {
         timeout: cdk.Duration.seconds(50),
       },
-    })).toThrow(/Integration timeout must be between 50 milliseconds and 29 seconds/);
+    })).not.toThrow();
   });
 
   test('sets timeout', () => {
@@ -229,4 +230,21 @@ describe('integration', () => {
 
   });
 
+  test('validates integrationHttpMethod is required for non-MOCK integration types', () => {
+    expect(() => new apigw.Integration({
+      type: apigw.IntegrationType.HTTP_PROXY,
+      options: {
+        timeout: cdk.Duration.seconds(15),
+      },
+    })).toThrow(/integrationHttpMethod is required for non-mock integration types/);
+  });
+
+  test('integrationHttpMethod can be omitted for MOCK integration type', () => {
+    expect(() => new apigw.Integration({
+      type: apigw.IntegrationType.MOCK,
+      options: {
+        timeout: cdk.Duration.seconds(15),
+      },
+    })).not.toThrow();
+  });
 });

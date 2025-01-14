@@ -1,11 +1,11 @@
 import { Template } from '../../../assertions';
 import * as ec2 from '../../../aws-ec2';
 import * as iam from '../../../aws-iam';
-import * as lambda from '../../../aws-lambda';
 import * as logs from '../../../aws-logs';
 import * as cdk from '../../../core';
 import { App, Stack } from '../../../core';
-import { AwsCustomResource, AwsCustomResourcePolicy, PhysicalResourceId, PhysicalResourceIdReference, builtInCustomResourceNodeRuntime } from '../../lib';
+import { LOG_API_RESPONSE_DATA_PROPERTY_TRUE_DEFAULT } from '../../../cx-api';
+import { AwsCustomResource, AwsCustomResourcePolicy, Logging, PhysicalResourceId, PhysicalResourceIdReference } from '../../lib';
 
 /* eslint-disable quote-props */
 
@@ -596,6 +596,92 @@ test('timeout defaults to 2 minutes', () => {
   });
 });
 
+test('memorySize defaults to 512 M if installLatestAwsSdk is true', () => {
+  // GIVEN
+  const stack = new cdk.Stack();
+
+  // WHEN
+  new AwsCustomResource(stack, 'AwsSdk', {
+    onCreate: {
+      service: 'service',
+      action: 'action',
+      physicalResourceId: PhysicalResourceId.of('id'),
+    },
+    policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    installLatestAwsSdk: true,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::Lambda::Function', {
+    MemorySize: 512,
+  });
+});
+
+test('memorySize is undefined if installLatestAwsSdk is false', () => {
+  // GIVEN
+  const stack = new cdk.Stack();
+
+  // WHEN
+  new AwsCustomResource(stack, 'AwsSdk', {
+    onCreate: {
+      service: 'service',
+      action: 'action',
+      physicalResourceId: PhysicalResourceId.of('id'),
+    },
+    policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    installLatestAwsSdk: false,
+  });
+
+  // THEN
+  Template.fromStack(stack).resourcePropertiesCountIs('AWS::Lambda::Function', {
+    MemorySize: 512,
+  }, 0);
+});
+
+test('use memorySize prop if installLatestAwsSdk is true', () => {
+  // GIVEN
+  const stack = new cdk.Stack();
+
+  // WHEN
+  new AwsCustomResource(stack, 'AwsSdk', {
+    onCreate: {
+      service: 'service',
+      action: 'action',
+      physicalResourceId: PhysicalResourceId.of('id'),
+    },
+    policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    installLatestAwsSdk: true,
+    memorySize: 1024,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::Lambda::Function', {
+    MemorySize: 1024,
+  });
+});
+
+test('use memorySize prop if installLatestAwsSdk is false', () => {
+  // GIVEN
+  const stack = new cdk.Stack();
+
+  // WHEN
+  new AwsCustomResource(stack, 'AwsSdk', {
+    onCreate: {
+      service: 'service',
+      action: 'action',
+      physicalResourceId: PhysicalResourceId.of('id'),
+    },
+    policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    installLatestAwsSdk: false,
+    memorySize: 1024,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::Lambda::Function', {
+    MemorySize: 1024,
+  });
+});
+
 test('can specify timeout', () => {
   // GIVEN
   const stack = new cdk.Stack();
@@ -866,6 +952,31 @@ test('can specify log retention', () => {
         ],
       ],
     },
+    RetentionInDays: 7,
+  });
+});
+
+test('can specify log group', () => {
+  // GIVEN
+  const stack = new cdk.Stack();
+
+  // WHEN
+  new AwsCustomResource(stack, 'AwsSdk', {
+    onCreate: {
+      service: 'service',
+      action: 'action',
+      physicalResourceId: PhysicalResourceId.of('id'),
+    },
+    logGroup: new logs.LogGroup(stack, 'LogGroup', {
+      logGroupName: '/test/log/group/name',
+      retention: logs.RetentionDays.ONE_WEEK,
+    }),
+    policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::Logs::LogGroup', {
+    LogGroupName: '/test/log/group/name',
     RetentionInDays: 7,
   });
 });
@@ -1281,21 +1392,275 @@ test('can specify removal policy', () => {
   });
 });
 
-describe('builtInCustomResourceNodeRuntime', () => {
-  test('returns node16 for commercial region', () => {
-    const app = new App();
-    const stack = new Stack(app, 'MyStack', { env: { region: 'us-east-1' } });
+test('set serviceTimeout', () => {
+  // GIVEN
+  const stack = new cdk.Stack();
 
-    const rt = builtInCustomResourceNodeRuntime(stack);
-    expect(rt).toEqual(lambda.Runtime.NODEJS_16_X);
+  // WHEN
+  new AwsCustomResource(stack, 'AwsSdk', {
+    onCreate: {
+      service: 'service',
+      action: 'action',
+      physicalResourceId: PhysicalResourceId.of('id'),
+    },
+    policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    serviceTimeout: cdk.Duration.seconds(60),
   });
 
-  test('returns node14 for iso region', () => {
-    const app = new App();
-    const stack = new Stack(app, 'MyStack', { env: { region: 'us-iso-east-1' } });
-
-    const rt = builtInCustomResourceNodeRuntime(stack);
-    expect(rt).toEqual(lambda.Runtime.NODEJS_14_X);
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('Custom::AWS', {
+    ServiceTimeout: '60',
   });
 });
 
+describe('logging configuration', () => {
+  test('without logging configured', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    // WHEN
+    new AwsCustomResource(stack, 'AwsSdk', {
+      resourceType: 'Custom::S3PutObject',
+      onUpdate: {
+        service: 's3',
+        action: 'putObject',
+        parameters: {
+          Bucket: 'my-bucket',
+          Key: 'my-key',
+          Body: 'my-body',
+        },
+        physicalResourceId: PhysicalResourceId.fromResponse('ETag'),
+      },
+      policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('Custom::S3PutObject', {
+      'Create': JSON.stringify({
+        'service': 's3',
+        'action': 'putObject',
+        'parameters': {
+          'Bucket': 'my-bucket',
+          'Key': 'my-key',
+          'Body': 'my-body',
+        },
+        'physicalResourceId': {
+          'responsePath': 'ETag',
+        },
+      }),
+      'Update': JSON.stringify({
+        'service': 's3',
+        'action': 'putObject',
+        'parameters': {
+          'Bucket': 'my-bucket',
+          'Key': 'my-key',
+          'Body': 'my-body',
+        },
+        'physicalResourceId': {
+          'responsePath': 'ETag',
+        },
+      }),
+    });
+  });
+
+  test('without logging configured and feature flag enabled', () => {
+    // GIVEN
+    const app = new cdk.App({ postCliContext: { [LOG_API_RESPONSE_DATA_PROPERTY_TRUE_DEFAULT]: true } });
+    const stack = new cdk.Stack(app);
+
+    // WHEN
+    new AwsCustomResource(stack, 'AwsSdk', {
+      resourceType: 'Custom::S3PutObject',
+      onUpdate: {
+        service: 's3',
+        action: 'putObject',
+        parameters: {
+          Bucket: 'my-bucket',
+          Key: 'my-key',
+          Body: 'my-body',
+        },
+        physicalResourceId: PhysicalResourceId.fromResponse('ETag'),
+      },
+      policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('Custom::S3PutObject', {
+      'Create': JSON.stringify({
+        'service': 's3',
+        'action': 'putObject',
+        'parameters': {
+          'Bucket': 'my-bucket',
+          'Key': 'my-key',
+          'Body': 'my-body',
+        },
+        'physicalResourceId': {
+          'responsePath': 'ETag',
+        },
+        'logApiResponseData': true,
+      }),
+      'Update': JSON.stringify({
+        'service': 's3',
+        'action': 'putObject',
+        'parameters': {
+          'Bucket': 'my-bucket',
+          'Key': 'my-key',
+          'Body': 'my-body',
+        },
+        'physicalResourceId': {
+          'responsePath': 'ETag',
+        },
+        'logApiResponseData': true,
+      }),
+    });
+  });
+
+  test('with Logging.all() configured', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    // WHEN
+    new AwsCustomResource(stack, 'AwsSdk', {
+      resourceType: 'Custom::LogRetentionPolicy',
+      onCreate: {
+        service: 'CloudWatchLogs',
+        action: 'putRetentionPolicy',
+        parameters: {
+          logGroupName: '/aws/lambda/loggroup',
+          retentionInDays: 90,
+        },
+        physicalResourceId: PhysicalResourceId.of('loggroup'),
+        logging: Logging.all(),
+      },
+      policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('Custom::LogRetentionPolicy', {
+      Create: JSON.stringify({
+        service: 'CloudWatchLogs',
+        action: 'putRetentionPolicy',
+        parameters: {
+          logGroupName: '/aws/lambda/loggroup',
+          retentionInDays: 90,
+        },
+        physicalResourceId: {
+          id: 'loggroup',
+        },
+      }),
+    });
+  });
+
+  test('with Logging.all() configured and feature flag enabled', () => {
+    // GIVEN
+    const app = new App({ postCliContext: { [LOG_API_RESPONSE_DATA_PROPERTY_TRUE_DEFAULT]: true } });
+    const stack = new Stack(app);
+
+    // WHEN
+    new AwsCustomResource(stack, 'AwsSdk', {
+      resourceType: 'Custom::LogRetentionPolicy',
+      onCreate: {
+        service: 'CloudWatchLogs',
+        action: 'putRetentionPolicy',
+        parameters: {
+          logGroupName: '/aws/lambda/loggroup',
+          retentionInDays: 90,
+        },
+        physicalResourceId: PhysicalResourceId.of('loggroup'),
+        logging: Logging.all(),
+      },
+      policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('Custom::LogRetentionPolicy', {
+      Create: JSON.stringify({
+        service: 'CloudWatchLogs',
+        action: 'putRetentionPolicy',
+        parameters: {
+          logGroupName: '/aws/lambda/loggroup',
+          retentionInDays: 90,
+        },
+        physicalResourceId: {
+          id: 'loggroup',
+        },
+        logApiResponseData: true,
+      }),
+    });
+  });
+
+  test('with Logging.withDataHidden() configured', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    // WHEN
+    new AwsCustomResource(stack, 'AwsSdk', {
+      resourceType: 'Custom::LogRetentionPolicy',
+      onCreate: {
+        service: 'CloudWatchLogs',
+        action: 'putRetentionPolicy',
+        parameters: {
+          logGroupName: '/aws/lambda/loggroup',
+          retentionInDays: 90,
+        },
+        physicalResourceId: PhysicalResourceId.of('loggroup'),
+        logging: Logging.withDataHidden(),
+      },
+      policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('Custom::LogRetentionPolicy', {
+      Create: JSON.stringify({
+        service: 'CloudWatchLogs',
+        action: 'putRetentionPolicy',
+        parameters: {
+          logGroupName: '/aws/lambda/loggroup',
+          retentionInDays: 90,
+        },
+        physicalResourceId: {
+          id: 'loggroup',
+        },
+        logApiResponseData: false,
+      }),
+    });
+  });
+
+  test('with Logging.withDataHidden() configured and feature flag enabled', () => {
+    // GIVEN
+    const app = new App({ postCliContext: { [LOG_API_RESPONSE_DATA_PROPERTY_TRUE_DEFAULT]: true } });
+    const stack = new Stack(app);
+
+    // WHEN
+    new AwsCustomResource(stack, 'AwsSdk', {
+      resourceType: 'Custom::LogRetentionPolicy',
+      onCreate: {
+        service: 'CloudWatchLogs',
+        action: 'putRetentionPolicy',
+        parameters: {
+          logGroupName: '/aws/lambda/loggroup',
+          retentionInDays: 90,
+        },
+        physicalResourceId: PhysicalResourceId.of('loggroup'),
+        logging: Logging.withDataHidden(),
+      },
+      policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: AwsCustomResourcePolicy.ANY_RESOURCE }),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('Custom::LogRetentionPolicy', {
+      Create: JSON.stringify({
+        service: 'CloudWatchLogs',
+        action: 'putRetentionPolicy',
+        parameters: {
+          logGroupName: '/aws/lambda/loggroup',
+          retentionInDays: 90,
+        },
+        physicalResourceId: {
+          id: 'loggroup',
+        },
+        logApiResponseData: false,
+      }),
+    });
+  });
+});

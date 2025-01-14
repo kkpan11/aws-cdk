@@ -212,12 +212,12 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.1.270"
+              "version": "10.3.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "aws-cdk-log-retention-integ/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "aws-cdk-log-retention-integ/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -276,7 +276,7 @@
                 "path": "LogRetentionInteg/DefaultTest/Default",
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.1.270"
+                  "version": "10.3.0"
                 }
               },
               "DeployAssert": {
@@ -322,7 +322,7 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.1.270"
+          "version": "10.3.0"
         }
       }
     },

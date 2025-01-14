@@ -2,6 +2,7 @@ import { Construct } from 'constructs';
 import { IConfigurationSet } from './configuration-set';
 import { undefinedIfNoKeys } from './private/utils';
 import { CfnEmailIdentity } from './ses.generated';
+import { Grant, IGrantable } from '../../aws-iam';
 import { IPublicHostedZone } from '../../aws-route53';
 import * as route53 from '../../aws-route53';
 import { IResource, Lazy, Resource, SecretValue, Stack } from '../../core';
@@ -16,6 +17,30 @@ export interface IEmailIdentity extends IResource {
    * @attribute
    */
   readonly emailIdentityName: string;
+
+  /**
+   * The ARN of the email identity
+   *
+   * @attribute
+   */
+  readonly emailIdentityArn: string;
+
+  /**
+   * Adds an IAM policy statement associated with this email identity to an IAM principal's policy.
+   *
+   * @param grantee the principal (no-op if undefined)
+   * @param actions the set of actions to allow
+   */
+  grant(grantee: IGrantable, ...actions: string[]): Grant;
+
+  /**
+   * Permits an IAM principal the send email action.
+   *
+   * Actions: SendEmail.
+   *
+   * @param grantee the principal to grant access to
+   */
+  grantSendEmail(grantee: IGrantable): Grant;
 }
 
 /**
@@ -162,20 +187,20 @@ export interface DkimIdentityConfig {
   readonly domainSigningPrivateKey?: string;
 
   /**
-    * A string that's used to identify a public key in the DNS configuration for
-    * a domain
-    *
-    * @default - use Easy DKIM
-    */
+   * A string that's used to identify a public key in the DNS configuration for
+   * a domain
+   *
+   * @default - use Easy DKIM
+   */
   readonly domainSigningSelector?: string;
 
   /**
-    * The key length of the future DKIM key pair to be generated. This can be changed
-    * at most once per day.
-    *
-    * @default EasyDkimSigningKeyLength.RSA_2048_BIT
-    */
-  readonly nextSigningKeyLength?: EasyDkimSigningKeyLength
+   * The key length of the future DKIM key pair to be generated. This can be changed
+   * at most once per day.
+   *
+   * @default EasyDkimSigningKeyLength.RSA_2048_BIT
+   */
+  readonly nextSigningKeyLength?: EasyDkimSigningKeyLength;
 }
 
 /**
@@ -219,7 +244,7 @@ class EasyDkim extends DkimIdentity {
   public bind(emailIdentity: EmailIdentity, hostedZone?: route53.IPublicHostedZone): DkimIdentityConfig | undefined {
     if (hostedZone) {
       // Use CfnRecordSet instead of CnameRecord to avoid current bad handling of
-      // tokens in route53.determineFullyQualifiedDomainName() at https://github.com/aws/aws-cdk/blob/main/packages/%40aws-cdk/aws-route53/lib/util.ts
+      // tokens in route53.determineFullyQualifiedDomainName() at https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/aws-route53/lib/util.ts
       new route53.CfnRecordSet(emailIdentity, 'DkimDnsToken1', {
         hostedZoneId: hostedZone.hostedZoneId,
         name: Lazy.string({ produce: () => emailIdentity.dkimDnsTokenName1 }),
@@ -307,24 +332,75 @@ export enum EasyDkimSigningKeyLength {
   /**
    * RSA 2048-bit
    */
-  RSA_2048_BIT = 'RSA_2048_BIT'
+  RSA_2048_BIT = 'RSA_2048_BIT',
+}
+
+abstract class EmailIdentityBase extends Resource implements IEmailIdentity {
+  /**
+   * The name of the email identity
+   *
+   * @attribute
+   */
+  public abstract readonly emailIdentityName: string;
+
+  /**
+   * The ARN of the email identity
+   *
+   * @attribute
+   */
+  public abstract readonly emailIdentityArn: string;
+
+  /**
+   * Adds an IAM policy statement associated with this email identity to an IAM principal's policy.
+   *
+   * @param grantee the principal (no-op if undefined)
+   * @param actions the set of actions to allow
+   */
+  public grant(grantee: IGrantable, ...actions: string[]): Grant {
+    const resourceArns = [this.emailIdentityArn];
+    return Grant.addToPrincipal({
+      grantee,
+      actions,
+      resourceArns,
+      scope: this,
+    });
+  }
+
+  /**
+   * Permits an IAM principal the send email action.
+   *
+   * Actions: SendEmail, SendRawEmail.
+   *
+   * @param grantee the principal to grant access to
+   */
+  public grantSendEmail(grantee: IGrantable): Grant {
+    return this.grant(grantee, 'ses:SendEmail', 'ses:SendRawEmail');
+  }
 }
 
 /**
  * An email identity
  */
-export class EmailIdentity extends Resource implements IEmailIdentity {
+export class EmailIdentity extends EmailIdentityBase {
   /**
    * Use an existing email identity
    */
   public static fromEmailIdentityName(scope: Construct, id: string, emailIdentityName: string): IEmailIdentity {
-    class Import extends Resource implements IEmailIdentity {
+    class Import extends EmailIdentityBase {
       public readonly emailIdentityName = emailIdentityName;
+
+      public readonly emailIdentityArn = this.stack.formatArn({
+        service: 'ses',
+        resource: 'identity',
+        resourceName: this.emailIdentityName,
+      });
     }
     return new Import(scope, id);
   }
 
   public readonly emailIdentityName: string;
+
+  public readonly emailIdentityArn: string;
 
   /**
    * The host name for the first token that you have to add to the
@@ -420,6 +496,12 @@ export class EmailIdentity extends Resource implements IEmailIdentity {
     }
 
     this.emailIdentityName = identity.ref;
+
+    this.emailIdentityArn = this.stack.formatArn({
+      service: 'ses',
+      resource: 'identity',
+      resourceName: this.emailIdentityName,
+    });
 
     this.dkimDnsTokenName1 = identity.attrDkimDnsTokenName1;
     this.dkimDnsTokenName2 = identity.attrDkimDnsTokenName2;

@@ -4,10 +4,9 @@ import * as s3 from '../../aws-s3';
 import * as secretsmanager from '../../aws-secretsmanager';
 import * as ssm from '../../aws-ssm';
 import * as cdk from '../../core';
-import { Duration } from '../../core';
+import { Duration, Lazy } from '../../core';
 import * as cxapi from '../../cx-api';
 import * as ecs from '../lib';
-import { AppProtocol } from '../lib';
 
 describe('container definition', () => {
   describe('When creating a Task Definition', () => {
@@ -48,6 +47,189 @@ describe('container definition', () => {
         expect(() => {
           portMap.validate();
         }).toThrow();
+      });
+
+      test('throws when PortMapping.containerPortRange is not set and PortMapping.containerPort is set to 0', () => {
+        // GIVEN
+        const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+          containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+        });
+
+        // THEN
+        expect(() => portMap.validate()).toThrow(`The containerPortRange must be set when containerPort is equal to ${ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE}`);
+      });
+
+      test('throws when PortMapping.containerPortRange is used along with PortMapping.containerPort', () => {
+        // GIVEN
+        const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+          containerPort: 8080,
+          containerPortRange: '8080-8081',
+        });
+
+        // THEN
+        expect(() => portMap.validate()).toThrow('Cannot set "containerPort" and "containerPortRange" at the same time.');
+      });
+
+      describe('throws when PortMapping.hostPort is set to a different port than the container port', () => {
+        test('when network mode is AwsVpc', () => {
+          // GIVEN
+          const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+            containerPort: 8080,
+            hostPort: 8081,
+          });
+
+          // THEN
+          expect(() => portMap.validate()).toThrow('The host port must be left out or must be the same as the container port for AwsVpc or Host network mode.');
+        });
+
+        test('when network mode is Host', () => {
+          // GIVEN
+          const portMap = new ecs.PortMap(ecs.NetworkMode.HOST, {
+            containerPort: 8080,
+            hostPort: 8081,
+          });
+
+          // THEN
+          expect(() => portMap.validate()).toThrow('The host port must be left out or must be the same as the container port for AwsVpc or Host network mode.');
+        });
+      });
+
+      test('throws when PortMapping.containerPortRange is used along with PortMapping.hostPort', () => {
+        // GIVEN
+        const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+          containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+          containerPortRange: '8080-8081',
+          hostPort: 8080,
+        });
+
+        // THEN
+        expect(() => portMap.validate()).toThrow('Cannot set "hostPort" while using a port range for the container.');
+      });
+
+      test('throws when PortMapping.containerPortRange string is invalid', () => {
+        expect(() => {
+          const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: '-',
+          });
+
+          portMap.validate();
+        }).toThrow('The containerPortRange must be a string in the format [start port]-[end port].');
+
+        expect(() => {
+          const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: 'foo-',
+          });
+
+          portMap.validate();
+        }).toThrow('The containerPortRange must be a string in the format [start port]-[end port].');
+
+        expect(() => {
+          const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: '-bar',
+          });
+
+          portMap.validate();
+        }).toThrow('The containerPortRange must be a string in the format [start port]-[end port].');
+
+        expect(() => {
+          const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: 'foo-bar',
+          });
+
+          portMap.validate();
+        }).toThrow('The containerPortRange must be a string in the format [start port]-[end port].');
+
+        expect(() => {
+          const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: '808a-8081',
+          });
+
+          portMap.validate();
+        }).toThrow('The containerPortRange must be a string in the format [start port]-[end port].');
+
+        expect(() => {
+          const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: '8080-808a',
+          });
+
+          portMap.validate();
+        }).toThrow('The containerPortRange must be a string in the format [start port]-[end port].');
+      });
+
+      test('throws when PortMapping.containerPortRange is not a concrete value', () => {
+        // GIVEN
+        const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+          containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+          containerPortRange: Lazy.string({ produce: () => '8080-8081' }),
+        });
+
+        // THEN
+        expect(() => portMap.validate()).toThrow('The value of containerPortRange must be concrete (no Tokens)');
+      });
+
+      describe('throws when PortMapping.containerPortRange is used with an unsupported network mode', () => {
+        test('when network mode is Host', () => {
+          // GIVEN
+          const portMap = new ecs.PortMap(ecs.NetworkMode.HOST, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: '8080-8081',
+          });
+
+          // THEN
+          expect(() => portMap.validate()).toThrow('Either AwsVpc or Bridge network mode is required to set a port range for the container.');
+        });
+
+        test('when network mode is NAT', () => {
+          // GIVEN
+          const portMap = new ecs.PortMap(ecs.NetworkMode.NAT, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: '8080-8081',
+          });
+
+          // THEN
+          expect(() => portMap.validate()).toThrow('Either AwsVpc or Bridge network mode is required to set a port range for the container.');
+        });
+
+        test('when network mode is None', () => {
+          // GIVEN
+          const portMap = new ecs.PortMap(ecs.NetworkMode.NONE, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: '8080-8081',
+          });
+
+          // THEN
+          expect(() => portMap.validate()).toThrow('Either AwsVpc or Bridge network mode is required to set a port range for the container.');
+        });
+      });
+
+      describe('ContainerPortRange can be used with AwsVpc or Bridge network mode', () => {
+        test('when network mode is AwsVpc', () => {
+          // GIVEN
+          const portMap = new ecs.PortMap(ecs.NetworkMode.AWS_VPC, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: '8080-8081',
+          });
+
+          // THEN
+          expect(() => portMap.validate()).not.toThrow();
+        });
+
+        test('when network mode is Bridge', () => {
+          // GIVEN
+          const portMap = new ecs.PortMap(ecs.NetworkMode.BRIDGE, {
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: '8080-8081',
+          });
+
+          // THEN
+          expect(() => portMap.validate()).not.toThrow();
+        });
       });
 
       describe('ContainerPort should not eqaul Hostport', () => {
@@ -216,13 +398,13 @@ describe('container definition', () => {
         container.addPortMappings(
           {
             containerPort: 443,
-            appProtocol: AppProtocol.grpc,
+            appProtocol: ecs.AppProtocol.grpc,
           },
         );
       }).toThrow(/Service connect-related port mapping field 'appProtocol' cannot be set without 'name'/);
     });
 
-    test('multiple port mappings of the same name error out', () =>{
+    test('multiple port mappings of the same name error out', () => {
       // GIVEN
       const stack = new cdk.Stack();
       const taskDefinition = new ecs.FargateTaskDefinition(stack, 'TaskDef');
@@ -283,6 +465,7 @@ describe('container definition', () => {
         memoryReservationMiB: 512,
         containerName: 'Example Container',
         command: ['CMD-SHELL'],
+        credentialSpecs: [new ecs.DomainlessCredentialSpec('arn:aws:s3:::bucket_name/key_name')],
         cpu: 128,
         disableNetworking: true,
         dnsSearchDomains: ['example.com'],
@@ -297,7 +480,7 @@ describe('container definition', () => {
           key: 'foo',
           value: 'bar',
         },
-        environmentFiles: [ecs.EnvironmentFile.fromAsset(path.join(__dirname, 'demo-envfiles/test-envfile.env'))],
+        environmentFiles: [ecs.EnvironmentFile.fromAsset(path.join(__dirname, 'demo-envfiles', 'test-envfile.env'))],
         essential: true,
         extraHosts: {
           name: 'dev-db.hostname.pvt',
@@ -332,6 +515,9 @@ describe('container definition', () => {
               'CMD-SHELL',
             ],
             Cpu: 128,
+            CredentialSpecs: [
+              'credentialspecdomainless:arn:aws:s3:::bucket_name/key_name',
+            ],
             DisableNetworking: true,
             DnsSearchDomains: [
               'example.com',
@@ -661,7 +847,7 @@ describe('container definition', () => {
     });
 
     describe('With network mode Bridge', () => {
-      test('when Host port is empty ', () => {
+      test('host post is forcefully set to 0 when both it and containerPortRange are not set', () => {
         // GIVEN
         const stack = new cdk.Stack();
         const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef', {
@@ -671,16 +857,16 @@ describe('container definition', () => {
         const container = taskDefinition.addContainer('Container', {
           image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
           memoryLimitMiB: 2048,
+          portMappings: [{
+            containerPort: 8080,
+          }],
         });
 
-        container.addPortMappings({
-          containerPort: 8080,
-        });
-
-        // THEN no exception raises
+        // THEN
+        expect(container.portMappings[0].hostPort).toEqual(0);
       });
 
-      test('when Host port is not empty ', () => {
+      test('host post is left unchanged when it is set already', () => {
         // GIVEN
         const stack = new cdk.Stack();
         const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef', {
@@ -690,14 +876,34 @@ describe('container definition', () => {
         const container = taskDefinition.addContainer('Container', {
           image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
           memoryLimitMiB: 2048,
+          portMappings: [{
+            containerPort: 8080,
+            hostPort: 8084,
+          }],
         });
 
-        container.addPortMappings({
-          containerPort: 8080,
-          hostPort: 8084,
+        // THEN
+        expect(container.portMappings[0].hostPort).toEqual(8084);
+      });
+
+      test('host post is left undefined when containerPortRange is set', () => {
+        // GIVEN
+        const stack = new cdk.Stack();
+        const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef', {
+          networkMode: ecs.NetworkMode.BRIDGE,
         });
 
-        // THEN no exception raises
+        const container = taskDefinition.addContainer('Container', {
+          image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+          memoryLimitMiB: 2048,
+          portMappings: [{
+            containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+            containerPortRange: '8080-8081',
+          }],
+        });
+
+        // THEN
+        expect(container.portMappings[0].hostPort).toBeUndefined();
       });
 
       test('allows adding links', () => {
@@ -788,6 +994,26 @@ describe('container definition', () => {
         expect(actual).toEqual(expected);
       }).toThrow(/Container MyContainer hasn't defined any ports. Call addPortMappings\(\)./);
     });
+
+    test('throws when calling containerPort with the first PortMapping not exposing a single port', () => {
+      // GIVEN
+      const stack = new cdk.Stack();
+      const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef', {
+        networkMode: ecs.NetworkMode.AWS_VPC,
+      });
+
+      const container = taskDefinition.addContainer('MyContainer', {
+        image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+        memoryLimitMiB: 2048,
+        portMappings: [{
+          containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+          containerPortRange: '8080-8081',
+        }],
+      });
+
+      // THEN
+      expect(() => container.containerPort).toThrow('The first port mapping of the container MyContainer must expose a single port.');
+    });
   });
 
   describe('Ingress Port', () => {
@@ -836,6 +1062,26 @@ describe('container definition', () => {
       });
     });
 
+    test('throws when calling ingressPort with the first PortMapping not exposing a single port', () => {
+      // GIVEN
+      const stack = new cdk.Stack();
+      const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef', {
+        networkMode: ecs.NetworkMode.AWS_VPC,
+      });
+
+      const container = taskDefinition.addContainer('MyContainer', {
+        image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+        memoryLimitMiB: 2048,
+        portMappings: [{
+          containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+          containerPortRange: '8080-8081',
+        }],
+      });
+
+      // THEN
+      expect(() => container.ingressPort).toThrow('The first port mapping of the container MyContainer must expose a single port.');
+    });
+
     describe('With network mode Host ', () => {
       test('Ingress port should be the same as container port', () => {
         // GIVEN
@@ -857,7 +1103,7 @@ describe('container definition', () => {
 
         // THEN
         const expected = 8080;
-        expect(actual).toEqual( expected);
+        expect(actual).toEqual(expected);
       });
     });
 
@@ -883,7 +1129,7 @@ describe('container definition', () => {
 
         // THEN
         const expected = 8081;
-        expect(actual).toEqual( expected);
+        expect(actual).toEqual(expected);
       });
 
       test('Ingress port should be 0 if not supplied', () => {
@@ -908,6 +1154,80 @@ describe('container definition', () => {
         const expected = 0;
         expect(actual).toEqual(expected);
       });
+    });
+  });
+
+  test('can add docker label to the container definition', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // WHEN
+    const container = taskDefinition.addContainer('cont', {
+      image: ecs.ContainerImage.fromRegistry('test'),
+      memoryLimitMiB: 1024,
+      dockerLabels: {
+        FIRST_DOCKER_LABEL: 'first',
+      },
+    });
+    container.addDockerLabel('SECOND_DOCKER_LABEL', 'second');
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: [
+        Match.objectLike({
+          DockerLabels: {
+            FIRST_DOCKER_LABEL: 'first',
+            SECOND_DOCKER_LABEL: 'second',
+          },
+        }),
+      ],
+    });
+  });
+
+  test('can add docker label to container definition with no docker labels', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // WHEN
+    const container = taskDefinition.addContainer('cont', {
+      image: ecs.ContainerImage.fromRegistry('test'),
+      memoryLimitMiB: 1024,
+    });
+    container.addDockerLabel('DOCKER_LABEL', 'value');
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: [
+        Match.objectLike({
+          DockerLabels: {
+            DOCKER_LABEL: 'value',
+          },
+        }),
+      ],
+    });
+  });
+
+  test('docker labels should be absent if empty object is provided', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // WHEN
+    taskDefinition.addContainer('cont', {
+      image: ecs.ContainerImage.fromRegistry('test'),
+      memoryLimitMiB: 1024,
+      dockerLabels: {},
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: [
+        Match.objectLike({
+          DockerLabels: Match.absent(),
+        }),
+      ],
     });
   });
 
@@ -1063,7 +1383,7 @@ describe('container definition', () => {
         taskDefinition.addContainer('cont', {
           image: ecs.ContainerImage.fromRegistry('test'),
           memoryLimitMiB: 1024,
-          environmentFiles: [ecs.EnvironmentFile.fromAsset(path.join(__dirname, 'demo-envfiles/test-envfile.env'))],
+          environmentFiles: [ecs.EnvironmentFile.fromAsset(path.join(__dirname, 'demo-envfiles', 'test-envfile.env'))],
         });
 
         // THEN
@@ -1175,7 +1495,7 @@ describe('container definition', () => {
         taskDefinition.addContainer('cont', {
           image: ecs.ContainerImage.fromRegistry('test'),
           memoryLimitMiB: 1024,
-          environmentFiles: [ecs.EnvironmentFile.fromAsset(path.join(__dirname, 'demo-envfiles/test-envfile.env'))],
+          environmentFiles: [ecs.EnvironmentFile.fromAsset(path.join(__dirname, 'demo-envfiles', 'test-envfile.env'))],
         });
 
         // THEN
@@ -2159,7 +2479,7 @@ describe('container definition', () => {
       });
 
       // THEN
-      expect(taskDefinition.defaultContainer).toEqual( container);
+      expect(taskDefinition.defaultContainer).toEqual(container);
 
     });
 
@@ -2176,7 +2496,7 @@ describe('container definition', () => {
       });
 
       // THEN
-      expect(taskDefinition.defaultContainer).toEqual( undefined);
+      expect(taskDefinition.defaultContainer).toEqual(undefined);
     });
   });
 
@@ -2188,7 +2508,7 @@ describe('container definition', () => {
       const swappinessValues = [-1, 30.5, 101];
       swappinessValues.forEach(swappiness => expect(() =>
         new ecs.LinuxParameters(stack, `LinuxParametersWithSwappiness(${swappiness})`, { swappiness }))
-        .toThrowError(`swappiness: Must be an integer between 0 and 100; received ${swappiness}.`));
+        .toThrow(`swappiness: Must be an integer between 0 and 100; received ${swappiness}.`));
     });
 
     test('with only required properties set, it correctly sets default properties', () => {
@@ -2393,5 +2713,252 @@ describe('container definition', () => {
         ],
       });
     });
+  });
+
+  test('can specify interactive parameter', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    new ecs.ContainerDefinition(stack, 'Container', {
+      image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+      taskDefinition,
+      memoryLimitMiB: 2048,
+      interactive: true,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: [
+        {
+          Essential: true,
+          Image: '/aws/aws-example-app',
+          Memory: 2048,
+          Name: 'Container',
+          Interactive: true,
+        },
+      ],
+    });
+  });
+
+  test('fails if more than one credentialSpec is provided', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+    const containerDefinitionProps = {
+      image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+      taskDefinition,
+      memoryLimitMiB: 2048,
+      credentialSpecs: [
+        new ecs.DomainlessCredentialSpec('arn:aws:s3:::bucket_name/key_name'),
+        new ecs.DomainlessCredentialSpec('arn:aws:s3:::bucket_name/key_name_2'),
+      ],
+    };
+
+    // THEN
+    expect(() => new ecs.ContainerDefinition(stack, 'Container', containerDefinitionProps)).toThrow(/Only one credential spec is allowed per container definition/);
+  });
+
+  test('can specify restart policy', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // WHEN
+    new ecs.ContainerDefinition(stack, 'Container', {
+      image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+      taskDefinition,
+      memoryLimitMiB: 2048,
+      enableRestartPolicy: true,
+      restartIgnoredExitCodes: [0, 127],
+      restartAttemptPeriod: cdk.Duration.seconds(360),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: [
+        {
+          Image: '/aws/aws-example-app',
+          Name: 'Container',
+          Memory: 2048,
+          RestartPolicy: {
+            Enabled: true,
+            IgnoredExitCodes: [0, 127],
+            RestartAttemptPeriod: 360,
+          },
+        },
+      ],
+    });
+  });
+
+  test('restart policy will not be set if not specified', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // WHEN
+    new ecs.ContainerDefinition(stack, 'Container', {
+      image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+      taskDefinition,
+      memoryLimitMiB: 2048,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: [
+        {
+          Image: '/aws/aws-example-app',
+          Name: 'Container',
+          Memory: 2048,
+          RestartPolicy: Match.absent(),
+        },
+      ],
+    });
+  });
+
+  test('enable restart policy when enableRestartPolicy is not specified but restartIgnoredExitCodes is specified', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // WHEN
+    new ecs.ContainerDefinition(stack, 'Container', {
+      image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+      taskDefinition,
+      memoryLimitMiB: 2048,
+      restartIgnoredExitCodes: [0, 127],
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: [
+        {
+          Image: '/aws/aws-example-app',
+          Name: 'Container',
+          Memory: 2048,
+          RestartPolicy: {
+            Enabled: true,
+            IgnoredExitCodes: [0, 127],
+          },
+        },
+      ],
+    });
+  });
+
+  test('enable restart policy when enableRestartPolicy is not specified but restartAttemptPeriod is specified', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // WHEN
+    new ecs.ContainerDefinition(stack, 'Container', {
+      image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+      taskDefinition,
+      memoryLimitMiB: 2048,
+      restartAttemptPeriod: cdk.Duration.seconds(360),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: [
+        {
+          Image: '/aws/aws-example-app',
+          Name: 'Container',
+          Memory: 2048,
+          RestartPolicy: {
+            Enabled: true,
+            RestartAttemptPeriod: 360,
+          },
+        },
+      ],
+    });
+  });
+
+  test('throws when enableRestartPolicy is set to false but restartIgnoredExitCodes is specified', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // THEN
+    expect(() => {
+      new ecs.ContainerDefinition(stack, 'Container', {
+        image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+        taskDefinition,
+        memoryLimitMiB: 2048,
+        enableRestartPolicy: false,
+        restartIgnoredExitCodes: [0, 127],
+      });
+    }).toThrow(/The restartIgnoredExitCodes and restartAttemptPeriod cannot be specified if enableRestartPolicy is false/);
+  });
+
+  test('throws when enableRestartPolicy is set to false but restartAttemptPeriod is specified', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // THEN
+    expect(() => {
+      new ecs.ContainerDefinition(stack, 'Container', {
+        image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+        taskDefinition,
+        memoryLimitMiB: 2048,
+        enableRestartPolicy: false,
+        restartAttemptPeriod: cdk.Duration.seconds(360),
+      });
+    }).toThrow(/The restartIgnoredExitCodes and restartAttemptPeriod cannot be specified if enableRestartPolicy is false/);
+  });
+
+  test('throws when there are more than 50 in restartIgnoredExitCodes', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // WHEN
+    const restartIgnoredExitCodes = Array.from({ length: 51 }, (_, i) => i);
+
+    // THEN
+    expect(() => {
+      new ecs.ContainerDefinition(stack, 'Container', {
+        image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+        taskDefinition,
+        memoryLimitMiB: 2048,
+        enableRestartPolicy: true,
+        restartIgnoredExitCodes,
+      });
+    }).toThrow(/Only up to 50 can be specified for restartIgnoredExitCodes, got: 51/);
+  });
+
+  test('throws when restartAttemptPeriod is greater than 1800 seconds', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // THEN
+    expect(() => {
+      new ecs.ContainerDefinition(stack, 'Container', {
+        image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+        taskDefinition,
+        memoryLimitMiB: 2048,
+        enableRestartPolicy: true,
+        restartAttemptPeriod: cdk.Duration.seconds(1801),
+      });
+    }).toThrow(/The restartAttemptPeriod must be between 60 seconds and 1800 seconds, got 1801 seconds/);
+  });
+
+  test('throws when restartAttemptPeriod is less than 60 seconds', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef');
+
+    // THEN
+    expect(() => {
+      new ecs.ContainerDefinition(stack, 'Container', {
+        image: ecs.ContainerImage.fromRegistry('/aws/aws-example-app'),
+        taskDefinition,
+        memoryLimitMiB: 2048,
+        enableRestartPolicy: true,
+        restartAttemptPeriod: cdk.Duration.seconds(59),
+      });
+    }).toThrow(/The restartAttemptPeriod must be between 60 seconds and 1800 seconds, got 59 seconds/);
   });
 });

@@ -8,6 +8,15 @@ describe('RenderInExpression', () => {
   test('simple string', () => {
     expect(renderInExpression('a')).toBe("'a'");
   });
+  test('string with backslash', () => {
+    expect(renderInExpression('a\\b')).toBe("'a\\\\b'");
+  });
+  test('string with single quote', () => {
+    expect(renderInExpression("a'b")).toBe("'a\\'b'");
+  });
+  test('string with curly braces', () => {
+    expect(renderInExpression('\\{a\\}\\')).toBe("'\\{a\\}\\\\'");
+  });
   test('jsonpath stringAt', () => {
     expect(renderInExpression(JsonPath.stringAt('$.Field'))).toBe('$.Field');
   });

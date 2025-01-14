@@ -1,3 +1,4 @@
+/// !cdk-integ *
 import { IntegTest } from '@aws-cdk/integ-tests-alpha';
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
@@ -19,6 +20,7 @@ table.autoScaleWriteCapacity({
 
 new IntegTest(app, 'aws-cdk-dynamodb-global-replicas-provisioned-test', {
   testCases: [stack],
+  diffAssets: true,
 });
 
 app.synth();

@@ -2,7 +2,7 @@ import { Key } from 'aws-cdk-lib/aws-kms';
 import { Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import { StateMachine } from 'aws-cdk-lib/aws-stepfunctions';
 import { App, CfnOutput, RemovalPolicy, Stack } from 'aws-cdk-lib';
-import { S3Location, SageMakerCreateTrainingJob } from 'aws-cdk-lib/aws-stepfunctions-tasks';
+import { S3Location, SageMakerCreateTrainingJob, InputMode } from 'aws-cdk-lib/aws-stepfunctions-tasks';
 
 /*
  * Creates a state machine with a task state to create a training job in AWS SageMaker
@@ -35,7 +35,8 @@ const trainingData = new Bucket(stack, 'TrainingData', {
 const sm = new StateMachine(stack, 'StateMachine', {
   definition: new SageMakerCreateTrainingJob(stack, 'TrainTask', {
     algorithmSpecification: {
-      algorithmName: 'arn:aws:sagemaker:us-east-1:865070037744:algorithm/scikit-decision-trees-15423055-57b73412d2e93e9239e4e16f83298b8f',
+      algorithmName: 'BlazingText',
+      trainingInputMode: InputMode.FAST_FILE,
     },
     inputDataConfig: [{
       channelName: 'InputData',
@@ -50,6 +51,21 @@ const sm = new StateMachine(stack, 'StateMachine', {
   }),
 });
 
+const smWithoutInputData = new StateMachine(stack, 'StateMachineAnother', {
+  definition: new SageMakerCreateTrainingJob(stack, 'TrainTaskAnother', {
+    algorithmSpecification: {
+      algorithmName: 'BlazingText',
+      trainingInputMode: InputMode.FAST_FILE,
+    },
+    outputDataConfig: { s3OutputLocation: S3Location.fromBucket(trainingData, 'result/') },
+    trainingJobName: 'mytrainingjob',
+  }),
+});
+
 new CfnOutput(stack, 'stateMachineArn', {
   value: sm.stateMachineArn,
+});
+
+new CfnOutput(stack, 'stateMachineArn2', {
+  value: smWithoutInputData.stateMachineArn,
 });

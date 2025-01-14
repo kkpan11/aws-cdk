@@ -99,7 +99,7 @@ match is made after 30 seconds, gradually relax the skill requirements.
 ```ts
 new gamelift.MatchmakingRuleSet(this, 'RuleSet', {
   matchmakingRuleSetName: 'my-test-ruleset',
-  content: gamelift.RuleSetContent.fromJsonFile(path.join(__dirname, 'my-ruleset/ruleset.json')),
+  content: gamelift.RuleSetContent.fromJsonFile(path.join(__dirname, 'my-ruleset', 'ruleset.json')),
 });
 ```
 
@@ -185,6 +185,18 @@ const build = new gamelift.Build(this, 'Build', {
 
 new CfnOutput(this, 'BuildArn', { value: build.buildArn });
 new CfnOutput(this, 'BuildId', { value: build.buildId });
+```
+
+To specify a server SDK version you used when integrating your game server build with Amazon GameLift use the `serverSdkVersion` parameter:
+
+> See [Integrate games with custom game servers](https://docs.aws.amazon.com/gamelift/latest/developerguide/integration-custom-intro.html) for more details.
+
+```ts
+declare const bucket: s3.Bucket;
+const build = new gamelift.Build(this, 'Build', {
+  content: gamelift.Content.fromBucket(bucket, "sample-asset-key"),
+  serverSdkVersion: '5.0.0',
+});
 ```
 
 #### Upload a realtime server Script

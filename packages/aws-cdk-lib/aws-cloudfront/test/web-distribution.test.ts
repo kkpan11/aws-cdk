@@ -133,7 +133,7 @@ describe('web distribution', () => {
     const stack = new cdk.Stack();
     const sourceBucket = new s3.Bucket(stack, 'Bucket');
 
-    new CloudFrontWebDistribution(stack, 'AnAmazingWebsiteProbably', {
+    const dist = new CloudFrontWebDistribution(stack, 'AnAmazingWebsiteProbably', {
       originConfigs: [
         {
           s3OriginSource: {
@@ -204,6 +204,7 @@ describe('web distribution', () => {
       },
     });
 
+    expect(dist.distributionArn).toEqual(`arn:${cdk.Aws.PARTITION}:cloudfront::${cdk.Aws.ACCOUNT_ID}:distribution/${dist.distributionId}`);
   });
 
   test('can disable distribution', () => {
@@ -837,7 +838,7 @@ added the ellipsis so a user would know there was more to r...`,
     const lambdaFunction = new lambda.Function(stack, 'Lambda', {
       code: lambda.Code.fromInline('foo'),
       handler: 'index.handler',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     });
 
     new CloudFrontWebDistribution(stack, 'AnAmazingWebsiteProbably', {
@@ -868,7 +869,7 @@ added the ellipsis so a user would know there was more to r...`,
               'EventType': 'origin-request',
               'IncludeBody': true,
               'LambdaFunctionARN': {
-                'Ref': 'LambdaCurrentVersionDF706F6A9a632a294ae3a9cd4d550f1c4e26619d',
+                'Ref': Match.stringLikeRegexp(stack.getLogicalId(lambdaFunction.currentVersion.node.defaultChild as lambda.CfnVersion)),
               },
             },
           ],
@@ -886,7 +887,7 @@ added the ellipsis so a user would know there was more to r...`,
     const lambdaFunction = new lambda.Function(stack, 'Lambda', {
       code: lambda.Code.fromInline('foo'),
       handler: 'index.handler',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     });
     lambdaFunction.addEnvironment('KEY', 'value', { removeInEdge: true });
 
@@ -923,7 +924,7 @@ added the ellipsis so a user would know there was more to r...`,
     const lambdaFunction = new lambda.Function(stack, 'Lambda', {
       code: lambda.Code.fromInline('foo'),
       handler: 'index.handler',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
       environment: {
         KEY: 'value',
       },
@@ -1307,7 +1308,7 @@ added the ellipsis so a user would know there was more to r...`,
     const fn = new lambda.Function(stack, 'Lambda', {
       code: lambda.Code.fromInline('foo'),
       handler: 'index.handler',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     });
     const lambdaVersion = new lambda.Version(stack, 'LambdaVersion', { lambda: fn });
 
@@ -1722,6 +1723,7 @@ added the ellipsis so a user would know there was more to r...`,
 
     expect(dist.distributionDomainName).toEqual('d111111abcdef8.cloudfront.net');
     expect(dist.distributionId).toEqual('012345ABCDEF');
+    expect(dist.distributionArn).toEqual(`arn:${cdk.Aws.PARTITION}:cloudfront::${cdk.Aws.ACCOUNT_ID}:distribution/012345ABCDEF`);
 
   });
 });

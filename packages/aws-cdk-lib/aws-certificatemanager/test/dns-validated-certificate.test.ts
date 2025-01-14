@@ -37,8 +37,10 @@ testDeprecated('creates CloudFormation Custom Resource', () => {
     Handler: 'index.certificateRequestHandler',
     Runtime: {
       'Fn::FindInMap': [
-        'DefaultCrNodeVersionMap',
-        { Ref: 'AWS::Region' },
+        'LatestNodeRuntimeMap',
+        {
+          Ref: 'AWS::Region',
+        },
         'value',
       ],
     },

@@ -1,11 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { IConstruct, Construct, Node } from 'constructs';
-import * as minimatch from 'minimatch';
 import { Annotations } from './annotations';
 import { App } from './app';
 import { Arn, ArnComponents, ArnFormat } from './arn';
-import { Aspects } from './aspect';
+import { AspectPriority, Aspects } from './aspect';
 import { DockerImageAssetLocation, DockerImageAssetSource, FileAssetLocation, FileAssetSource } from './assets';
 import { CfnElement } from './cfn-element';
 import { Fn } from './cfn-fn';
@@ -22,6 +21,10 @@ import { makeUniqueId } from './private/uniqueid';
 import * as cxschema from '../../cloud-assembly-schema';
 import { INCLUDE_PREFIX_IN_UNIQUE_NAME_GENERATION } from '../../cx-api';
 import * as cxapi from '../../cx-api';
+
+// Must be a 'require' to not run afoul of ESM module import rules
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const minimatch = require('minimatch');
 
 const STACK_SYMBOL = Symbol.for('@aws-cdk/core.Stack');
 const MY_STACK_CACHE = Symbol.for('@aws-cdk/core.Stack.myStack');
@@ -123,6 +126,13 @@ export interface StackProps {
    * @default {}
    */
   readonly tags?: { [key: string]: string };
+
+  /**
+   * SNS Topic ARNs that will receive stack events.
+   *
+   * @default - no notfication arns.
+   */
+  readonly notificationArns?: string[];
 
   /**
    * Synthesis method to use while deploying this stack
@@ -311,7 +321,13 @@ export class Stack extends Construct implements ITaggable {
   /**
    * Whether termination protection is enabled for this stack.
    */
-  public readonly terminationProtection?: boolean;
+  public get terminationProtection(): boolean {
+    return this._terminationProtection;
+  }
+
+  public set terminationProtection(value: boolean) {
+    this._terminationProtection = value;
+  }
 
   /**
    * If this is a nested stack, this represents its `AWS::CloudFormation::Stack`
@@ -356,6 +372,13 @@ export class Stack extends Construct implements ITaggable {
   public readonly _crossRegionReferences: boolean;
 
   /**
+   * SNS Notification ARNs to receive stack events.
+   *
+   * @internal
+   */
+  public readonly _notificationArns?: string[];
+
+  /**
    * Logical ID generation strategy
    */
   private readonly _logicalIds: LogicalIDs;
@@ -385,6 +408,8 @@ export class Stack extends Construct implements ITaggable {
    * @default - the value of `@aws-cdk/core:suppressTemplateIndentation`, or `false` if that is not set.
    */
   private readonly _suppressTemplateIndentation: boolean;
+
+  private _terminationProtection: boolean;
 
   /**
    * Creates a new stack.
@@ -423,7 +448,7 @@ export class Stack extends Construct implements ITaggable {
     this.account = account;
     this.region = region;
     this.environment = environment;
-    this.terminationProtection = props.terminationProtection;
+    this._terminationProtection = props.terminationProtection ?? false;
 
     if (props.description !== undefined) {
       // Max length 1024 bytes
@@ -439,6 +464,14 @@ export class Stack extends Construct implements ITaggable {
       throw new Error(`Stack name must be <= 128 characters. Stack name: '${this._stackName}'`);
     }
     this.tags = new TagManager(TagType.KEY_VALUE, 'aws:cdk:stack', props.tags);
+
+    for (const notificationArn of props.notificationArns ?? []) {
+      if (Token.isUnresolved(notificationArn)) {
+        throw new Error(`Stack '${id}' includes one or more tokens in its notification ARNs: ${props.notificationArns}`);
+      }
+    }
+
+    this._notificationArns = props.notificationArns;
 
     if (!VALID_STACK_NAME_REGEX.test(this.stackName)) {
       throw new Error(`Stack name must match the regular expression: ${VALID_STACK_NAME_REGEX.toString()}, got '${this.stackName}'`);
@@ -550,7 +583,7 @@ export class Stack extends Construct implements ITaggable {
             node.addPropertyOverride('PermissionsBoundary', permissionsBoundaryArn);
           }
         },
-      });
+      }, { priority: AspectPriority.MUTATING });
 
     }
   }
@@ -891,7 +924,7 @@ export class Stack extends Construct implements ITaggable {
   }
 
   /**
-   * Adds an arbitary key-value pair, with information you want to record about the stack.
+   * Adds an arbitrary key-value pair, with information you want to record about the stack.
    * These get translated to the Metadata section of the generated template.
    *
    * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/metadata-section-structure.html
@@ -1050,7 +1083,10 @@ export class Stack extends Construct implements ITaggable {
    * Synthesizes the cloudformation template into a cloud assembly.
    * @internal
    */
-  public _synthesizeTemplate(session: ISynthesisSession, lookupRoleArn?: string): void {
+  public _synthesizeTemplate(session: ISynthesisSession,
+    lookupRoleArn?: string,
+    lookupRoleExternalId?: string,
+    lookupRoleAdditionalOptions?: { [key: string]: any }): void {
     // In principle, stack synthesis is delegated to the
     // StackSynthesis object.
     //
@@ -1087,17 +1123,23 @@ export class Stack extends Construct implements ITaggable {
 
       const message = `Template size ${verb} limit: ${templateData.length}/${TEMPLATE_BODY_MAXIMUM_SIZE}. ${advice}.`;
 
-      Annotations.of(this).addWarning(message);
+      Annotations.of(this).addWarningV2('@aws-cdk/core:Stack.templateSize', message);
     }
 
     fs.writeFileSync(outPath, templateData);
 
     for (const ctx of this._missingContext) {
-      if (lookupRoleArn != null) {
-        builder.addMissing({ ...ctx, props: { ...ctx.props, lookupRoleArn } });
-      } else {
-        builder.addMissing(ctx);
-      }
+
+      // 'account' and 'region' are added to the schema at tree instantiation time.
+      // these options however are only known at synthesis, so are added here.
+      // see https://github.com/aws/aws-cdk/blob/v2.158.0/packages/aws-cdk-lib/core/lib/context-provider.ts#L71
+      const queryLookupOptions: Omit<cxschema.ContextLookupRoleOptions, 'account' | 'region'> = {
+        lookupRoleArn,
+        lookupRoleExternalId,
+        assumeRoleAdditionalOptions: lookupRoleAdditionalOptions,
+      };
+
+      builder.addMissing({ ...ctx, props: { ...ctx.props, ...queryLookupOptions } });
     }
   }
 
@@ -1160,8 +1202,6 @@ export class Stack extends Construct implements ITaggable {
    * remove the reference from the consuming stack. After that, you can remove
    * the resource and the manual export.
    *
-   * ## Example
-   *
    * Here is how the process works. Let's say there are two stacks,
    * `producerStack` and `consumerStack`, and `producerStack` has a bucket
    * called `bucket`, which is referenced by `consumerStack` (perhaps because
@@ -1172,7 +1212,7 @@ export class Stack extends Construct implements ITaggable {
    *
    * Instead, the process takes two deployments:
    *
-   * ### Deployment 1: break the relationship
+   * **Deployment 1: break the relationship**:
    *
    * - Make sure `consumerStack` no longer references `bucket.bucketName` (maybe the consumer
    *   stack now uses its own bucket, or it writes to an AWS DynamoDB table, or maybe you just
@@ -1182,7 +1222,7 @@ export class Stack extends Construct implements ITaggable {
    *   between the two stacks is being broken.
    * - Deploy (this will effectively only change the `consumerStack`, but it's safe to deploy both).
    *
-   * ### Deployment 2: remove the bucket resource
+   * **Deployment 2: remove the bucket resource**:
    *
    * - You are now free to remove the `bucket` resource from `producerStack`.
    * - Don't forget to remove the `exportValue()` call as well.
@@ -1193,6 +1233,7 @@ export class Stack extends Construct implements ITaggable {
       new CfnOutput(this, `Export${options.name}`, {
         value: exportedValue,
         exportName: options.name,
+        description: options.description,
       });
       return Fn.importValue(options.name);
     }
@@ -1204,6 +1245,7 @@ export class Stack extends Construct implements ITaggable {
       new CfnOutput(exportsScope, id, {
         value: Token.asString(exportable),
         exportName,
+        description: options.description,
       });
     }
 
@@ -1242,6 +1284,7 @@ export class Stack extends Construct implements ITaggable {
       new CfnOutput(this, `Export${options.name}`, {
         value: Fn.join(STRING_LIST_REFERENCE_DELIMITER, exportedValue),
         exportName: options.name,
+        description: options.description,
       });
       return Fn.split(STRING_LIST_REFERENCE_DELIMITER, Fn.importValue(options.name));
     }
@@ -1257,6 +1300,7 @@ export class Stack extends Construct implements ITaggable {
         // (string lists are invalid)
         value: Fn.join(STRING_LIST_REFERENCE_DELIMITER, Token.asList(exportable)),
         exportName,
+        description: options.description,
       });
     }
 
@@ -1342,7 +1386,7 @@ export class Stack extends Construct implements ITaggable {
 
     if (this.templateOptions.transform) {
       // eslint-disable-next-line max-len
-      Annotations.of(this).addWarning('This stack is using the deprecated `templateOptions.transform` property. Consider switching to `addTransform()`.');
+      Annotations.of(this).addWarningV2('@aws-cdk/core:stackDeprecatedTransform', 'This stack is using the deprecated `templateOptions.transform` property. Consider switching to `addTransform()`.');
       this.addTransform(this.templateOptions.transform);
     }
 
@@ -1755,6 +1799,13 @@ export interface ExportValueOptions {
    * @default - A name is automatically chosen
    */
   readonly name?: string;
+
+  /**
+   * The description of the outputs
+   *
+   * @default - No description
+   */
+  readonly description?: string;
 }
 
 function count(xs: string[]): Record<string, number> {

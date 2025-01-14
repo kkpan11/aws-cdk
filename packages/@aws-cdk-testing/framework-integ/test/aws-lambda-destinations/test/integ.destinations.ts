@@ -1,10 +1,12 @@
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { App, Duration, Stack, StackProps } from 'aws-cdk-lib';
 import { IntegTest, InvocationType, ExpectedResult } from '@aws-cdk/integ-tests-alpha';
 import { Construct } from 'constructs';
 import * as destinations from 'aws-cdk-lib/aws-lambda-destinations';
+import { STANDARD_NODEJS_RUNTIME } from '../../config';
 
 /*
  * Stack verification steps:
@@ -22,7 +24,7 @@ class TestStack extends Stack {
     this.queue = new sqs.Queue(this, 'Queue');
 
     this.fn = new lambda.Function(this, 'SnsSqs', {
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: STANDARD_NODEJS_RUNTIME,
       handler: 'index.handler',
       code: lambda.Code.fromInline(`exports.handler = async (event) => {
         if (event.status === 'OK') return 'success';
@@ -35,7 +37,7 @@ class TestStack extends Stack {
     });
 
     const onSuccessLambda = new lambda.Function(this, 'OnSucces', {
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: STANDARD_NODEJS_RUNTIME,
       handler: 'index.handler',
       code: lambda.Code.fromInline(`exports.handler = async (event) => {
         console.log(event);
@@ -43,7 +45,7 @@ class TestStack extends Stack {
     });
 
     new lambda.Function(this, 'EventBusLambda', {
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: STANDARD_NODEJS_RUNTIME,
       handler: 'index.handler',
       code: lambda.Code.fromInline(`exports.handler = async (event) => {
         if (event.status === 'OK') return 'success';
@@ -51,6 +53,22 @@ class TestStack extends Stack {
       };`),
       onFailure: new destinations.EventBridgeDestination(),
       onSuccess: new destinations.LambdaDestination(onSuccessLambda),
+    });
+
+    const successBucket = new s3.Bucket(this, 'OnSuccessBucket');
+    const failureBucket = new s3.Bucket(this, 'OnFailureBucket');
+
+    new lambda.Function(this, 'S3', {
+      runtime: STANDARD_NODEJS_RUNTIME,
+      handler: 'index.handler',
+      code: lambda.Code.fromInline(`exports.handler = async (event) => {
+        if (event.status === 'OK') return 'success';
+        throw new Error('failure');
+      };`),
+      onFailure: new destinations.S3Destination(failureBucket),
+      onSuccess: new destinations.S3Destination(successBucket),
+      maxEventAge: Duration.hours(4),
+      retryAttempts: 2,
     });
 
     const version = this.fn.addVersion('MySpecialVersion');
@@ -84,15 +102,7 @@ const message = integ.assertions.awsApiCall('SQS', 'receiveMessage', {
   WaitTimeSeconds: 20,
 });
 
-message.assertAtPath('Messages.0.Body', ExpectedResult.objectLike({
-  requestContext: {
-    condition: 'Success',
-  },
-  requestPayload: {
-    status: 'OK',
-  },
-  responseContext: {
-    statusCode: 200,
-  },
-  responsePayload: 'success',
-}));
+message.assertAtPath('Messages.0.Body.requestContext.condition', ExpectedResult.stringLikeRegexp('Success'));
+message.assertAtPath('Messages.0.Body.requestPayload.status', ExpectedResult.stringLikeRegexp('OK'));
+message.assertAtPath('Messages.0.Body.responseContext.statusCode', ExpectedResult.stringLikeRegexp('200'));
+message.assertAtPath('Messages.0.Body.responsePayload', ExpectedResult.stringLikeRegexp('success'));

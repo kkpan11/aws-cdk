@@ -1,7 +1,6 @@
 # AWS AppSync Construct Library
 
-
-The `@aws-cdk/aws-appsync` package contains constructs for building flexible
+The `aws-cdk-lib/aws-appsync` package contains constructs for building flexible
 APIs that use GraphQL.
 
 ```ts nofixture
@@ -38,7 +37,7 @@ CDK stack file `app-stack.ts`:
 ```ts
 const api = new appsync.GraphqlApi(this, 'Api', {
   name: 'demo',
-  schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'schema.graphql')),
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'schema.graphql')),
   authorizationConfig: {
     defaultAuthorization: {
       authorizationType: appsync.AuthorizationType.IAM,
@@ -86,13 +85,13 @@ demoDS.createResolver('QueryGetDemosConsistentResolver', {
 });
 ```
 
-
-
 ### Aurora Serverless
 
 AppSync provides a data source for executing SQL commands against Amazon Aurora
 Serverless clusters. You can use AppSync resolvers to execute SQL statements
 against the Data API with GraphQL queries, mutations, and subscriptions.
+
+#### Aurora Serverless V1 Cluster
 
 ```ts
 // Create username and password secret for DB Cluster
@@ -156,6 +155,74 @@ rdsDS.createResolver('MutationAddDemoRdsResolver', {
 });
 ```
 
+#### Aurora Serverless V2 Cluster
+
+```ts
+// Create username and password secret for DB Cluster
+const secret = new rds.DatabaseSecret(this, 'AuroraSecret', {
+  username: 'clusteradmin',
+});
+
+// The VPC to place the cluster in
+const vpc = new ec2.Vpc(this, 'AuroraVpc');
+
+// Create the serverless cluster, provide all values needed to customise the database.
+const cluster = new rds.DatabaseCluster(this, 'AuroraClusterV2', {
+    engine: rds.DatabaseClusterEngine.auroraPostgres({ version: rds.AuroraPostgresEngineVersion.VER_15_5 }),
+    credentials: { username: 'clusteradmin' },
+    clusterIdentifier: 'db-endpoint-test',
+    writer: rds.ClusterInstance.serverlessV2('writer'),
+    serverlessV2MinCapacity: 2,
+    serverlessV2MaxCapacity: 10,
+    vpc,
+    defaultDatabaseName: 'demos',
+    enableDataApi: true,  // has to be set to true to enable Data API as not enable by default
+  });
+
+// Build a data source for AppSync to access the database.
+declare const api: appsync.GraphqlApi;
+const rdsDS = api.addRdsDataSourceV2('rds', cluster, secret, 'demos');
+
+// Set up a resolver for an RDS query.
+rdsDS.createResolver('QueryGetDemosRdsResolver', {
+  typeName: 'Query',
+  fieldName: 'getDemosRds',
+  requestMappingTemplate: appsync.MappingTemplate.fromString(`
+  {
+    "version": "2018-05-29",
+    "statements": [
+      "SELECT * FROM demos"
+    ]
+  }
+  `),
+  responseMappingTemplate: appsync.MappingTemplate.fromString(`
+    $utils.toJson($utils.rds.toJsonObject($ctx.result)[0])
+  `),
+});
+
+// Set up a resolver for an RDS mutation.
+rdsDS.createResolver('MutationAddDemoRdsResolver', {
+  typeName: 'Mutation',
+  fieldName: 'addDemoRds',
+  requestMappingTemplate: appsync.MappingTemplate.fromString(`
+  {
+    "version": "2018-05-29",
+    "statements": [
+      "INSERT INTO demos VALUES (:id, :version)",
+      "SELECT * WHERE id = :id"
+    ],
+    "variableMap": {
+      ":id": $util.toJson($util.autoId()),
+      ":version": $util.toJson($ctx.args.version)
+    }
+  }
+  `),
+  responseMappingTemplate: appsync.MappingTemplate.fromString(`
+    $utils.toJson($utils.rds.toJsonObject($ctx.result)[1][0])
+  `),
+});
+```
+
 ### HTTP Endpoints
 
 GraphQL schema file `schema.graphql`:
@@ -172,6 +239,10 @@ input DemoInput {
 
 type Mutation {
   callStepFunction(input: DemoInput!): job
+}
+
+type Query {
+  _placeholder: String
 }
 ```
 
@@ -208,7 +279,7 @@ CDK stack file `app-stack.ts`:
 ```ts
 const api = new appsync.GraphqlApi(this, 'api', {
   name: 'api',
-  schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'schema.graphql')),
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'schema.graphql')),
 });
 
 const httpDs = api.addHttpDataSource(
@@ -220,8 +291,8 @@ const httpDs = api.addHttpDataSource(
     authorizationConfig: {
       signingRegion: 'us-east-1',
       signingServiceName: 'states',
-    }
-  }
+    },
+  },
 );
 
 httpDs.createResolver('MutationCallStepFunctionResolver', {
@@ -233,9 +304,10 @@ httpDs.createResolver('MutationCallStepFunctionResolver', {
 ```
 
 ### EventBridge
-Integrating AppSync with EventBridge enables developers to use EventBridge rules to route commands for GraphQl mutations
+
+Integrating AppSync with EventBridge enables developers to use EventBridge rules to route commands for GraphQL mutations
 that need to perform any one of a variety of asynchronous tasks. More broadly, it enables teams to expose an event bus
-as a part of a GraphQl schema.
+as a part of a GraphQL schema.
 
 GraphQL schema file `schema.graphql`:
 
@@ -302,12 +374,14 @@ events. More information can be found
 CDK stack file `app-stack.ts`:
 
 ```ts
-const api = new appsync.GraphqlApi(stack, 'EventBridgeApi', {
+import * as events from 'aws-cdk-lib/aws-events';
+
+const api = new appsync.GraphqlApi(this, 'EventBridgeApi', {
   name: 'EventBridgeApi',
-  schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.eventbridge.graphql')),
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.eventbridge.graphql')),
 });
 
-const bus = new events.EventBus(stack, 'DestinationEventBus', {});
+const bus = new events.EventBus(this, 'DestinationEventBus', {});
 
 const dataSource = api.addEventBridgeDataSource('NoneDS', bus);
 
@@ -364,6 +438,72 @@ ds.createResolver('QueryGetTestsResolver', {
 });
 ```
 
+## Merged APIs
+
+AppSync supports [Merged APIs](https://docs.aws.amazon.com/appsync/latest/devguide/merged-api.html) which can be used to merge multiple source APIs into a single API.
+
+```ts
+import * as cdk from 'aws-cdk-lib';
+
+// first source API
+const firstApi = new appsync.GraphqlApi(this, 'FirstSourceAPI', {
+  name: 'FirstSourceAPI',
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.merged-api-1.graphql')),
+});
+
+// second source API
+const secondApi = new appsync.GraphqlApi(this, 'SecondSourceAPI', {
+  name: 'SecondSourceAPI',
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.merged-api-2.graphql')),
+});
+
+// Merged API
+const mergedApi = new appsync.GraphqlApi(this, 'MergedAPI', {
+  name: 'MergedAPI',
+  definition: appsync.Definition.fromSourceApis({
+    sourceApis: [
+      {
+        sourceApi: firstApi,
+        mergeType: appsync.MergeType.MANUAL_MERGE,
+      },
+      {
+        sourceApi: secondApi,
+        mergeType: appsync.MergeType.AUTO_MERGE,
+      }
+    ],
+  }),
+});
+```
+
+## Merged APIs Across Different Stacks
+
+The SourceApiAssociation construct allows you to define a SourceApiAssociation to a Merged API in a different stack or account. This allows a source API owner the ability to associate it to an existing Merged API itself.
+
+```ts
+const sourceApi = new appsync.GraphqlApi(this, 'FirstSourceAPI', {
+  name: 'FirstSourceAPI',
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.merged-api-1.graphql')),
+});
+
+const importedMergedApi = appsync.GraphqlApi.fromGraphqlApiAttributes(this, 'ImportedMergedApi', {
+  graphqlApiId: 'MyApiId',
+  graphqlApiArn: 'MyApiArn',
+});
+
+const importedExecutionRole = iam.Role.fromRoleArn(this, 'ExecutionRole', 'arn:aws:iam::ACCOUNT:role/MyExistingRole');
+new appsync.SourceApiAssociation(this, 'SourceApiAssociation2', {
+   sourceApi: sourceApi,
+   mergedApi: importedMergedApi,
+   mergeType: appsync.MergeType.MANUAL_MERGE,
+   mergedApiExecutionRole: importedExecutionRole,
+});
+```
+
+## Merge Source API Update Within CDK Deployment
+
+The SourceApiAssociationMergeOperation construct available in the [awscdk-appsync-utils](https://github.com/cdklabs/awscdk-appsync-utils) package provides the ability to merge a source API to a Merged API via a custom
+resource. If the merge operation fails with a conflict, the stack update will fail and rollback the changes to the source API in the stack in order to prevent merge conflicts and ensure the source API changes are always propagated to the Merged API.
+
 ## Custom Domain Names
 
 For many use cases you may want to associate a custom domain name with your
@@ -378,7 +518,7 @@ const certificate = new acm.Certificate(this, 'cert', { domainName: myDomainName
 const schema = new appsync.SchemaFile({ filePath: 'mySchemaFile' })
 const api = new appsync.GraphqlApi(this, 'api', {
   name: 'myApi',
-  schema,
+  definition: appsync.Definition.fromSchema(schema),
   domainName: {
     certificate,
     domainName: myDomainName,
@@ -408,32 +548,35 @@ new route53.CnameRecord(this, `CnameApiRecord`, {
 AppSync automatically create a log group with the name `/aws/appsync/apis/<graphql_api_id>` upon deployment with
 log data set to never expire. If you want to set a different expiration period, use the `logConfig.retention` property.
 
+Also you can choose the log level by setting the `logConfig.fieldLogLevel` property.
+
+For more information, see [CloudWatch logs](https://docs.aws.amazon.com/en_us/appsync/latest/devguide/monitoring.html#cwl).
+
 To obtain the GraphQL API's log group as a `logs.ILogGroup` use the `logGroup` property of the
 `GraphqlApi` construct.
 
 ```ts
 import * as logs from 'aws-cdk-lib/aws-logs';
 
-const logConfig: appsync.LogConfig = {
-  retention: logs.RetentionDays.ONE_WEEK,
-};
-
 new appsync.GraphqlApi(this, 'api', {
   authorizationConfig: {},
   name: 'myApi',
-  schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'myApi.graphql')),
-  logConfig,
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'myApi.graphql')),
+  logConfig: {
+    fieldLogLevel: appsync.FieldLogLevel.INFO,
+    retention: logs.RetentionDays.ONE_WEEK,
+  },
 });
 ```
 
 ## Schema
 
-You can define a schema using from a local file using `SchemaFile.fromAsset`
+You can define a schema using from a local file using `Definition.fromFile`
 
 ```ts
 const api = new appsync.GraphqlApi(this, 'api', {
   name: 'myApi',
-  schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'schema.graphl')),
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'schema.graphl')),
 });
 ```
 
@@ -465,23 +608,23 @@ sources and resolvers, an `apiId` is sufficient.
 
 ## Private APIs
 
-By default all AppSync GraphQL APIs are public and can be accessed from the internet. 
-For customers that want to limit access to be from their VPC, the optional API `visibility` property can be set to `Visibility.PRIVATE` 
-at creation time. To explicitly create a public API, the `visibility` property should be set to `Visibility.GLOBAL`. 
-If visbility is not set, the service will default to `GLOBAL`.
+By default all AppSync GraphQL APIs are public and can be accessed from the internet.
+For customers that want to limit access to be from their VPC, the optional API `visibility` property can be set to `Visibility.PRIVATE`
+at creation time. To explicitly create a public API, the `visibility` property should be set to `Visibility.GLOBAL`.
+If visibility is not set, the service will default to `GLOBAL`.
 
 CDK stack file `app-stack.ts`:
 
 ```ts
-const api = new appsync.GraphqlApi(stack, 'api', {
+const api = new appsync.GraphqlApi(this, 'api', {
   name: 'MyPrivateAPI',
-  schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.schema.graphql')),
-  visbility: appsync.Visibility.PRIVATE,
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.schema.graphql')),
+  visibility: appsync.Visibility.PRIVATE,
 });
 ```
 
-See [documentation](https://docs.aws.amazon.com/appsync/latest/devguide/using-private-apis.html) 
-for more details about Private APIs 
+See [documentation](https://docs.aws.amazon.com/appsync/latest/devguide/using-private-apis.html)
+for more details about Private APIs
 
 ## Authorization
 
@@ -505,7 +648,7 @@ declare const authFunction: lambda.Function;
 
 new appsync.GraphqlApi(this, 'api', {
   name: 'api',
-  schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql')),
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.test.graphql')),
   authorizationConfig: {
     defaultAuthorization: {
       authorizationType: appsync.AuthorizationType.LAMBDA,
@@ -565,7 +708,7 @@ Use the `grant` function for more granular authorization.
 const role = new iam.Role(this, 'Role', {
   assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
 });
-declare const api: appsync.GraphqlApi;
+declare const api: appsync.IGraphqlApi;
 
 api.grant(role, appsync.IamResource.custom('types/Mutation/fields/updateExample'), 'appsync:GraphQL');
 ```
@@ -591,7 +734,7 @@ These include:
 - grantSubscription (use to grant access to Subscription fields)
 
 ```ts
-declare const api: appsync.GraphqlApi;
+declare const api: appsync.IGraphqlApi;
 declare const role: iam.Role;
 
 // For generic types
@@ -616,6 +759,22 @@ const appsyncFunction = new appsync.AppsyncFunction(this, 'function', {
   dataSource: api.addNoneDataSource('none'),
   requestMappingTemplate: appsync.MappingTemplate.fromFile('request.vtl'),
   responseMappingTemplate: appsync.MappingTemplate.fromFile('response.vtl'),
+});
+```
+
+When using the `LambdaDataSource`, you can control the maximum number of resolver request
+inputs that will be sent to a single AWS Lambda function in a BatchInvoke operation
+by setting the `maxBatchSize` property.
+
+```ts
+declare const api: appsync.GraphqlApi;
+declare const lambdaDataSource: appsync.LambdaDataSource;
+
+const appsyncFunction = new appsync.AppsyncFunction(this, 'function', {
+  name: 'appsync_function',
+  api,
+  dataSource: lambdaDataSource,
+  maxBatchSize: 10,
 });
 ```
 
@@ -674,3 +833,99 @@ new appsync.Resolver(this, 'PipelineResolver', {
 ```
 
 Learn more about Pipeline Resolvers and AppSync Functions [here](https://docs.aws.amazon.com/appsync/latest/devguide/pipeline-resolvers.html).
+
+## Introspection
+
+By default, AppSync allows you to use introspection queries.
+
+For customers that want to limit access to be introspection queries, the `introspectionConfig` property can be set to `IntrospectionConfig.DISABLED` at creation time.
+If `introspectionConfig` is not set, the service will default to `ENABLED`.
+
+```ts
+const api = new appsync.GraphqlApi(this, 'api', {
+  name: 'DisableIntrospectionApi',
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.schema.graphql')),
+  introspectionConfig: appsync.IntrospectionConfig.DISABLED,
+});
+```
+
+## Query Depth Limits
+
+By default, queries are able to process an unlimited amount of nested levels.
+Limiting queries to a specified amount of nested levels has potential implications for the performance and flexibility of your project.
+
+```ts
+const api = new appsync.GraphqlApi(this, 'api', {
+  name: 'LimitQueryDepths',
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.schema.graphql')),
+  queryDepthLimit: 2,
+});
+```
+
+## Resolver Count Limits
+
+You can control how many resolvers each query can process.
+By default, each query can process up to 10000 resolvers.
+By setting a limit AppSync will not handle any resolvers past a certain number limit.
+
+```ts
+const api = new appsync.GraphqlApi(this, 'api', {
+  name: 'LimitResolverCount',
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.schema.graphql')),
+  resolverCountLimit: 2,
+});
+```
+
+## Environment Variables
+
+To use environment variables in resolvers, you can use the `environmentVariables` property and
+the `addEnvironmentVariable` method.
+
+```ts
+const api = new appsync.GraphqlApi(this, 'api', {
+  name: 'api',
+  definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.schema.graphql')),
+  environmentVariables: {
+    EnvKey1: 'non-empty-1',
+  },
+});
+
+api.addEnvironmentVariable('EnvKey2', 'non-empty-2');
+```
+
+## Configure an EventBridge target that invokes an AppSync GraphQL API
+
+Configuring the target relies on the `graphQLEndpointArn` property.
+
+Use the `AppSync` event target to trigger an AppSync GraphQL API. You need to
+create an `AppSync.GraphqlApi` configured with `AWS_IAM` authorization mode.
+
+The code snippet below creates a AppSync GraphQL API target that is invoked, calling the `publish` mutation.
+
+```ts
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
+
+declare const rule: events.Rule;
+declare const api: appsync.GraphqlApi;
+
+rule.addTarget(new targets.AppSync(api, {
+  graphQLOperation: 'mutation Publish($message: String!){ publish(message: $message) { message } }',
+  variables: events.RuleTargetInput.fromObject({
+    message: 'hello world',
+  }),
+}));
+```
+
+## Owner Contact
+
+You can set the owner contact information for an API resource.
+This field accepts any string input with a length of 0 - 256 characters.
+
+```ts
+const api = new appsync.GraphqlApi(this, 'OwnerContact', {
+    name: 'OwnerContact',
+    definition: appsync.Definition.fromSchema(appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql'))),
+    ownerContact: 'test-owner-contact',
+});
+```

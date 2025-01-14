@@ -1,9 +1,9 @@
 # AWS Step Functions Construct Library
 
 
-The `@aws-cdk/aws-stepfunctions` package contains constructs for building
+The `aws-cdk-lib/aws-stepfunctions` package contains constructs for building
 serverless workflows using objects. Use this in conjunction with the
-`@aws-cdk/aws-stepfunctions-tasks` package, which contains classes used
+`aws-cdk-lib/aws-stepfunctions-tasks` package, which contains classes used
 to call other AWS services.
 
 Defining a workflow looks like this (for the [Step Functions Job Poller
@@ -57,13 +57,14 @@ const definition = submitJob
     .otherwise(waitX));
 
 new sfn.StateMachine(this, 'StateMachine', {
-  definition,
+  definitionBody: sfn.DefinitionBody.fromChainable(definition),
   timeout: Duration.minutes(5),
+  comment: 'a super cool state machine',
 });
 ```
 
 You can find more sample snippets and learn more about the service integrations
-in the `@aws-cdk/aws-stepfunctions-tasks` package.
+in the `aws-cdk-lib/aws-stepfunctions-tasks` package.
 
 ## State Machine
 
@@ -75,7 +76,7 @@ all states reachable from the start state:
 const startState = new sfn.Pass(this, 'StartState');
 
 new sfn.StateMachine(this, 'StateMachine', {
-  definition: startState,
+  definitionBody: sfn.DefinitionBody.fromChainable(startState),
 });
 ```
 
@@ -98,11 +99,11 @@ history when CloudFormation deletes your state machine.
 Alternatively you can specify an existing step functions definition by providing a string or a file that contains the ASL JSON.
 
 ```ts
-new sfn.StateMachine(stack, 'StateMachineFromString', {
+new sfn.StateMachine(this, 'StateMachineFromString', {
   definitionBody: sfn.DefinitionBody.fromString('{"StartAt":"Pass","States":{"Pass":{"Type":"Pass","End":true}}}'),
 });
 
-new sfn.StateMachine(stack, 'StateMachineFromFile', {
+new sfn.StateMachine(this, 'StateMachineFromFile', {
   definitionBody: sfn.DefinitionBody.fromFile('./asl.json'),
 });
 ```
@@ -123,10 +124,13 @@ becomes new the new Data object. This behavior can be modified by supplying valu
 
 These properties impact how each individual step interacts with the state machine data:
 
+* `stateName`: the name of the state in the state machine definition. If not supplied, defaults to the construct id.
 * `inputPath`: the part of the data object that gets passed to the step (`itemsPath` for `Map` states)
 * `resultSelector`: the part of the step result that should be added to the state machine data
 * `resultPath`: where in the state machine data the step result should be inserted
 * `outputPath`: what part of the state machine data should be retained
+* `errorPath`: the part of the data object that gets returned as the step error
+* `causePath`: the part of the data object that gets returned as the step cause
 
 Their values should be a string indicating a [JSON path](https://docs.aws.amazon.com/step-functions/latest/dg/amazon-states-language-paths.html) into the State Machine Data object (like `"$.MyKey"`). If absent, the values are treated as if they were `"$"`, which means the entire object.
 
@@ -240,6 +244,7 @@ are supported:
 * [`Succeed`](#succeed)
 * [`Fail`](#fail)
 * [`Map`](#map)
+* [`Distributed Map`](#distributed-map)
 * [`Custom State`](#custom-state)
 
 An arbitrary JSON object (specified at execution start) is passed from state to
@@ -250,7 +255,7 @@ information, see the States Language spec.
 
 A `Task` represents some work that needs to be done. Do not use the `Task` class directly.
 
-Instead, use one of the classes in the `@aws-cdk/aws-stepfunctions-tasks` module,
+Instead, use one of the classes in the `aws-cdk-lib/aws-stepfunctions-tasks` module,
 which provide a much more ergonomic way to integrate with various AWS services.
 
 ### Pass
@@ -282,6 +287,7 @@ and also injects a field called `otherData`.
 
 ```ts
 const pass = new sfn.Pass(this, 'Filter input and inject data', {
+  stateName: 'my-pass-state', // the custom state name for the Pass state, defaults to 'Filter input and inject data' as the state name
   parameters: { // input to the pass state
     input: sfn.JsonPath.stringAt('$.input.greeting'),
     otherData: 'some-extra-stuff',
@@ -348,6 +354,20 @@ choice.otherwise(handleOtherItemColor);
 // Use .afterwards() to join all possible paths back together and continue
 const shipTheItem = new sfn.Pass(this, 'ShipTheItem');
 choice.afterwards().next(shipTheItem);
+```
+
+You can add comments to `Choice` states as well as conditions that use `choice.when`.
+
+```ts
+const choice = new sfn.Choice(this, 'What color is it?', {
+  comment: 'color comment',
+});
+const handleBlueItem = new sfn.Pass(this, 'HandleBlueItem');
+const handleOtherItemColor = new sfn.Pass(this, 'HanldeOtherItemColor');
+choice.when(sfn.Condition.stringEquals('$.color', 'BLUE'), handleBlueItem, {
+  comment: 'blue item comment',
+});
+choice.otherwise(handleOtherItemColor);
 ```
 
 If your `Choice` doesn't have an `otherwise()` and none of the conditions match
@@ -420,8 +440,12 @@ parallel.branch(shipItem);
 parallel.branch(sendInvoice);
 parallel.branch(restock);
 
-// Retry the whole workflow if something goes wrong
-parallel.addRetry({ maxAttempts: 1 });
+// Retry the whole workflow if something goes wrong with exponential backoff
+parallel.addRetry({
+  maxAttempts: 1,
+  maxDelay: Duration.seconds(5),
+  jitterStrategy: sfn.JitterType.FULL,
+});
 
 // How to recover from errors
 const sendFailureNotification = new sfn.Pass(this, 'SendFailureNotification');
@@ -448,9 +472,28 @@ failure status. The fail state should report the reason for the failure.
 Failures can be caught by encompassing `Parallel` states.
 
 ```ts
-const success = new sfn.Fail(this, 'Fail', {
+const fail = new sfn.Fail(this, 'Fail', {
   error: 'WorkflowFailure',
   cause: "Something went wrong",
+});
+```
+
+The `Fail` state also supports returning dynamic values as the error and cause that are selected from the input with a path.
+
+```ts
+const fail = new sfn.Fail(this, 'Fail', {
+  errorPath: sfn.JsonPath.stringAt('$.someError'),
+  causePath: sfn.JsonPath.stringAt('$.someCause'),
+});
+```
+
+You can also use an intrinsic function that returns a string to specify CausePath and ErrorPath.
+The available functions include States.Format, States.JsonToString, States.ArrayGetItem, States.Base64Encode, States.Base64Decode, States.Hash, and States.UUID.
+
+```ts
+const fail = new sfn.Fail(this, 'Fail', {
+  errorPath: sfn.JsonPath.format('error: {}.', sfn.JsonPath.stringAt('$.someError')),
+  causePath: "States.Format('cause: {}.', $.someCause)",
 });
 ```
 
@@ -466,8 +509,230 @@ execute the same steps for multiple entries of an array in the state input.
 const map = new sfn.Map(this, 'Map State', {
   maxConcurrency: 1,
   itemsPath: sfn.JsonPath.stringAt('$.inputForMap'),
+  itemSelector: {
+    item: sfn.JsonPath.stringAt('$$.Map.Item.Value'),
+  },
+  resultPath: '$.mapOutput',
 });
-map.iterator(new sfn.Pass(this, 'Pass State'));
+
+// The Map iterator can contain a IChainable, which can be an individual or multiple steps chained together.
+// Below example is with a Choice and Pass step
+const choice = new sfn.Choice(this, 'Choice');
+const condition1 = sfn.Condition.stringEquals('$.item.status', 'SUCCESS');
+const step1 = new sfn.Pass(this, 'Step1');
+const step2 = new sfn.Pass(this, 'Step2');
+const finish = new sfn.Pass(this, 'Finish');
+
+const definition = choice
+    .when(condition1, step1)
+    .otherwise(step2)
+    .afterwards()
+    .next(finish);
+
+map.itemProcessor(definition);
+```
+
+To define a distributed `Map` state set `itemProcessors` mode to `ProcessorMode.DISTRIBUTED`.
+An `executionType` must be specified for the distributed `Map` workflow.
+
+```ts
+const map = new sfn.Map(this, 'Map State', {
+  maxConcurrency: 1,
+  itemsPath: sfn.JsonPath.stringAt('$.inputForMap'),
+  itemSelector: {
+    item: sfn.JsonPath.stringAt('$$.Map.Item.Value'),
+  },
+  resultPath: '$.mapOutput',
+});
+
+map.itemProcessor(new sfn.Pass(this, 'Pass State'), {
+  mode: sfn.ProcessorMode.DISTRIBUTED,
+  executionType: sfn.ProcessorType.STANDARD,
+});
+```
+
+> Visit [Using Map state in Distributed mode to orchestrate large-scale parallel workloads](https://docs.aws.amazon.com/step-functions/latest/dg/use-dist-map-orchestrate-large-scale-parallel-workloads.html) for more details.
+
+### Distributed Map
+
+Step Functions provides a high-concurrency mode for the Map state known as Distributed mode. In this mode, the Map state can accept input from large-scale Amazon S3 data sources. For example, your input can be a JSON or CSV file stored in an Amazon S3 bucket, or a JSON array passed from a previous step in the workflow. A Map state set to Distributed is known as a Distributed Map state. In this mode, the Map state runs each iteration as a child workflow execution, which enables high concurrency of up to 10,000 parallel child workflow executions. Each child workflow execution has its own, separate execution history from that of the parent workflow.
+
+Use the Map state in Distributed mode when you need to orchestrate large-scale parallel workloads that meet any combination of the following conditions:
+
+* The size of your dataset exceeds 256 KB.
+* The workflow's execution event history exceeds 25,000 entries.
+* You need a concurrency of more than 40 parallel iterations.
+
+A `DistributedMap` state can be used to run a set of steps for each element of an input array with high concurrency.
+A `DistributedMap` state will execute the same steps for multiple entries of an array in the state input or from S3 objects.
+
+```ts
+const distributedMap = new sfn.DistributedMap(this, 'Distributed Map State', {
+  maxConcurrency: 1,
+  itemsPath: sfn.JsonPath.stringAt('$.inputForMap'),
+});
+distributedMap.itemProcessor(new sfn.Pass(this, 'Pass State'));
+```
+
+`DistributedMap` supports various input source types to determine a list of objects to iterate over:
+
+* JSON array from the JSON state input
+  * By default, `DistributedMap` assumes whole JSON state input is an JSON array and iterates over it:
+  ```ts
+  /**
+   * JSON state input:
+   *  [
+   *    "item1",
+   *    "item2"
+   *  ]
+   */
+  const distributedMap = new sfn.DistributedMap(this, 'DistributedMap');
+  distributedMap.itemProcessor(new sfn.Pass(this, 'Pass'));
+  ```
+  * When input source is present at a specific path in JSON state input, then `itemsPath` can be utilised to configure the iterator source.
+  ```ts
+  /**
+   * JSON state input:
+   *  {
+   *    "distributedMapItemList": [
+   *      "item1",
+   *      "item2"
+   *    ]
+   *  }
+   */
+  const distributedMap = new sfn.DistributedMap(this, 'DistributedMap', {
+    itemsPath: '$.distributedMapItemList',
+  });
+  distributedMap.itemProcessor(new sfn.Pass(this, 'Pass'));
+  ```
+* Objects in a S3 bucket with an optional prefix.
+  * When `DistributedMap` is required to iterate over objects stored in a S3 bucket, then an object of `S3ObjectsItemReader` can be passed to `itemReader` to configure the iterator source as follows:
+  ```ts
+  import * as s3 from 'aws-cdk-lib/aws-s3';
+
+  /**
+   * Tree view of bucket:
+   *  my-bucket
+   *  |
+   *  +--item1
+   *  |
+   *  +--otherItem
+   *  |
+   *  +--item2
+   *  |
+   *  ...
+   */
+  const bucket = new s3.Bucket(this, 'Bucket', {
+    bucketName: 'my-bucket',
+  });
+
+  const distributedMap = new sfn.DistributedMap(this, 'DistributedMap', {
+    itemReader: new sfn.S3ObjectsItemReader({
+      bucket,
+      prefix: 'item',
+    }),
+  });
+  distributedMap.itemProcessor(new sfn.Pass(this, 'Pass'));
+  ```
+  * If information about `bucket` is only known while starting execution of `StateMachine` (dynamically or at run-time) via JSON state input:
+  ```ts
+  /**
+   * JSON state input:
+   *  {
+   *    "bucketName": "my-bucket",
+   *    "prefix": "item"
+   *  }
+   */
+  const distributedMap = new sfn.DistributedMap(this, 'DistributedMap', {
+    itemReader: new sfn.S3ObjectsItemReader({
+      bucketNamePath: sfn.JsonPath.stringAt('$.bucketName'),
+      prefix: sfn.JsonPath.stringAt('$.prefix'),
+    }),
+  });
+  distributedMap.itemProcessor(new sfn.Pass(this, 'Pass'));
+  ```
+  * Both `bucket` and `bucketNamePath` are mutually exclusive.
+* JSON array in a JSON file stored in S3
+  * When `DistributedMap` is required to iterate over a JSON array stored in a JSON file in a S3 bucket, then an object of `S3JsonItemReader` can be passed to `itemReader` to configure the iterator source as follows:
+  ```ts
+  import * as s3 from 'aws-cdk-lib/aws-s3';
+
+  /**
+   * Tree view of bucket:
+   *  my-bucket
+   *  |
+   *  +--input.json
+   *  |
+   *  ...
+   *
+   * File content of input.json:
+   *  [
+   *    "item1",
+   *    "item2"
+   *  ]
+   */
+  const bucket = new s3.Bucket(this, 'Bucket', {
+    bucketName: 'my-bucket',
+  });
+
+  const distributedMap = new sfn.DistributedMap(this, 'DistributedMap', {
+    itemReader: new sfn.S3JsonItemReader({
+      bucket,
+      key: 'input.json',
+    }),
+  });
+  distributedMap.itemProcessor(new sfn.Pass(this, 'Pass'));
+  ```
+  * If information about `bucket` is only known while starting execution of `StateMachine` (dynamically or at run-time) via state input:
+  ```ts
+  /**
+   * JSON state input:
+   *  {
+   *    "bucketName": "my-bucket",
+   *    "key": "input.json"
+   *  }
+   */
+  const distributedMap = new sfn.DistributedMap(this, 'DistributedMap', {
+    itemReader: new sfn.S3JsonItemReader({
+      bucketNamePath: sfn.JsonPath.stringAt('$.bucketName'),
+      key: sfn.JsonPath.stringAt('$.key'),
+    }),
+  });
+  distributedMap.itemProcessor(new sfn.Pass(this, 'Pass'));
+  ```
+* CSV file stored in S3
+* S3 inventory manifest stored in S3
+
+Map states in Distributed mode also support writing results of the iterator to an S3 bucket and optional prefix.  Use a `ResultWriter` object provided via the optional `resultWriter` property to configure which S3 location iterator results will be written. The default behavior id `resultWriter` is omitted is to use the state output payload. However, if the iterator results are larger than the 256 kb limit for Step Functions payloads then the State Machine will fail.
+
+```ts
+import * as s3 from 'aws-cdk-lib/aws-s3';
+
+// create a bucket
+const bucket = new s3.Bucket(this, 'Bucket');
+
+const distributedMap = new sfn.DistributedMap(this, 'Distributed Map State', {
+  resultWriter: new sfn.ResultWriter({
+    bucket: bucket,
+    prefix: 'my-prefix',
+  })
+});
+distributedMap.itemProcessor(new sfn.Pass(this, 'Pass State'));
+```
+
+If you want to specify the execution type for the ItemProcessor in the DistributedMap, you must set the `mapExecutionType` property in the `DistributedMap` class. When using the `DistributedMap` class, the `ProcessorConfig.executionType` property is ignored.
+
+In the following example, the execution type for the ItemProcessor in the DistributedMap is set to `EXPRESS` based on the value specified for `mapExecutionType`.
+
+```ts
+const distributedMap = new sfn.DistributedMap(this, 'DistributedMap', {
+  mapExecutionType: sfn.StateMachineType.EXPRESS, // mapExecutionType property is applied.
+});
+
+distributedMap.itemProcessor(new sfn.Pass(this, 'Pass'), {
+  mode: sfn.ProcessorMode.DISTRIBUTED,
+  executionType: sfn.ProcessorType.STANDARD, // ProcessorConfig.executionType is ignored
+});
 ```
 
 ### Custom State
@@ -489,6 +754,10 @@ JSON-based object as the state definition.
 Custom states can be chained together with any of the other states to create your state machine
 definition. You will also need to provide any permissions that are required to the `role` that
 the State Machine uses.
+
+The Retry and Catch fields are available for error handling.
+You can configure the Retry field by defining it in the JSON object or by adding it using the `addRetry` method.
+However, the Catch field cannot be configured by defining it in the JSON object, so it must be added using the `addCatch` method.
 
 The following example uses the `DynamoDB` service integration to insert data into a DynamoDB table.
 
@@ -526,12 +795,24 @@ const custom = new sfn.CustomState(this, 'my custom task', {
   stateJson,
 });
 
+// catch errors with addCatch
+const errorHandler = new sfn.Pass(this, 'handle failure');
+custom.addCatch(errorHandler);
+
+// retry the task if something goes wrong
+custom.addRetry({
+  errors: [sfn.Errors.ALL],
+  interval: Duration.seconds(10),
+  maxAttempts: 5,
+});
+
 const chain = sfn.Chain.start(custom)
   .next(finalStatus);
 
 const sm = new sfn.StateMachine(this, 'StateMachine', {
-  definition: chain,
+  definitionBody: sfn.DefinitionBody.fromChainable(chain),
   timeout: Duration.seconds(30),
+  comment: 'a super cool state machine',
 });
 
 // don't forget permissions. You need to assign them
@@ -574,7 +855,7 @@ const definition = step1
   .next(finish);
 
 new sfn.StateMachine(this, 'StateMachine', {
-  definition,
+  definitionBody: sfn.DefinitionBody.fromChainable(definition),
 });
 ```
 
@@ -619,6 +900,22 @@ const submitJob = new tasks.LambdaInvoke(this, 'Submit Job', {
 
 See [the AWS documentation](https://docs.aws.amazon.com/step-functions/latest/dg/concepts-access-cross-acct-resources.html)
 to learn more about AWS Step Functions support for accessing resources in other AWS accounts.
+
+## Service Integration Patterns
+
+AWS Step functions integrate directly with other services, either through an optimised integration pattern, or through the AWS SDK.
+Therefore, it is possible to change the `integrationPattern` of services, to enable additional functionality of the said AWS Service:
+
+```ts
+import * as glue from "@aws-cdk/aws-glue-alpha";
+
+declare const submitGlue: glue.Job;
+
+const submitJob = new tasks.GlueStartJobRun(this, "Submit Job", {
+  glueJobName: submitGlue.jobName,
+  integrationPattern: sfn.IntegrationPattern.RUN_JOB,
+});
+```
 
 ## State Machine Fragments
 
@@ -676,7 +973,7 @@ class MyStack extends Stack {
       .branch(new MyJob(this, 'Slow', { jobFlavor: 'slow' }).prefixStates());
 
     new sfn.StateMachine(this, 'MyStateMachine', {
-      definition: parallel,
+      definitionBody: sfn.DefinitionBody.fromChainable(parallel),
     });
   }
 }
@@ -782,12 +1079,126 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 
 const logGroup = new logs.LogGroup(this, 'MyLogGroup');
 
+const definition = sfn.Chain.start(new sfn.Pass(this, 'Pass'));
+
 new sfn.StateMachine(this, 'MyStateMachine', {
-  definition: sfn.Chain.start(new sfn.Pass(this, 'Pass')),
+  definitionBody: sfn.DefinitionBody.fromChainable(definition),
   logs: {
     destination: logGroup,
     level: sfn.LogLevel.ALL,
   },
+});
+```
+
+## Encryption 
+You can encrypt your data using a customer managed key for AWS Step Functions state machines and activities. You can configure a symmetric AWS KMS key and data key reuse period when creating or updating a State Machine or when creating an Activity. The execution history and state machine definition will be encrypted with the key applied to the State Machine. Activity inputs will be encrypted with the key applied to the Activity.
+
+### Encrypting state machines 
+You can provide a symmetric KMS key to encrypt the state machine definition and execution history:
+```ts
+import * as kms from 'aws-cdk-lib/aws-kms';
+import * as cdk from 'aws-cdk-lib';
+
+const kmsKey = new kms.Key(this, 'Key');
+const stateMachine = new sfn.StateMachine(this, 'StateMachineWithCMKEncryptionConfiguration', {
+  stateMachineName: 'StateMachineWithCMKEncryptionConfiguration',
+  definitionBody: sfn.DefinitionBody.fromChainable(sfn.Chain.start(new sfn.Pass(this, 'Pass'))),
+  stateMachineType: sfn.StateMachineType.STANDARD,
+  encryptionConfiguration: new sfn.CustomerManagedEncryptionConfiguration(kmsKey, cdk.Duration.seconds(60)),
+});
+```
+
+### Encrypting state machine logs in Cloud Watch Logs
+If a state machine is encrypted with a customer managed key and has logging enabled, its decrypted execution history will be stored in CloudWatch Logs. If you want to encrypt the logs from the state machine using your own KMS key, you can do so by configuring the `LogGroup` associated with the state machine to use a KMS key.
+```ts
+import * as kms from 'aws-cdk-lib/aws-kms';
+import * as cdk from 'aws-cdk-lib';
+import * as logs from 'aws-cdk-lib/aws-logs';
+
+const stateMachineKmsKey = new kms.Key(this, 'StateMachine Key');
+const logGroupKey = new kms.Key(this, 'LogGroup Key');
+
+/*
+  Required KMS key policy which allows the CloudWatchLogs service principal to encrypt the entire log group using the
+  customer managed kms key. See: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html#cmk-permissions
+*/
+logGroupKey.addToResourcePolicy(new cdk.aws_iam.PolicyStatement({
+  resources: ['*'],
+  actions: ['kms:Encrypt*', 'kms:Decrypt*', 'kms:ReEncrypt*', 'kms:GenerateDataKey*', 'kms:Describe*'],
+  principals: [new cdk.aws_iam.ServicePrincipal(`logs.${cdk.Stack.of(this).region}.amazonaws.com`)],
+  conditions: {
+    ArnEquals: {
+      'kms:EncryptionContext:aws:logs:arn': cdk.Stack.of(this).formatArn({
+        service: 'logs',
+        resource: 'log-group',
+        sep: ':',
+        resourceName: '/aws/vendedlogs/states/MyLogGroup',
+      }),
+    },
+  },
+}));
+
+// Create logGroup and provding encryptionKey which will be used to encrypt the log group
+const logGroup = new logs.LogGroup(this, 'MyLogGroup', {
+  logGroupName: '/aws/vendedlogs/states/MyLogGroup',
+  encryptionKey: logGroupKey,
+});
+
+// Create state machine with CustomerManagedEncryptionConfiguration
+const stateMachine = new sfn.StateMachine(this, 'StateMachineWithCMKWithCWLEncryption', {
+  stateMachineName: 'StateMachineWithCMKWithCWLEncryption',
+  definitionBody: sfn.DefinitionBody.fromChainable(sfn.Chain.start(new sfn.Pass(this, 'PassState', {
+    result: sfn.Result.fromString('Hello World'),
+  }))),
+  stateMachineType: sfn.StateMachineType.STANDARD,
+  encryptionConfiguration: new sfn.CustomerManagedEncryptionConfiguration(stateMachineKmsKey),
+  logs: {
+    destination: logGroup,
+    level: sfn.LogLevel.ALL,
+    includeExecutionData: true,
+  },
+});
+```
+
+### Encrypting activity inputs
+When you provide a symmetric KMS key, all inputs from the Step Functions Activity will be encrypted using the provided KMS key:
+```ts
+import * as kms from 'aws-cdk-lib/aws-kms';
+import * as cdk from 'aws-cdk-lib';
+
+const kmsKey = new kms.Key(this, 'Key');
+const activity = new sfn.Activity(this, 'ActivityWithCMKEncryptionConfiguration', {
+  activityName: 'ActivityWithCMKEncryptionConfiguration',
+  encryptionConfiguration: new sfn.CustomerManagedEncryptionConfiguration(kmsKey, cdk.Duration.seconds(75))
+});
+```
+
+### Changing Encryption
+If you want to switch encryption from a customer provided key to a Step Functions owned key or vice-versa you must explicitly provide `encryptionConfiguration?`
+
+#### Example: Switching from a customer managed key to a Step Functions owned key for StateMachine
+
+#### Before
+```ts
+import * as kms from 'aws-cdk-lib/aws-kms';
+import * as cdk from 'aws-cdk-lib';
+
+const kmsKey = new kms.Key(this, 'Key');
+const stateMachine = new sfn.StateMachine(this, 'StateMachine', {
+  stateMachineName: 'StateMachine',
+  definitionBody: sfn.DefinitionBody.fromChainable(sfn.Chain.start(new sfn.Pass(this, 'Pass'))),
+  stateMachineType: sfn.StateMachineType.STANDARD,
+  encryptionConfiguration: new sfn.CustomerManagedEncryptionConfiguration(kmsKey, cdk.Duration.seconds(60)),
+});
+```
+
+#### After
+```ts
+const stateMachine = new sfn.StateMachine(this, 'StateMachine', {
+  stateMachineName: 'StateMachine',
+  definitionBody: sfn.DefinitionBody.fromChainable(sfn.Chain.start(new sfn.Pass(this, 'Pass'))),
+  stateMachineType: sfn.StateMachineType.STANDARD,
+  encryptionConfiguration: new sfn.AwsOwnedEncryptionConfiguration(),
 });
 ```
 
@@ -796,8 +1207,10 @@ new sfn.StateMachine(this, 'MyStateMachine', {
 Enable X-Ray tracing for StateMachine:
 
 ```ts
+const definition = sfn.Chain.start(new sfn.Pass(this, 'Pass'));
+
 new sfn.StateMachine(this, 'MyStateMachine', {
-  definition: sfn.Chain.start(new sfn.Pass(this, 'Pass')),
+  definitionBody: sfn.DefinitionBody.fromChainable(definition),
   tracingEnabled: true,
 });
 ```
@@ -828,7 +1241,7 @@ const role = new iam.Role(this, 'Role', {
 
 declare const definition: sfn.IChainable;
 const stateMachine = new sfn.StateMachine(this, 'StateMachine', {
-  definition,
+  definitionBody: sfn.DefinitionBody.fromChainable(definition),
 });
 
 // Give role permission to start execution of state machine
@@ -850,7 +1263,7 @@ const role = new iam.Role(this, 'Role', {
 
 declare const definition: sfn.IChainable;
 const stateMachine = new sfn.StateMachine(this, 'StateMachine', {
-  definition,
+  definitionBody: sfn.DefinitionBody.fromChainable(definition),
 });
 
 // Give role read access to state machine
@@ -879,7 +1292,7 @@ const role = new iam.Role(this, 'Role', {
 
 declare const definition: sfn.IChainable;
 const stateMachine = new sfn.StateMachine(this, 'StateMachine', {
-  definition,
+  definitionBody: sfn.DefinitionBody.fromChainable(definition),
 });
 
 // Give role task response permissions to the state machine
@@ -903,7 +1316,7 @@ const role = new iam.Role(this, 'Role', {
 
 declare const definition: sfn.IChainable;
 const stateMachine = new sfn.StateMachine(this, 'StateMachine', {
-  definition,
+  definitionBody: sfn.DefinitionBody.fromChainable(definition),
 });
 
 // Give role permission to get execution history of ALL executions for the state machine
@@ -919,7 +1332,7 @@ const user = new iam.User(this, 'MyUser');
 
 declare const definition: sfn.IChainable;
 const stateMachine = new sfn.StateMachine(this, 'StateMachine', {
-  definition,
+  definitionBody: sfn.DefinitionBody.fromChainable(definition),
 });
 
 //give user permission to send task success to the state machine
@@ -940,12 +1353,12 @@ const stack = new Stack(app, 'MyStack');
 sfn.StateMachine.fromStateMachineArn(
   this,
   "ViaArnImportedStateMachine",
-  "arn:aws:states:us-east-1:123456789012:stateMachine:StateMachine2E01A3A5-N5TJppzoevKQ"
+  "arn:aws:states:us-east-1:123456789012:stateMachine:StateMachine2E01A3A5-N5TJppzoevKQ",
 );
 
 sfn.StateMachine.fromStateMachineName(
   this,
   "ViaResourceNameImportedStateMachine",
-  "StateMachine2E01A3A5-N5TJppzoevKQ"
+  "StateMachine2E01A3A5-N5TJppzoevKQ",
 );
 ```

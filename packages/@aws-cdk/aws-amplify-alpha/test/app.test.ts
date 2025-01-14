@@ -442,3 +442,39 @@ test('with custom headers', () => {
     },
   });
 });
+
+test('create a statically hosted app by default', () => {
+  // WHEN
+  new amplify.App(stack, 'App', {});
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::Amplify::App', {
+    Platform: amplify.Platform.WEB,
+  });
+});
+
+test('create a dynamically rendered app when the platform is set to WEB_COMPUTE', () => {
+  // WHEN
+  new amplify.App(stack, 'App', {
+    platform: amplify.Platform.WEB_COMPUTE,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::Amplify::App', {
+    Platform: amplify.Platform.WEB_COMPUTE,
+  });
+});
+
+test.each([amplify.CacheConfigType.AMPLIFY_MANAGED, amplify.CacheConfigType.AMPLIFY_MANAGED_NO_COOKIES])('create a app with cacheConfigType is set to %s', (cacheConfigType) => {
+  // WHEN
+  new amplify.App(stack, 'App', {
+    cacheConfigType,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::Amplify::App', {
+    CacheConfig: {
+      Type: cacheConfigType,
+    },
+  });
+});

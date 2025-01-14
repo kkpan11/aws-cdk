@@ -1,5 +1,5 @@
 {
-  "version": "31.0.0",
+  "version": "36.0.0",
   "artifacts": {
     "aws-cdk-neptune-integ.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "aws-cdk-neptune-integ.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/9683b2095a5bbf6f933b2c5d8101d12ae6461825babe32ca9b59a6982f564691.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/c29069004a21a8828e40811a155a0af3c027e530509fc33e0319c24d629f5047.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -207,10 +208,10 @@
             "data": "DatabaseB269D8BB"
           }
         ],
-        "/aws-cdk-neptune-integ/Database/[object Object]LogRetention/Resource": [
+        "/aws-cdk-neptune-integ/Database/auditLogRetention/Resource": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "DatabaseobjectObjectLogRetentionA247AF0C"
+            "data": "DatabaseauditLogRetention8A29F5CC"
           }
         ],
         "/aws-cdk-neptune-integ/Database/Instance1": [
@@ -237,10 +238,10 @@
             "data": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A"
           }
         ],
-        "/aws-cdk-neptune-integ/DefaultCrNodeVersionMap": [
+        "/aws-cdk-neptune-integ/LatestNodeRuntimeMap": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "DefaultCrNodeVersionMap"
+            "data": "LatestNodeRuntimeMap"
           }
         ],
         "/aws-cdk-neptune-integ/Alarm/Resource": [
@@ -277,6 +278,7 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "ClusterTestDefaultTestDeployAssert6A1BBA9D.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",

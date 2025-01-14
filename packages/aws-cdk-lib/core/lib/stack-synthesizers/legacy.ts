@@ -143,6 +143,8 @@ export class LegacyStackSynthesizer extends StackSynthesizer implements IReusabl
         path: asset.directoryName,
         sourceHash: asset.sourceHash,
         buildArgs: asset.dockerBuildArgs,
+        buildSecrets: asset.dockerBuildSecrets,
+        buildSsh: asset.dockerBuildSsh,
         target: asset.dockerBuildTarget,
         file: asset.dockerFile,
         networkMode: asset.networkMode,
@@ -150,6 +152,7 @@ export class LegacyStackSynthesizer extends StackSynthesizer implements IReusabl
         outputs: asset.dockerOutputs,
         cacheFrom: asset.dockerCacheFrom,
         cacheTo: asset.dockerCacheTo,
+        cacheDisabled: asset.dockerCacheDisabled,
       };
 
       this.boundStack.node.addMetadata(cxschema.ArtifactMetadataEntryType.ASSET, metadata);

@@ -53,6 +53,18 @@ listener.addEndpointGroup('Group2', {
 });
 ```
 
+### Create an Accelerator with IP addresses and IP address type
+
+```ts
+const accelerator = new globalaccelerator.Accelerator(this, 'Accelerator', {
+  ipAddresses: [
+    '1.1.1.1',
+    '2.2.2.2',
+  ],
+  ipAddressType: globalaccelerator.IpAddressType.IPV4,
+});
+```
+
 ## Concepts
 
 The **Accelerator** construct defines a Global Accelerator resource.
@@ -71,7 +83,7 @@ used is the same as the traffic came in on at the Listener, unless overridden.
 ## Types of Endpoints
 
 There are 4 types of Endpoints, and they can be found in the
-`@aws-cdk/aws-globalaccelerator-endpoints` package:
+`aws-cdk-lib/aws-globalaccelerator-endpoints` package:
 
 * Application Load Balancers
 * Network Load Balancers
@@ -104,6 +116,7 @@ listener.addEndpointGroup('Group', {
   endpoints: [
     new ga_endpoints.NetworkLoadBalancerEndpoint(nlb, {
       weight: 128,
+      preserveClientIp: true, 
     }),
   ],
 });

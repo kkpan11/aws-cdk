@@ -1,4 +1,4 @@
-import { Template } from '../../../assertions';
+import { Match, Template } from '../../../assertions';
 import * as cloudwatch from '../../../aws-cloudwatch';
 import * as ec2 from '../../../aws-ec2';
 import * as cdk from '../../../core';
@@ -142,6 +142,63 @@ describe('tests', () => {
     expect(() => {
       app.synth();
     }).toThrow(/Health check interval '3' not supported. Must be between 5 and 300./);
+  });
+
+  test('Throws error for health check interval less than timeout', () => {
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'Stack');
+    const vpc = new ec2.Vpc(stack, 'Vpc');
+
+    new elbv2.NetworkTargetGroup(stack, 'Group', {
+      vpc,
+      port: 80,
+      healthCheck: {
+        interval: cdk.Duration.seconds(10),
+        timeout: cdk.Duration.seconds(20),
+      },
+    });
+
+    expect(() => {
+      app.synth();
+    }).toThrow('Health check interval must be greater than or equal to the timeout; received interval 10, timeout 20.');
+  });
+
+  test.each([
+    elbv2.TargetGroupIpAddressType.IPV4,
+    elbv2.TargetGroupIpAddressType.IPV6,
+  ])('configure IP address type %s', (ipAddressType) => {
+    const stack = new cdk.Stack();
+    const vpc = new ec2.Vpc(stack, 'Vpc');
+
+    new elbv2.NetworkTargetGroup(stack, 'Group', {
+      vpc,
+      port: 80,
+      ipAddressType,
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::ElasticLoadBalancingV2::TargetGroup', {
+      IpAddressType: ipAddressType,
+    });
+  });
+
+  // for backwards compatibility these can be equal, see discussion in https://github.com/aws/aws-cdk/pull/26031
+  test('No error for health check interval == timeout', () => {
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'Stack');
+    const vpc = new ec2.Vpc(stack, 'Vpc');
+
+    new elbv2.NetworkTargetGroup(stack, 'Group', {
+      vpc,
+      port: 80,
+      healthCheck: {
+        interval: cdk.Duration.seconds(10),
+        timeout: cdk.Duration.seconds(10),
+      },
+    });
+
+    expect(() => {
+      app.synth();
+    }).not.toThrow();
   });
 
   test('targetGroupName unallowed: more than 32 characters', () => {
@@ -332,7 +389,7 @@ describe('tests', () => {
       // THEN
       expect(() => {
         app.synth();
-      }).not.toThrowError();
+      }).not.toThrow();
     });
 
   test.each([elbv2.Protocol.HTTP, elbv2.Protocol.HTTPS, elbv2.Protocol.TCP])(
@@ -355,7 +412,7 @@ describe('tests', () => {
       // THEN
       expect(() => {
         app.synth();
-      }).not.toThrowError();
+      }).not.toThrow();
     });
 
   test.each([elbv2.Protocol.TCP, elbv2.Protocol.HTTPS])(
@@ -380,7 +437,7 @@ describe('tests', () => {
       // THEN
       expect(() => {
         app.synth();
-      }).not.toThrowError();
+      }).not.toThrow();
     });
 
   test.each([elbv2.Protocol.TCP, elbv2.Protocol.HTTPS])(
@@ -405,7 +462,7 @@ describe('tests', () => {
       // THEN
       expect(() => {
         app.synth();
-      }).not.toThrowError();
+      }).not.toThrow();
     });
 
   test.each([elbv2.Protocol.UDP, elbv2.Protocol.TCP_UDP, elbv2.Protocol.TLS])(
@@ -477,7 +534,7 @@ describe('tests', () => {
       // THEN
       expect(() => {
         app.synth();
-      }).not.toThrowError();
+      }).not.toThrow();
     });
 
   test.each([elbv2.Protocol.HTTP, elbv2.Protocol.HTTPS])(
@@ -501,7 +558,7 @@ describe('tests', () => {
       // THEN
       expect(() => {
         app.synth();
-      }).not.toThrowError();
+      }).not.toThrow();
     });
 
   test('Throws error for invalid health check healthy threshold', () => {
@@ -540,26 +597,6 @@ describe('tests', () => {
     expect(() => {
       app.synth();
     }).toThrow(/Unhealthy Threshold Count '1' not supported. Must be a number between 2 and 10./);
-  });
-
-  test('Throws error for unequal healthy and unhealthy threshold counts', () => {
-    const app = new cdk.App();
-    const stack = new cdk.Stack(app, 'Stack');
-    const vpc = new ec2.Vpc(stack, 'Vpc');
-
-    new elbv2.NetworkTargetGroup(stack, 'Group', {
-      vpc,
-      port: 80,
-      healthCheck: {
-        protocol: elbv2.Protocol.TCP,
-        healthyThresholdCount: 5,
-        unhealthyThresholdCount: 3,
-      },
-    });
-
-    expect(() => {
-      app.synth();
-    }).toThrow(/Healthy and Unhealthy Threshold Counts must be the same: 5 is not equal to 3./);
   });
 
   test('Exercise metrics', () => {
@@ -715,5 +752,48 @@ describe('tests', () => {
     });
 
     expect(() => targetGroup.metrics.custom('MetricName')).toThrow();
+  });
+
+  // test cases for crossZoneEnabled
+  describe('crossZoneEnabled', () => {
+    test.each([true, false])('crossZoneEnabled can be %s', (crossZoneEnabled) => {
+      // GIVEN
+      const app = new cdk.App();
+      const stack = new cdk.Stack(app, 'Stack');
+      const vpc = new ec2.Vpc(stack, 'VPC', {});
+
+      // WHEN
+      new elbv2.NetworkTargetGroup(stack, 'LB', {
+        crossZoneEnabled,
+        vpc,
+        port: 80,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::ElasticLoadBalancingV2::TargetGroup', {
+        TargetGroupAttributes: [
+          {
+            Key: 'load_balancing.cross_zone.enabled',
+            Value: `${crossZoneEnabled}`,
+          },
+        ],
+      });
+    });
+
+    test('load_balancing.cross_zone.enabled is not set when crossZoneEnabled is not specified', () => {
+      // GIVEN
+      const app = new cdk.App();
+      const stack = new cdk.Stack(app, 'Stack');
+      const vpc = new ec2.Vpc(stack, 'VPC', {});
+
+      // WHEN
+      new elbv2.NetworkTargetGroup(stack, 'LB', {
+        vpc,
+        port: 80,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::ElasticLoadBalancingV2::TargetGroup', {
+        TargetGroupAttributes: Match.absent(),
+      });
+    });
   });
 });

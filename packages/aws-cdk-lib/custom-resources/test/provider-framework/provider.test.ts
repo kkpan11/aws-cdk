@@ -1,9 +1,10 @@
-import * as path from 'path';
-import { Template } from '../../../assertions';
+import { Match, Template } from '../../../assertions';
 import * as ec2 from '../../../aws-ec2';
 import * as iam from '../../../aws-iam';
+import * as kms from '../../../aws-kms';
 import * as lambda from '../../../aws-lambda';
 import * as logs from '../../../aws-logs';
+import { LogLevel } from '../../../aws-stepfunctions';
 import { Duration, Stack } from '../../../core';
 import * as cr from '../../lib';
 import * as util from '../../lib/provider-framework/util';
@@ -21,12 +22,12 @@ test('security groups are applied to all framework functions', () => {
     onEventHandler: new lambda.Function(stack, 'OnEvent', {
       code: lambda.Code.fromInline('foo'),
       handler: 'index.onEvent',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     }),
     isCompleteHandler: new lambda.Function(stack, 'IsComplete', {
       code: lambda.Code.fromInline('foo'),
       handler: 'index.isComplete',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     }),
     vpc: vpc,
     vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
@@ -89,12 +90,12 @@ test('vpc is applied to all framework functions', () => {
     onEventHandler: new lambda.Function(stack, 'OnEvent', {
       code: lambda.Code.fromInline('foo'),
       handler: 'index.onEvent',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     }),
     isCompleteHandler: new lambda.Function(stack, 'IsComplete', {
       code: lambda.Code.fromInline('foo'),
       handler: 'index.isComplete',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     }),
     vpc: vpc,
     vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
@@ -139,9 +140,9 @@ test('minimal setup', () => {
   // WHEN
   new cr.Provider(stack, 'MyProvider', {
     onEventHandler: new lambda.Function(stack, 'MyHandler', {
-      code: lambda.Code.fromAsset(path.join(__dirname, './integration-test-fixtures/s3-file-handler')),
+      code: new lambda.InlineCode('foo'),
       handler: 'index.onEvent',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     }),
   });
 
@@ -171,15 +172,19 @@ test('if isComplete is specified, the isComplete framework handler is also inclu
   // GIVEN
   const stack = new Stack();
   const handler = new lambda.Function(stack, 'MyHandler', {
-    code: lambda.Code.fromAsset(path.join(__dirname, './integration-test-fixtures/s3-file-handler')),
+    code: new lambda.InlineCode('foo'),
     handler: 'index.onEvent',
-    runtime: lambda.Runtime.NODEJS_14_X,
+    runtime: lambda.Runtime.NODEJS_LATEST,
   });
 
   // WHEN
   new cr.Provider(stack, 'MyProvider', {
     onEventHandler: handler,
     isCompleteHandler: handler,
+    waiterStateMachineLogOptions: {
+      includeExecutionData: true,
+      level: LogLevel.ALL,
+    },
   });
 
   // THEN
@@ -238,28 +243,115 @@ test('if isComplete is specified, the isComplete framework handler is also inclu
         ],
       ],
     },
+    LoggingConfiguration: {
+      Destinations: [
+        {
+          CloudWatchLogsLogGroup: {
+            LogGroupArn: {
+              'Fn::GetAtt': [
+                'MyProviderwaiterstatemachineLogGroupD43CA868',
+                'Arn',
+              ],
+            },
+          },
+        },
+      ],
+      IncludeExecutionData: true,
+      Level: 'ALL',
+    },
   });
 });
 
-test('fails if "queryInterval" and/or "totalTimeout" are set without "isCompleteHandler"', () => {
+test('a default LoggingConfiguration will be created even if waiterStateMachineLogOptions is not specified', () => {
   // GIVEN
   const stack = new Stack();
   const handler = new lambda.Function(stack, 'MyHandler', {
-    code: lambda.Code.fromAsset(path.join(__dirname, './integration-test-fixtures/s3-file-handler')),
+    code: new lambda.InlineCode('foo'),
     handler: 'index.onEvent',
-    runtime: lambda.Runtime.NODEJS_14_X,
+    runtime: lambda.Runtime.NODEJS_LATEST,
+  });
+
+  // WHEN
+  new cr.Provider(stack, 'MyProvider', {
+    onEventHandler: handler,
+    isCompleteHandler: handler,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::StepFunctions::StateMachine', {
+    LoggingConfiguration: {
+      Destinations: [
+        {
+          CloudWatchLogsLogGroup: {
+            LogGroupArn: {
+              'Fn::GetAtt': [
+                'MyProviderwaiterstatemachineLogGroupD43CA868',
+                'Arn',
+              ],
+            },
+          },
+        },
+      ],
+      IncludeExecutionData: false,
+      Level: 'ERROR',
+    },
+  });
+});
+
+test('a default LoggingConfiguration will not be created if disableWaiterStateMachineLogging is true', () => {
+  // GIVEN
+  const stack = new Stack();
+  const handler = new lambda.Function(stack, 'MyHandler', {
+    code: new lambda.InlineCode('foo'),
+    handler: 'index.onEvent',
+    runtime: lambda.Runtime.NODEJS_LATEST,
+  });
+
+  // WHEN
+  new cr.Provider(stack, 'MyProvider', {
+    onEventHandler: handler,
+    isCompleteHandler: handler,
+    disableWaiterStateMachineLogging: true,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::StepFunctions::StateMachine', {
+    LoggingConfiguration: Match.absent(),
+  });
+});
+
+test('fails if "queryInterval" or "totalTimeout" or "waiterStateMachineLogOptions" or "disableWaiterStateMachineLogging" are set without "isCompleteHandler"', () => {
+  // GIVEN
+  const stack = new Stack();
+  const handler = new lambda.Function(stack, 'MyHandler', {
+    code: new lambda.InlineCode('foo'),
+    handler: 'index.onEvent',
+    runtime: lambda.Runtime.NODEJS_LATEST,
   });
 
   // THEN
   expect(() => new cr.Provider(stack, 'provider1', {
     onEventHandler: handler,
     queryInterval: Duration.seconds(10),
-  })).toThrow(/\"queryInterval\" and \"totalTimeout\" can only be configured if \"isCompleteHandler\" is specified. Otherwise, they have no meaning/);
+  })).toThrow(/\"queryInterval\", \"totalTimeout\", \"waiterStateMachineLogOptions\", and \"disableWaiterStateMachineLogging\" can only be configured if \"isCompleteHandler\" is specified. Otherwise, they have no meaning/);
 
   expect(() => new cr.Provider(stack, 'provider2', {
     onEventHandler: handler,
     totalTimeout: Duration.seconds(100),
-  })).toThrow(/\"queryInterval\" and \"totalTimeout\" can only be configured if \"isCompleteHandler\" is specified. Otherwise, they have no meaning/);
+  })).toThrow(/\"queryInterval\", \"totalTimeout\", \"waiterStateMachineLogOptions\", and \"disableWaiterStateMachineLogging\" can only be configured if \"isCompleteHandler\" is specified. Otherwise, they have no meaning/);
+
+  expect(() => new cr.Provider(stack, 'provider3', {
+    onEventHandler: handler,
+    waiterStateMachineLogOptions: {
+      includeExecutionData: true,
+      level: LogLevel.ALL,
+    },
+  })).toThrow(/\"queryInterval\", \"totalTimeout\", \"waiterStateMachineLogOptions\", and \"disableWaiterStateMachineLogging\" can only be configured if \"isCompleteHandler\" is specified. Otherwise, they have no meaning/);
+
+  expect(() => new cr.Provider(stack, 'provider4', {
+    onEventHandler: handler,
+    disableWaiterStateMachineLogging: false,
+  })).toThrow(/\"queryInterval\", \"totalTimeout\", \"waiterStateMachineLogOptions\", and \"disableWaiterStateMachineLogging\" can only be configured if \"isCompleteHandler\" is specified. Otherwise, they have no meaning/);
 });
 
 describe('retry policy', () => {
@@ -301,9 +393,9 @@ describe('log retention', () => {
     // WHEN
     new cr.Provider(stack, 'MyProvider', {
       onEventHandler: new lambda.Function(stack, 'MyHandler', {
-        code: lambda.Code.fromAsset(path.join(__dirname, './integration-test-fixtures/s3-file-handler')),
+        code: new lambda.InlineCode('foo'),
         handler: 'index.onEvent',
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
       }),
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
@@ -332,14 +424,38 @@ describe('log retention', () => {
     // WHEN
     new cr.Provider(stack, 'MyProvider', {
       onEventHandler: new lambda.Function(stack, 'MyHandler', {
-        code: lambda.Code.fromAsset(path.join(__dirname, './integration-test-fixtures/s3-file-handler')),
+        code: new lambda.InlineCode('foo'),
         handler: 'index.onEvent',
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
       }),
     });
 
     // THEN
     Template.fromStack(stack).resourceCountIs('Custom::LogRetention', 0);
+  });
+});
+
+it('can specify log group', () => {
+  // GIVEN
+  const stack = new Stack();
+
+  // WHEN
+  new cr.Provider(stack, 'MyProvider', {
+    onEventHandler: new lambda.Function(stack, 'MyHandler', {
+      code: new lambda.InlineCode('foo'),
+      handler: 'index.onEvent',
+      runtime: lambda.Runtime.NODEJS_LATEST,
+    }),
+    logGroup: new logs.LogGroup(stack, 'LogGroup', {
+      logGroupName: '/test/log/group/name',
+      retention: logs.RetentionDays.ONE_WEEK,
+    }),
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::Logs::LogGroup', {
+    LogGroupName: '/test/log/group/name',
+    RetentionInDays: 7,
   });
 });
 
@@ -351,9 +467,9 @@ describe('role', () => {
     // WHEN
     new cr.Provider(stack, 'MyProvider', {
       onEventHandler: new lambda.Function(stack, 'MyHandler', {
-        code: lambda.Code.fromAsset(path.join(__dirname, './integration-test-fixtures/s3-file-handler')),
+        code: new lambda.InlineCode('foo'),
         handler: 'index.onEvent',
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
       }),
       role: new iam.Role(stack, 'MyRole', {
         assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -379,9 +495,9 @@ describe('role', () => {
     // WHEN
     new cr.Provider(stack, 'MyProvider', {
       onEventHandler: new lambda.Function(stack, 'MyHandler', {
-        code: lambda.Code.fromAsset(path.join(__dirname, './integration-test-fixtures/s3-file-handler')),
+        code: new lambda.InlineCode('foo'),
         handler: 'index.onEvent',
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
       }),
     });
 
@@ -406,9 +522,9 @@ describe('name', () => {
     // WHEN
     new cr.Provider(stack, 'MyProvider', {
       onEventHandler: new lambda.Function(stack, 'MyHandler', {
-        code: lambda.Code.fromAsset(path.join(__dirname, './integration-test-fixtures/s3-file-handler')),
+        code: new lambda.InlineCode('foo'),
         handler: 'index.onEvent',
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
       }),
       providerFunctionName,
     });
@@ -416,6 +532,36 @@ describe('name', () => {
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: providerFunctionName,
+    });
+  });
+});
+
+describe('environment encryption', () => {
+  it('uses custom KMS key for environment encryption when present', () => {
+    // GIVEN
+    const stack = new Stack();
+    const key: kms.IKey = new kms.Key(stack, 'EnvVarEncryptKey', {
+      description: 'sample key',
+    });
+
+    // WHEN
+    new cr.Provider(stack, 'MyProvider', {
+      onEventHandler: new lambda.Function(stack, 'MyHandler', {
+        code: new lambda.InlineCode('foo'),
+        handler: 'index.onEvent',
+        runtime: lambda.Runtime.NODEJS_LATEST,
+      }),
+      providerFunctionEnvEncryption: key,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Lambda::Function', {
+      KmsKeyArn: {
+        'Fn::GetAtt': [
+          'EnvVarEncryptKey1A7CABDB',
+          'Arn',
+        ],
+      },
     });
   });
 });

@@ -64,6 +64,17 @@ describe('bucket', () => {
       'Resources': {
         'MyBucketF68F3FF0': {
           'Type': 'AWS::S3::Bucket',
+          'Properties': {
+            'BucketEncryption': {
+              'ServerSideEncryptionConfiguration': [
+                {
+                  'ServerSideEncryptionByDefault': {
+                    'SSEAlgorithm': 'AES256',
+                  },
+                },
+              ],
+            },
+          },
           'DeletionPolicy': 'Retain',
           'UpdateReplacePolicy': 'Retain',
         },
@@ -139,6 +150,34 @@ describe('bucket', () => {
     })).not.toThrow();
   });
 
+  test('creating bucket with underscore in name throws error', () => {
+    const stack = new cdk.Stack();
+    expect(() => {
+      new s3.Bucket(stack, 'TestBucket', { bucketName: 'test_bucket_name' });
+    }).toThrow(/Bucket name must only contain lowercase characters and the symbols, period \(\.\) and dash \(-\)/);
+  });
+
+  test('importing existing bucket with underscore using fromBucketName works with allowLegacyBucketNaming=true', () => {
+    const stack = new cdk.Stack();
+    expect(() => {
+      s3.Bucket.fromBucketName(stack, 'TestBucket', 'test_bucket_name');
+    }).not.toThrow();
+  });
+
+  test('importing existing bucket with underscore using fromBucketAttributes works with allowLegacyBucketNaming=true', () => {
+    const stack = new cdk.Stack();
+    expect(() => {
+      s3.Bucket.fromBucketAttributes(stack, 'TestBucket', { bucketName: 'test_bucket_name' });
+    }).not.toThrow();
+  });
+
+  test('importing existing bucket with underscore using fromBucketArn works with allowLegacyBucketNaming=true', () => {
+    const stack = new cdk.Stack();
+    expect(() => {
+      s3.Bucket.fromBucketArn(stack, 'TestBucket', 'arn:aws:s3:::test_bucket_name');
+    }).not.toThrow();
+  });
+
   test('bucket validation skips tokenized values', () => {
     const stack = new cdk.Stack();
 
@@ -154,14 +193,50 @@ describe('bucket', () => {
       `Invalid S3 bucket name (value: ${bucket})`,
       'Bucket name must be at least 3 and no more than 63 characters',
       'Bucket name must only contain lowercase characters and the symbols, period (.) and dash (-) (offset: 5)',
-      'Bucket name must start and end with a lowercase character or number (offset: 0)',
-      `Bucket name must start and end with a lowercase character or number (offset: ${bucket.length - 1})`,
+      'Bucket name must start with a lowercase character or number (offset: 0)',
+      `Bucket name must end with a lowercase character or number (offset: ${bucket.length - 1})`,
       'Bucket name must not have dash next to period, or period next to dash, or consecutive periods (offset: 7)',
     ].join(EOL);
 
     expect(() => new s3.Bucket(stack, 'MyBucket', {
       bucketName: bucket,
     })).toThrow(expectedErrors);
+  });
+
+  test('validateBucketName allows underscore when allowLegacyBucketNaming=true', () => {
+    expect(() => {
+      s3.Bucket.validateBucketName('test_bucket_name', true);
+    }).not.toThrow();
+  });
+
+  test('validateBucketName does not allow underscore when allowLegacyBucketNaming=false', () => {
+    expect(() => {
+      s3.Bucket.validateBucketName('test_bucket_name', false);
+    }).toThrow(/Bucket name must only contain lowercase characters and the symbols, period \(\.\) and dash \(-\)/);
+  });
+
+  test('validateBucketName allows uppercase characters when allowLegacyBucketNaming=true', () => {
+    expect(() => {
+      s3.Bucket.validateBucketName('Test_Bucket_Name', true);
+    }).not.toThrow();
+  });
+
+  test('validateBucketName does not allow uppercase characters when allowLegacyBucketNaming=false', () => {
+    expect(() => {
+      s3.Bucket.validateBucketName('Test_Bucket_Name', false);
+    }).toThrow(/Bucket name must only contain lowercase characters and the symbols, period \(\.\) and dash \(-\)/);
+  });
+
+  test('validateBucketName does not allow underscore by default', () => {
+    expect(() => {
+      s3.Bucket.validateBucketName('test_bucket_name');
+    }).toThrow(/Bucket name must only contain lowercase characters and the symbols, period \(\.\) and dash \(-\)/);
+  });
+
+  test('validateBucketName does not allow uppercase characters by default', () => {
+    expect(() => {
+      s3.Bucket.validateBucketName('TestBucketName');
+    }).toThrow(/Bucket name must only contain lowercase characters and the symbols, period \(\.\) and dash \(-\)/);
   });
 
   test('fails if bucket name has less than 3 or more than 63 characters', () => {
@@ -340,6 +415,35 @@ describe('bucket', () => {
     });
   });
 
+  test('KMS key is generated if encryption is KMS and no encryptionKey is specified', () => {
+    const stack = new cdk.Stack();
+
+    new s3.Bucket(stack, 'MyBucket', { encryption: s3.BucketEncryption.KMS });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::KMS::Key', {
+      'Description': 'Created by Default/MyBucket',
+      'EnableKeyRotation': true,
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::S3::Bucket', {
+      'BucketEncryption': {
+        'ServerSideEncryptionConfiguration': [
+          {
+            'ServerSideEncryptionByDefault': {
+              'KMSMasterKeyID': {
+                'Fn::GetAtt': [
+                  'MyBucketKeyC17130CF',
+                  'Arn',
+                ],
+              },
+              'SSEAlgorithm': 'aws:kms',
+            },
+          },
+        ],
+      },
+    });
+  });
+
   test('enforceSsl can be enabled', () => {
     const stack = new cdk.Stack();
     new s3.Bucket(stack, 'MyBucket', { enforceSSL: true });
@@ -400,6 +504,103 @@ describe('bucket', () => {
     });
   });
 
+  test('with minimumTLSVersion', () => {
+    const stack = new cdk.Stack();
+    new s3.Bucket(stack, 'MyBucket', {
+      enforceSSL: true,
+      minimumTLSVersion: 1.2,
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::S3::BucketPolicy', {
+      'PolicyDocument': {
+        'Statement': [
+          {
+            'Action': 's3:*',
+            'Condition': {
+              'Bool': {
+                'aws:SecureTransport': 'false',
+              },
+            },
+            'Effect': 'Deny',
+            'Principal': { AWS: '*' },
+            'Resource': [
+              {
+                'Fn::GetAtt': [
+                  'MyBucketF68F3FF0',
+                  'Arn',
+                ],
+              },
+              {
+                'Fn::Join': [
+                  '',
+                  [
+                    {
+                      'Fn::GetAtt': [
+                        'MyBucketF68F3FF0',
+                        'Arn',
+                      ],
+                    },
+                    '/*',
+                  ],
+                ],
+              },
+            ],
+          },
+          {
+            'Action': 's3:*',
+            'Condition': {
+              'NumericLessThan': {
+                's3:TlsVersion': 1.2,
+              },
+            },
+            'Effect': 'Deny',
+            'Principal': { AWS: '*' },
+            'Resource': [
+              {
+                'Fn::GetAtt': [
+                  'MyBucketF68F3FF0',
+                  'Arn',
+                ],
+              },
+              {
+                'Fn::Join': [
+                  '',
+                  [
+                    {
+                      'Fn::GetAtt': [
+                        'MyBucketF68F3FF0',
+                        'Arn',
+                      ],
+                    },
+                    '/*',
+                  ],
+                ],
+              },
+            ],
+          },
+        ],
+        'Version': '2012-10-17',
+      },
+    });
+  });
+
+  test('enforceSSL must be enabled for minimumTLSVersion to work', () => {
+    const stack = new cdk.Stack();
+
+    expect(() => {
+      new s3.Bucket(stack, 'MyBucket1', {
+        enforceSSL: false,
+        minimumTLSVersion: 1.2,
+      });
+    }).toThrow(/'enforceSSL' must be enabled for 'minimumTLSVersion' to be applied/);
+
+    expect(() => {
+      new s3.Bucket(stack, 'MyBucket2', {
+        minimumTLSVersion: 1.2,
+      });
+    }).toThrow(/'enforceSSL' must be enabled for 'minimumTLSVersion' to be applied/);
+  });
+
   test.each([s3.BucketEncryption.KMS, s3.BucketEncryption.KMS_MANAGED])('bucketKeyEnabled can be enabled with %p encryption', (encryption) => {
     const stack = new cdk.Stack();
 
@@ -438,15 +639,41 @@ describe('bucket', () => {
     });
   });
 
-  test('throws error if bucketKeyEnabled is set, but encryption is not KMS', () => {
+  test('bucketKeyEnabled can be enabled with SSE-S3', () => {
+    const stack = new cdk.Stack();
+
+    // WHEN
+    new s3.Bucket(stack, 'MyBucket', { bucketKeyEnabled: true, encryption: s3.BucketEncryption.S3_MANAGED });
+    Template.fromStack(stack).hasResourceProperties('AWS::S3::Bucket', {
+      BucketEncryption: {
+        ServerSideEncryptionConfiguration: [
+          {
+            ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' },
+            BucketKeyEnabled: true,
+          },
+        ],
+      },
+    });
+
+  });
+  test('bucketKeyEnabled can not be enabled with UNENCRYPTED', () => {
+    const stack = new cdk.Stack();
+
+    // WHEN
+    expect(() => {
+      new s3.Bucket(stack, 'MyBucket', {
+        bucketKeyEnabled: true,
+        encryption: s3.BucketEncryption.UNENCRYPTED,
+      });
+    }).toThrow(/bucketKeyEnabled is specified, so 'encryption' must be set to KMS, DSSE or S3/);
+  });
+
+  test('bucketKeyEnabled can NOT be enabled with encryption undefined', () => {
     const stack = new cdk.Stack();
 
     expect(() => {
-      new s3.Bucket(stack, 'MyBucket', { bucketKeyEnabled: true, encryption: s3.BucketEncryption.S3_MANAGED });
-    }).toThrow("bucketKeyEnabled is specified, so 'encryption' must be set to KMS or DSSE (value: S3_MANAGED)");
-    expect(() => {
       new s3.Bucket(stack, 'MyBucket3', { bucketKeyEnabled: true });
-    }).toThrow("bucketKeyEnabled is specified, so 'encryption' must be set to KMS or DSSE (value: UNENCRYPTED)");
+    }).toThrow("bucketKeyEnabled is specified, so 'encryption' must be set to KMS, DSSE or S3 (value: UNENCRYPTED)");
 
   });
 
@@ -454,14 +681,14 @@ describe('bucket', () => {
     const stack = new cdk.Stack();
     expect(() => {
       new s3.Bucket(stack, 'MyBucket', { encryption: s3.BucketEncryption.UNENCRYPTED, serverAccessLogsPrefix: 'test' });
-    }).not.toThrowError();
+    }).not.toThrow();
   });
 
   test('logs to self, S3_MANAGED encryption does not throw error', () => {
     const stack = new cdk.Stack();
     expect(() => {
       new s3.Bucket(stack, 'MyBucket', { encryption: s3.BucketEncryption.S3_MANAGED, serverAccessLogsPrefix: 'test' });
-    }).not.toThrowError();
+    }).not.toThrow();
   });
 
   test('logs to self, KMS_MANAGED encryption throws error', () => {
@@ -475,7 +702,7 @@ describe('bucket', () => {
     const stack = new cdk.Stack();
     expect(() => {
       new s3.Bucket(stack, 'MyBucket', { encryption: s3.BucketEncryption.KMS, serverAccessLogsPrefix: 'test' });
-    }).not.toThrowError();
+    }).not.toThrow();
   });
 
   test('logs to self, KMS encryption with key does not throw error', () => {
@@ -483,7 +710,7 @@ describe('bucket', () => {
     const key = new kms.Key(stack, 'TestKey');
     expect(() => {
       new s3.Bucket(stack, 'MyBucket', { encryptionKey: key, encryption: s3.BucketEncryption.KMS, serverAccessLogsPrefix: 'test' });
-    }).not.toThrowError();
+    }).not.toThrow();
   });
 
   test('logs to self, KMS key with no specific encryption specified does not throw error', () => {
@@ -491,7 +718,7 @@ describe('bucket', () => {
     const key = new kms.Key(stack, 'TestKey');
     expect(() => {
       new s3.Bucket(stack, 'MyBucket', { encryptionKey: key, serverAccessLogsPrefix: 'test' });
-    }).not.toThrowError();
+    }).not.toThrow();
   });
 
   testDeprecated('logs to separate bucket, UNENCRYPTED does not throw error', () => {
@@ -499,7 +726,7 @@ describe('bucket', () => {
     const logBucket = new s3.Bucket(stack, 'testLogBucket', { encryption: s3.BucketEncryption.UNENCRYPTED });
     expect(() => {
       new s3.Bucket(stack, 'MyBucket', { serverAccessLogsBucket: logBucket });
-    }).not.toThrowError();
+    }).not.toThrow();
   });
 
   test('logs to separate bucket, S3_MANAGED encryption does not throw error', () => {
@@ -507,7 +734,7 @@ describe('bucket', () => {
     const logBucket = new s3.Bucket(stack, 'testLogBucket', { encryption: s3.BucketEncryption.S3_MANAGED });
     expect(() => {
       new s3.Bucket(stack, 'MyBucket', { serverAccessLogsBucket: logBucket });
-    }).not.toThrowError();
+    }).not.toThrow();
   });
 
   // When provided an external bucket (as an IBucket), we cannot detect KMS_MANAGED encryption. Since this
@@ -526,7 +753,7 @@ describe('bucket', () => {
     const logBucket = new s3.Bucket(stack, 'testLogBucket', { encryption: s3.BucketEncryption.KMS });
     expect(() => {
       new s3.Bucket(stack, 'MyBucket', { serverAccessLogsBucket: logBucket });
-    }).not.toThrowError();
+    }).not.toThrow();
   });
 
   test('logs to separate bucket, KMS encryption with key does not throw error', () => {
@@ -535,7 +762,7 @@ describe('bucket', () => {
     const logBucket = new s3.Bucket(stack, 'testLogBucket', { encryptionKey: key, encryption: s3.BucketEncryption.KMS });
     expect(() => {
       new s3.Bucket(stack, 'MyBucket', { serverAccessLogsBucket: logBucket });
-    }).not.toThrowError();
+    }).not.toThrow();
   });
 
   test('logs to separate bucket, KMS key with no specific encryption specified does not throw error', () => {
@@ -544,7 +771,7 @@ describe('bucket', () => {
     const logBucket = new s3.Bucket(stack, 'testLogBucket', { encryptionKey: key });
     expect(() => {
       new s3.Bucket(stack, 'MyBucket', { serverAccessLogsBucket: logBucket });
-    }).not.toThrowError();
+    }).not.toThrow();
   });
 
   test('bucket with versioning turned on', () => {
@@ -741,6 +968,28 @@ describe('bucket', () => {
         },
       },
     });
+  });
+
+  test('bucket with default block public access setting to throw error msg', () => {
+    const stack = new cdk.Stack();
+
+    expect(() => new s3.Bucket(stack, 'Bucket', {
+      publicReadAccess: true,
+    })).toThrow('Cannot use \'publicReadAccess\' property on a bucket without allowing bucket-level public access through \'blockPublicAccess\' property.');
+  });
+
+  test('bucket with enabled block public access setting to throw error msg', () => {
+    const stack = new cdk.Stack();
+
+    expect(() => new s3.Bucket(stack, 'Bucket', {
+      publicReadAccess: true,
+      blockPublicAccess: {
+        blockPublicPolicy: true,
+        blockPublicAcls: false,
+        ignorePublicAcls: false,
+        restrictPublicBuckets: false,
+      },
+    })).toThrow('Cannot grant public access when \'blockPublicPolicy\' is enabled');
   });
 
   test('bucket with custom canned access control', () => {
@@ -1551,6 +1800,7 @@ describe('bucket', () => {
       });
 
       Template.fromStack(stack).hasResourceProperties('AWS::KMS::Key', {
+        'EnableKeyRotation': true,
         'KeyPolicy': {
           'Statement': Match.arrayWith([
             {
@@ -2554,6 +2804,38 @@ describe('bucket', () => {
       });
 
     });
+    test('adds RedirectRules property with empty keyPrefixEquals condition', () => {
+      const stack = new cdk.Stack();
+      new s3.Bucket(stack, 'Website', {
+        websiteRoutingRules: [{
+          hostName: 'www.example.com',
+          httpRedirectCode: '302',
+          protocol: s3.RedirectProtocol.HTTPS,
+          replaceKey: s3.ReplaceKey.prefixWith('test/'),
+          condition: {
+            httpErrorCodeReturnedEquals: '200',
+            keyPrefixEquals: '',
+          },
+        }],
+      });
+      Template.fromStack(stack).hasResourceProperties('AWS::S3::Bucket', {
+        WebsiteConfiguration: {
+          RoutingRules: [{
+            RedirectRule: {
+              HostName: 'www.example.com',
+              HttpRedirectCode: '302',
+              Protocol: 'https',
+              ReplaceKeyPrefixWith: 'test/',
+            },
+            RoutingRuleCondition: {
+              HttpErrorCodeReturnedEquals: '200',
+              KeyPrefixEquals: '',
+            },
+          }],
+        },
+      });
+
+    });
     test('fails if routingRule condition object is empty', () => {
       const stack = new cdk.Stack();
       expect(() => {
@@ -2651,10 +2933,27 @@ describe('bucket', () => {
   test('if a kms key is specified, it implies bucket is encrypted with kms (dah)', () => {
     // GIVEN
     const stack = new cdk.Stack();
-    const key = new kms.Key(stack, 'k');
-
+    const key = new kms.Key(stack, 'MyKey');
+    // WHEN
+    new s3.Bucket(stack, 'MyBucket', { encryptionKey: key });
     // THEN
-    new s3.Bucket(stack, 'b', { encryptionKey: key });
+    Template.fromStack(stack).hasResourceProperties('AWS::S3::Bucket', {
+      'BucketEncryption': {
+        'ServerSideEncryptionConfiguration': [
+          {
+            'ServerSideEncryptionByDefault': {
+              'KMSMasterKeyID': {
+                'Fn::GetAtt': [
+                  'MyKey6AB29FA6',
+                  'Arn',
+                ],
+              },
+              'SSEAlgorithm': 'aws:kms',
+            },
+          },
+        ],
+      },
+    });
   });
 
   test('Bucket with Server Access Logs', () => {
@@ -2673,6 +2972,7 @@ describe('bucket', () => {
         DestinationBucketName: {
           Ref: 'AccessLogs8B620ECA',
         },
+        TargetObjectKeyFormat: Match.absent(),
       },
     });
   });
@@ -2695,6 +2995,7 @@ describe('bucket', () => {
           Ref: 'AccessLogs8B620ECA',
         },
         LogFilePrefix: 'hello',
+        TargetObjectKeyFormat: Match.absent(),
       },
     });
   });
@@ -2711,6 +3012,76 @@ describe('bucket', () => {
     Template.fromStack(stack).hasResourceProperties('AWS::S3::Bucket', {
       LoggingConfiguration: {
         LogFilePrefix: 'hello',
+        TargetObjectKeyFormat: Match.absent(),
+      },
+    });
+  });
+
+  test('Use simple prefix for log objects', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    // WHEN
+    const accessLogBucket = new s3.Bucket(stack, 'AccessLogs');
+    new s3.Bucket(stack, 'MyBucket', {
+      serverAccessLogsBucket: accessLogBucket,
+      targetObjectKeyFormat: s3.TargetObjectKeyFormat.simplePrefix(),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::S3::Bucket', {
+      LoggingConfiguration: {
+        DestinationBucketName: {
+          Ref: 'AccessLogs8B620ECA',
+        },
+        TargetObjectKeyFormat: {
+          SimplePrefix: {},
+          PartitionedPrefix: Match.absent(),
+        },
+      },
+    });
+  });
+
+  test('Use partitioned prefix for log objects', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+
+    // WHEN
+    const accessLogBucket = new s3.Bucket(stack, 'AccessLogs');
+    new s3.Bucket(stack, 'MyBucket', {
+      serverAccessLogsBucket: accessLogBucket,
+      targetObjectKeyFormat: s3.TargetObjectKeyFormat.partitionedPrefix(s3.PartitionDateSource.EVENT_TIME),
+    });
+    new s3.Bucket(stack, 'MyBucket2', {
+      serverAccessLogsBucket: accessLogBucket,
+      targetObjectKeyFormat: s3.TargetObjectKeyFormat.partitionedPrefix(s3.PartitionDateSource.DELIVERY_TIME),
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::S3::Bucket', {
+      LoggingConfiguration: {
+        DestinationBucketName: {
+          Ref: 'AccessLogs8B620ECA',
+        },
+        TargetObjectKeyFormat: {
+          SimplePrefix: Match.absent(),
+          PartitionedPrefix: {
+            PartitionDateSource: 'EventTime',
+          },
+        },
+      },
+    });
+    Template.fromStack(stack).hasResourceProperties('AWS::S3::Bucket', {
+      LoggingConfiguration: {
+        DestinationBucketName: {
+          Ref: 'AccessLogs8B620ECA',
+        },
+        TargetObjectKeyFormat: {
+          SimplePrefix: Match.absent(),
+          PartitionedPrefix: {
+            PartitionDateSource: 'DeliveryTime',
+          },
+        },
       },
     });
   });
@@ -2949,6 +3320,49 @@ describe('bucket', () => {
     });
   });
 
+  test('Inventory Ids are shortened to 64 characters', () => {
+    // Given
+    const stack = new cdk.Stack();
+
+    const inventoryBucket = new s3.Bucket(stack, 'InventoryBucket');
+    new s3.Bucket(stack, 'AVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVery@#$+:;?!&LongNodeIdName', {
+      inventories: [
+        {
+          destination: {
+            bucket: inventoryBucket,
+          },
+        },
+      ],
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::S3::Bucket', {
+      InventoryConfigurations: Match.arrayWith([
+        Match.objectLike({
+          Id: 'VeryVeryVeryVeryVeryVeryVeryVeryVeryVeryLongNodeIdNameInventory0',
+        }),
+      ]),
+    });
+  });
+
+  test('throws when inventoryid is invalid', () => {
+    // Given
+    const stack = new cdk.Stack();
+
+    const inventoryBucket = new s3.Bucket(stack, 'InventoryBucket');
+    new s3.Bucket(stack, 'MyBucket2', {
+      inventories: [
+        {
+          destination: {
+            bucket: inventoryBucket,
+          },
+          inventoryId: 'InvalidId&123',
+        },
+      ],
+    });
+
+    expect(() => Template.fromStack(stack)).toThrow(/inventoryId should not exceed 64 characters and should not contain special characters except . and -, got InvalidId&123/);
+  });
+
   test('Bucket with objectOwnership set to BUCKET_OWNER_ENFORCED', () => {
     const stack = new cdk.Stack();
     new s3.Bucket(stack, 'MyBucket', {
@@ -3061,6 +3475,7 @@ describe('bucket', () => {
         'Statement': [
           {
             'Action': [
+              's3:PutBucketPolicy',
               's3:GetBucket*',
               's3:List*',
               's3:DeleteObject*',
@@ -3454,6 +3869,30 @@ describe('bucket', () => {
     Template.fromStack(stack).hasResourceProperties('Custom::S3BucketNotifications', {
       NotificationConfiguration: {
         EventBridgeConfiguration: {},
+      },
+    });
+  });
+
+  test.each([
+    [s3.TransitionDefaultMinimumObjectSize.ALL_STORAGE_CLASSES_128_K, 'all_storage_classes_128K'],
+    [s3.TransitionDefaultMinimumObjectSize.VARIES_BY_STORAGE_CLASS, 'varies_by_storage_class'],
+  ])('transitionDefaultMinimumObjectSize %s can be specified', (key, value) => {
+    const stack = new cdk.Stack();
+    new s3.Bucket(stack, 'MyBucket', {
+      transitionDefaultMinimumObjectSize: key,
+      lifecycleRules: [
+        {
+          expiration: cdk.Duration.days(365),
+        },
+      ],
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::S3::Bucket', {
+      LifecycleConfiguration: {
+        TransitionDefaultMinimumObjectSize: value,
+        Rules: [{
+          ExpirationInDays: 365,
+        }],
       },
     });
   });

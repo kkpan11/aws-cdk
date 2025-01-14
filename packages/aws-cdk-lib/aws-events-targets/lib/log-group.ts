@@ -78,6 +78,14 @@ export interface LogGroupProps extends TargetBaseProps {
    * @default - the entire EventBridge event
    */
   readonly logEvent?: LogGroupTargetInput;
+
+  /**
+   * Whether the custom resource created wll default to
+   * install latest AWS SDK
+   *
+   * @default - install latest AWS SDK
+   */
+  readonly installLatestAwsSdk?: boolean;
 }
 
 /**
@@ -109,6 +117,7 @@ export class CloudWatchLogGroup implements events.IRuleTarget {
 
     if (!this.logGroup.node.tryFindChild(resourcePolicyId)) {
       new LogGroupResourcePolicy(logGroupStack, resourcePolicyId, {
+        installLatestAwsSdk: this.props.installLatestAwsSdk,
         policyStatements: [new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
           actions: ['logs:PutLogEvents', 'logs:CreateLogStream'],
@@ -146,7 +155,7 @@ export class CloudWatchLogGroup implements events.IRuleTarget {
       if (typeof(resolvedTemplate) === 'string') {
         // need to add the quotes back to the string so that we can parse the json
         // '{"timestamp": <time>}' -> '{"timestamp": "<time>"}'
-        const quotedTemplate = resolvedTemplate.replace(new RegExp('(\<.*?\>)', 'g'), '"$1"');
+        const quotedTemplate = resolvedTemplate.replace(new RegExp('(<[^<>]*?>)', 'g'), '"$1"');
         try {
           const inputTemplate = JSON.parse(quotedTemplate);
           const inputTemplateKeys = Object.keys(inputTemplate);

@@ -71,7 +71,7 @@ export enum ReportGroupType {
   /**
    * The report group contains code coverage reports.
    */
-  CODE_COVERAGE = 'CODE_COVERAGE'
+  CODE_COVERAGE = 'CODE_COVERAGE',
 }
 
 /**
@@ -118,14 +118,20 @@ export interface ReportGroupProps {
    *
    * @default TEST
    */
-  readonly type?: ReportGroupType
+  readonly type?: ReportGroupType;
+
+  /**
+   * If true, deleting the report group force deletes the contents of the report group. If false, the report group must be empty before attempting to delete it.
+   *
+   * @default false
+   */
+  readonly deleteReports?: boolean;
 }
 
 /**
  * The ReportGroup resource class.
  */
 export class ReportGroup extends ReportGroupBase {
-
   /**
    * Reference an existing ReportGroup,
    * defined outside of the CDK code,
@@ -166,6 +172,7 @@ export class ReportGroup extends ReportGroupBase {
           : undefined,
       },
       name: props.reportGroupName,
+      deleteReports: props.deleteReports,
     });
     resource.applyRemovalPolicy(props.removalPolicy, {
       default: cdk.RemovalPolicy.RETAIN,
@@ -178,5 +185,9 @@ export class ReportGroup extends ReportGroupBase {
       cdk.Fn.select(1, cdk.Fn.split('/', resource.ref)),
     );
     this.exportBucket = props.exportBucket;
+
+    if (props.deleteReports && props.removalPolicy !== cdk.RemovalPolicy.DESTROY) {
+      throw new Error('Cannot use \'deleteReports\' property on a report group without setting removal policy to \'DESTROY\'.');
+    }
   }
 }

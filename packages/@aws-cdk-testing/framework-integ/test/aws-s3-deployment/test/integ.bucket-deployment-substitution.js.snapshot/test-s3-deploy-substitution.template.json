@@ -37,14 +37,14 @@
     "Code": {
      "ZipFile": "exports.handler = function helloCode(_event, _context, callback) {\n    return callback(undefined, {\n        statusCode: 200,\n        body: 'hello, world!',\n    });\n}"
     },
+    "Handler": "index.handler",
     "Role": {
      "Fn::GetAtt": [
       "HelloServiceRole1E55EA16",
       "Arn"
      ]
     },
-    "Handler": "index.handler",
-    "Runtime": "nodejs14.x"
+    "Runtime": "nodejs18.x"
    },
    "DependsOn": [
     "HelloServiceRole1E55EA16"
@@ -70,7 +70,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "10972873dd8a3bc33ae1cb91d834617be249fd84bed5bdbb6ffbb581650aea83.zip"
+     "S3Key": "3322b7049fb0ed2b7cbb644a2ada8d1116ff80c32dca89e6ada846b5de26f961.zip"
     },
     "Description": "/opt/awscli/aws"
    }
@@ -106,7 +106,8 @@
      "Ref": "substitutionbucket13A1BF4A"
     },
     "Extract": true,
-    "Prune": false
+    "Prune": false,
+    "OutputObjectKeys": true
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
@@ -243,13 +244,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "9eb41a5505d37607ac419321497a4f8c21cf0ee1f9b4a6b29aa04301aea5c7fd.zip"
-    },
-    "Role": {
-     "Fn::GetAtt": [
-      "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRole89A01265",
-      "Arn"
-     ]
+     "S3Key": "c6358465bf49dfae556bb430bf9c81fa578c221b82c308e3707901b1dd654762.zip"
     },
     "Environment": {
      "Variables": {
@@ -262,7 +257,13 @@
       "Ref": "DeploymentAwsCliLayerB82B26A3"
      }
     ],
-    "Runtime": "python3.9",
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRole89A01265",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.11",
     "Timeout": 900
    },
    "DependsOn": [

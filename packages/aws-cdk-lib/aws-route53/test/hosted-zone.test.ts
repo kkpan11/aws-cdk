@@ -2,8 +2,9 @@ import { testDeprecated } from '@aws-cdk/cdk-build-tools';
 import { Match, Template } from '../../assertions';
 import * as ec2 from '../../aws-ec2';
 import * as iam from '../../aws-iam';
+import * as kms from '../../aws-kms';
 import * as cdk from '../../core';
-import { HostedZone, PrivateHostedZone, PublicHostedZone } from '../lib';
+import { HostedZone, PrivateHostedZone, PublicHostedZone, ZoneSigningOptions } from '../lib';
 
 describe('hosted zone', () => {
   describe('Hosted Zone', () => {
@@ -288,6 +289,156 @@ test('grantDelegation', () => {
   });
 });
 
+test('grantDelegation on imported zones', () => {
+  // GIVEN
+  const stack = new cdk.Stack(undefined, 'TestStack', {
+    env: { account: '123456789012', region: 'us-east-1' },
+  });
+
+  const role = new iam.Role(stack, 'Role', {
+    assumedBy: new iam.AccountRootPrincipal(),
+  });
+
+  // WHEN
+  const zone = HostedZone.fromHostedZoneId(stack, 'Zone', 'hosted-id');
+  zone.grantDelegation(role);
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: [
+        {
+          Action: 'route53:ChangeResourceRecordSets',
+          Effect: 'Allow',
+          Resource: {
+            'Fn::Join': [
+              '',
+              [
+                'arn:',
+                {
+                  Ref: 'AWS::Partition',
+                },
+                ':route53:::hostedzone/hosted-id',
+              ],
+            ],
+          },
+          Condition: {
+            'ForAllValues:StringEquals': {
+              'route53:ChangeResourceRecordSetsRecordTypes': ['NS'],
+              'route53:ChangeResourceRecordSetsActions': ['UPSERT', 'DELETE'],
+            },
+          },
+        },
+        {
+          Action: 'route53:ListHostedZonesByName',
+          Effect: 'Allow',
+          Resource: '*',
+        },
+      ],
+    },
+  });
+});
+
+test('grantDelegation on public imported zones', () => {
+  // GIVEN
+  const stack = new cdk.Stack(undefined, 'TestStack', {
+    env: { account: '123456789012', region: 'us-east-1' },
+  });
+
+  const role = new iam.Role(stack, 'Role', {
+    assumedBy: new iam.AccountRootPrincipal(),
+  });
+
+  // WHEN
+  const publicZone = PublicHostedZone.fromPublicHostedZoneId(stack, 'PublicZone', 'public-hosted-id');
+  publicZone.grantDelegation(role);
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: [
+        {
+          Action: 'route53:ChangeResourceRecordSets',
+          Effect: 'Allow',
+          Resource: {
+            'Fn::Join': [
+              '',
+              [
+                'arn:',
+                {
+                  Ref: 'AWS::Partition',
+                },
+                ':route53:::hostedzone/public-hosted-id',
+              ],
+            ],
+          },
+          Condition: {
+            'ForAllValues:StringEquals': {
+              'route53:ChangeResourceRecordSetsRecordTypes': ['NS'],
+              'route53:ChangeResourceRecordSetsActions': ['UPSERT', 'DELETE'],
+            },
+          },
+        },
+        {
+          Action: 'route53:ListHostedZonesByName',
+          Effect: 'Allow',
+          Resource: '*',
+        },
+      ],
+    },
+  });
+});
+
+test('grantDelegation on private imported zones', () => {
+  // GIVEN
+  const stack = new cdk.Stack(undefined, 'TestStack', {
+    env: { account: '123456789012', region: 'us-east-1' },
+  });
+
+  const role = new iam.Role(stack, 'Role', {
+    assumedBy: new iam.AccountRootPrincipal(),
+  });
+
+  // WHEN
+  const privateZone = PrivateHostedZone.fromPrivateHostedZoneId(stack, 'PrivateZone', 'private-hosted-id');
+  privateZone.grantDelegation(role);
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: [
+        {
+          Action: 'route53:ChangeResourceRecordSets',
+          Effect: 'Allow',
+          Resource: {
+            'Fn::Join': [
+              '',
+              [
+                'arn:',
+                {
+                  Ref: 'AWS::Partition',
+                },
+                ':route53:::hostedzone/private-hosted-id',
+              ],
+            ],
+          },
+          Condition: {
+            'ForAllValues:StringEquals': {
+              'route53:ChangeResourceRecordSetsRecordTypes': ['NS'],
+              'route53:ChangeResourceRecordSetsActions': ['UPSERT', 'DELETE'],
+            },
+          },
+        },
+        {
+          Action: 'route53:ListHostedZonesByName',
+          Effect: 'Allow',
+          Resource: '*',
+        },
+      ],
+    },
+  });
+});
+
 describe('Hosted Zone with dot', () => {
   test('Hosted Zone constructs without trailing dot by default', () => {
     // GIVEN
@@ -349,5 +500,94 @@ describe('Hosted Zone with dot', () => {
     Template.fromStack(stack).hasResourceProperties('AWS::Route53::HostedZone', {
       Name: 'testZone.',
     });
+  });
+});
+
+describe('key signing key', () => {
+  test('enabling works via method', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const key = new kms.Key(stack, 'TestKey', {
+      keySpec: kms.KeySpec.ECC_NIST_P256,
+      keyUsage: kms.KeyUsage.SIGN_VERIFY,
+    });
+    const zone = new HostedZone(stack, 'HostedZone', {
+      zoneName: 'testZone',
+    });
+
+    // WHEN
+    zone.enableDnssec({
+      kmsKey: key,
+    });
+
+    // THEN
+    const template = Template.fromStack(stack);
+    template.hasResource('AWS::Route53::DNSSEC', {
+      Properties: {
+        HostedZoneId: stack.resolve(zone.hostedZoneId),
+      },
+    });
+    template.hasResource('AWS::Route53::KeySigningKey', {
+      Properties: {
+        KeyManagementServiceArn: stack.resolve(key.keyArn),
+        HostedZoneId: stack.resolve(zone.hostedZoneId),
+        Status: 'ACTIVE',
+      },
+    });
+  });
+
+  test('enabling sets KSK name correctly', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const key = new kms.Key(stack, 'TestKey', {
+      keySpec: kms.KeySpec.ECC_NIST_P256,
+      keyUsage: kms.KeyUsage.SIGN_VERIFY,
+    });
+    const zone = new HostedZone(stack, 'HostedZone', {
+      zoneName: 'testZone',
+    });
+
+    // WHEN
+    zone.enableDnssec({
+      kmsKey: key,
+      keySigningKeyName: 'testksk',
+    });
+
+    // THEN
+    const template = Template.fromStack(stack);
+    template.hasResource('AWS::Route53::DNSSEC', {
+      DependsOn: Match.anyValue(),
+      Properties: {
+        HostedZoneId: stack.resolve(zone.hostedZoneId),
+      },
+    });
+    template.hasResource('AWS::Route53::KeySigningKey', {
+      Properties: {
+        KeyManagementServiceArn: stack.resolve(key.keyArn),
+        HostedZoneId: stack.resolve(zone.hostedZoneId),
+        Status: 'ACTIVE',
+        Name: 'testksk',
+      },
+    });
+  });
+
+  test('attempting to enable DNSSEC twice fails', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const key = new kms.Key(stack, 'TestKey', {
+      keySpec: kms.KeySpec.ECC_NIST_P256,
+      keyUsage: kms.KeyUsage.SIGN_VERIFY,
+    });
+    const zone = new HostedZone(stack, 'HostedZone', {
+      zoneName: 'testZone',
+    });
+
+    // WHEN
+    zone.enableDnssec({
+      kmsKey: key,
+    });
+
+    // THEN
+    expect(() => zone.enableDnssec({ kmsKey: key })).toThrow('DNSSEC is already enabled for this hosted zone');
   });
 });

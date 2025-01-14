@@ -1,12 +1,11 @@
-import * as path from 'path';
 import { Construct } from 'constructs';
 import * as iam from '../../../aws-iam';
-import * as lambda from '../../../aws-lambda';
 import * as logs from '../../../aws-logs';
 import * as s3 from '../../../aws-s3';
 import * as sfn from '../../../aws-stepfunctions';
 import { TaskInput } from '../../../aws-stepfunctions';
 import * as cdk from '../../../core';
+import { RolePolicySingletonFunction } from '../../../custom-resource-handlers/dist/aws-stepfunctions-tasks/role-policy-provider.generated';
 import * as cr from '../../../custom-resources';
 import * as awscli from '../../../lambda-layer-awscli';
 import { integrationResourceArn, validatePatternSupported } from '../private/task-utils';
@@ -177,7 +176,7 @@ export class EmrContainersStartJobRun extends sfn.TaskStateBase implements iam.I
       Properties: property.properties ? cdk.objectToCloudFormation(property.properties) : undefined,
       Configurations: property.nestedConfig ? cdk.listMapper(this.applicationConfigPropertyToJson)(property.nestedConfig) : undefined,
     };
-  }
+  };
 
   private validateAppConfigPropertiesLength(appConfig: ApplicationConfiguration) {
     if (appConfig?.properties === undefined) {
@@ -254,7 +253,7 @@ export class EmrContainersStartJobRun extends sfn.TaskStateBase implements iam.I
     } else {
       return (this.props.monitoring?.logging ? new logs.LogGroup(this, 'Monitoring Log Group') : undefined);
     }
-  }
+  };
 
   private assignLogBucket = () : any => {
     if (this.props.monitoring?.logBucket) {
@@ -262,7 +261,7 @@ export class EmrContainersStartJobRun extends sfn.TaskStateBase implements iam.I
     } else {
       return (this.props.monitoring?.logging ? new s3.Bucket(this, 'Monitoring Bucket') : undefined);
     }
-  }
+  };
 
   // https://docs.aws.amazon.com/emr/latest/EMR-on-EKS-DevelopmentGuide/creating-job-execution-role.html
   private createJobExecutionRole(): iam.Role {
@@ -350,11 +349,8 @@ export class EmrContainersStartJobRun extends sfn.TaskStateBase implements iam.I
      * Commands available through CLI: https://awscli.amazonaws.com/v2/documentation/api/latest/reference/emr-containers/index.html
     */
     const cliLayer = new awscli.AwsCliLayer(this, 'awsclilayer');
-    const shellCliLambda = new lambda.SingletonFunction(this, 'Call Update-Role-Trust-Policy', {
+    const shellCliLambda = new RolePolicySingletonFunction(this, 'Call Update-Role-Trust-Policy', {
       uuid: '8693BB64-9689-44B6-9AAF-B0CC9EB8757C',
-      runtime: lambda.Runtime.PYTHON_3_9,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, 'utils/role-policy')),
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       layers: [cliLayer],
@@ -591,7 +587,7 @@ export interface Monitoring {
    *
    * @default true - true if values are provided for `logGroup` or `logBucket`, false otherwise
    */
-  readonly logging?: boolean
+  readonly logging?: boolean;
 
   /**
    * A log group for CloudWatch monitoring.

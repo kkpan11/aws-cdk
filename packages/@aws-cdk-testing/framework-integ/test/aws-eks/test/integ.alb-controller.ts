@@ -3,11 +3,12 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { App, CfnOutput, Duration, Stack } from 'aws-cdk-lib';
 import * as integ from '@aws-cdk/integ-tests-alpha';
 import * as cdk8s from 'cdk8s';
-import * as kplus from 'cdk8s-plus-24';
+import * as kplus from 'cdk8s-plus-27';
 import { getClusterVersionConfig } from './integ-tests-kubernetes-version';
 import { Pinger } from './pinger/pinger';
 import * as eks from 'aws-cdk-lib/aws-eks';
 
+const LATEST_VERSION: eks.AlbControllerVersion = eks.AlbControllerVersion.V2_8_2;
 class EksClusterAlbControllerStack extends Stack {
 
   constructor(scope: App, id: string) {
@@ -18,9 +19,9 @@ class EksClusterAlbControllerStack extends Stack {
 
     const cluster = new eks.Cluster(this, 'Cluster', {
       vpc,
-      ...getClusterVersionConfig(this),
+      ...getClusterVersionConfig(this, eks.KubernetesVersion.V1_30),
       albController: {
-        version: eks.AlbControllerVersion.V2_5_1,
+        version: LATEST_VERSION,
       },
     });
 
@@ -69,8 +70,10 @@ class EksClusterAlbControllerStack extends Stack {
 }
 
 const app = new App();
-const stack = new EksClusterAlbControllerStack(app, 'aws-cdk-eks-cluster-alb-controller-test');
-new integ.IntegTest(app, 'aws-cdk-cluster-alb-controller', {
+const stack = new EksClusterAlbControllerStack(app, 'aws-cdk-eks-cluster-alb-controller');
+new integ.IntegTest(app, 'aws-cdk-cluster-alb-controller-integ', {
   testCases: [stack],
+  // Test includes assets that are updated weekly. If not disabled, the upgrade PR will fail.
+  diffAssets: false,
 });
 app.synth();

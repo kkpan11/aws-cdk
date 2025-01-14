@@ -18,7 +18,7 @@ test('use AwsApi as an event rule target', () => {
     parameters: {
       service: 'cool-service',
       forceNewDeployment: true,
-    } as AWS.ECS.UpdateServiceRequest,
+    },
     catchErrorPattern: 'error',
     apiVersion: '2019-01-01',
   }));
@@ -28,7 +28,7 @@ test('use AwsApi as an event rule target', () => {
     action: 'createDBSnapshot',
     parameters: {
       DBInstanceIdentifier: 'cool-instance',
-    } as AWS.RDS.CreateDBSnapshotMessage,
+    },
   }));
 
   // THEN
@@ -163,5 +163,5 @@ test('with service not in AWS SDK', () => {
   rule.addTarget(awsApi);
 
   // THEN
-  Annotations.fromStack(stack).hasWarning('*', 'Service no-such-service does not exist in the AWS SDK. Check the list of available services and actions from https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/index.html');
+  Annotations.fromStack(stack).hasWarning('*', 'Service no-such-service does not exist in the AWS SDK. Check the list of available services and actions from https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/index.html [ack: @aws-cdk/aws-events-targets:no-such-serviceDoesNotExist]');
 });

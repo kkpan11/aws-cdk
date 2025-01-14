@@ -1,4 +1,5 @@
 import { App, Stack } from 'aws-cdk-lib';
+import { BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import { APP_ID } from './util';
 import { AppStagingSynthesizer } from '../lib';
 
@@ -8,6 +9,7 @@ describe('per environment cache', () => {
     const app = new App({
       defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
         appId: APP_ID,
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
       }),
     });
     new Stack(app, 'Stack1', {
@@ -36,6 +38,7 @@ describe('per environment cache', () => {
     const app = new App({
       defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
         appId: APP_ID,
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
       }),
     });
     new Stack(app, 'Stack1', {
@@ -64,6 +67,7 @@ describe('per environment cache', () => {
     const app = new App({
       defaultStackSynthesizer: AppStagingSynthesizer.defaultResources({
         appId: APP_ID,
+        stagingBucketEncryption: BucketEncryption.S3_MANAGED,
       }),
     });
     new Stack(app, 'Stack1', {
@@ -74,6 +78,6 @@ describe('per environment cache', () => {
     });
 
     // THEN
-    expect(() => new Stack(app, 'Stack2')).toThrowError(/It is not safe to use AppStagingSynthesizer for both environment-agnostic and environment-aware stacks at the same time./);
+    expect(() => new Stack(app, 'Stack2')).toThrow(/It is not safe to use AppStagingSynthesizer for both environment-agnostic and environment-aware stacks at the same time./);
   });
 });

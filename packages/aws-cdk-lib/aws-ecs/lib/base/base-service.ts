@@ -1,5 +1,6 @@
 import { Construct } from 'constructs';
 import { ScalableTaskCount } from './scalable-task-count';
+import { ServiceManagedVolume } from './service-managed-volume';
 import * as appscaling from '../../../aws-applicationautoscaling';
 import * as cloudwatch from '../../../aws-cloudwatch';
 import * as ec2 from '../../../aws-ec2';
@@ -17,10 +18,18 @@ import {
   Stack,
   ArnFormat,
   FeatureFlags,
+  Token,
+  Arn,
+  Fn,
 } from '../../../core';
 import * as cxapi from '../../../cx-api';
-
-import { LoadBalancerTargetOptions, NetworkMode, TaskDefinition } from '../base/task-definition';
+import { RegionInfo } from '../../../region-info';
+import {
+  LoadBalancerTargetOptions,
+  NetworkMode,
+  TaskDefinition,
+  TaskDefinitionRevision,
+} from '../base/task-definition';
 import { ICluster, CapacityProviderStrategy, ExecuteCommandLogging, Cluster } from '../cluster';
 import { ContainerDefinition, Protocol } from '../container-definition';
 import { CfnService } from '../ecs.generated';
@@ -62,10 +71,56 @@ export interface DeploymentController {
  */
 export interface DeploymentCircuitBreaker {
   /**
+   * Whether to enable the deployment circuit breaker logic
+   * @default true
+   */
+  readonly enable?: boolean;
+
+  /**
    * Whether to enable rollback on deployment failure
+   *
    * @default false
    */
   readonly rollback?: boolean;
+}
+
+/**
+ * Deployment behavior when an ECS Service Deployment Alarm is triggered
+ */
+export enum AlarmBehavior {
+  /**
+   * ROLLBACK_ON_ALARM causes the service to roll back to the previous deployment
+   * when any deployment alarm enters the 'Alarm' state. The Cloudformation stack
+   * will be rolled back and enter state "UPDATE_ROLLBACK_COMPLETE".
+   */
+  ROLLBACK_ON_ALARM = 'ROLLBACK_ON_ALARM',
+  /**
+   * FAIL_ON_ALARM causes the deployment to fail immediately when any deployment
+   * alarm enters the 'Alarm' state. In order to restore functionality, you must
+   * roll the stack forward by pushing a new version of the ECS service.
+   */
+  FAIL_ON_ALARM = 'FAIL_ON_ALARM',
+}
+
+/**
+ * Options for deployment alarms
+ */
+export interface DeploymentAlarmOptions {
+  /**
+   * Default rollback on alarm
+   * @default AlarmBehavior.ROLLBACK_ON_ALARM
+   */
+  readonly behavior?: AlarmBehavior;
+}
+
+/**
+ * Configuration for deployment alarms
+ */
+export interface DeploymentAlarmConfig extends DeploymentAlarmOptions {
+  /**
+   * List of alarm names to monitor during deployments
+   */
+  readonly alarmNames: string[];
 }
 
 export interface EcsTarget {
@@ -161,7 +216,7 @@ export interface ServiceConnectService {
   readonly dnsName?: string;
 
   /**
-   The port for clients to use to communicate with this service via Service Connect.
+   * The port for clients to use to communicate with this service via Service Connect.
    *
    * @default the container port specified by the port mapping in portMappingName.
    */
@@ -173,6 +228,32 @@ export interface ServiceConnectService {
    * @default - none
    */
   readonly ingressPortOverride?: number;
+
+  /**
+   * The amount of time in seconds a connection for Service Connect will stay active while idle.
+   *
+   * A value of 0 can be set to disable `idleTimeout`.
+   *
+   * If `idleTimeout` is set to a time that is less than `perRequestTimeout`, the connection will close
+   * when the `idleTimeout` is reached and not the `perRequestTimeout`.
+   *
+   * @default - Duration.minutes(5) for HTTP/HTTP2/GRPC, Duration.hours(1) for TCP.
+   */
+  readonly idleTimeout?: Duration;
+
+  /**
+   * The amount of time waiting for the upstream to respond with a complete response per request for
+   * Service Connect.
+   *
+   * A value of 0 can be set to disable `perRequestTimeout`.
+   * Can only be set when the `appProtocol` for the application container is HTTP/HTTP2/GRPC.
+   *
+   * If `idleTimeout` is set to a time that is less than `perRequestTimeout`, the connection will close
+   * when the `idleTimeout` is reached and not the `perRequestTimeout`.
+   *
+   * @default - Duration.seconds(15)
+   */
+  readonly perRequestTimeout?: Duration;
 }
 
 /**
@@ -274,6 +355,15 @@ export interface BaseServiceOptions {
   readonly circuitBreaker?: DeploymentCircuitBreaker;
 
   /**
+   * The alarm(s) to monitor during deployment, and behavior to apply if at least one enters a state of alarm
+   * during the deployment or bake time.
+   *
+   *
+   * @default - No alarms will be monitored during deployment.
+   */
+  readonly deploymentAlarms?: DeploymentAlarmConfig;
+
+  /**
    * A list of Capacity Provider strategies used to place a service.
    *
    * @default - undefined
@@ -295,6 +385,21 @@ export interface BaseServiceOptions {
    * cannot make requests to other services via Service Connect.
    */
   readonly serviceConnectConfiguration?: ServiceConnectProps;
+
+  /**
+   * Revision number for the task definition or `latest` to use the latest active task revision.
+   *
+   * @default - Uses the revision of the passed task definition deployed by CloudFormation
+   */
+  readonly taskDefinitionRevision?: TaskDefinitionRevision;
+
+  /**
+   * Configuration details for a volume used by the service. This allows you to specify
+   * details about the EBS volume that can be attched to ECS tasks.
+   *
+   * @default - undefined
+   */
+  readonly volumeConfigurations?: ServiceManagedVolume[];
 }
 
 /**
@@ -307,7 +412,7 @@ export interface BaseServiceProps extends BaseServiceOptions {
    *
    * LaunchType will be omitted if capacity provider strategies are specified on the service.
    *
-   * @see - https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-service.html#cfn-ecs-service-capacityproviderstrategy
+   * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-service.html#cfn-ecs-service-capacityproviderstrategy
    *
    * Valid values are: LaunchType.ECS or LaunchType.FARGATE or LaunchType.EXTERNAL
    */
@@ -413,16 +518,20 @@ export abstract class BaseService extends Resource
   public static fromServiceArnWithCluster(scope: Construct, id: string, serviceArn: string): IBaseService {
     const stack = Stack.of(scope);
     const arn = stack.splitArn(serviceArn, ArnFormat.SLASH_RESOURCE_NAME);
-    const resourceName = arn.resourceName;
-    if (!resourceName) {
-      throw new Error('Missing resource Name from service ARN: ${serviceArn}');
+    const resourceName = Arn.extractResourceName(serviceArn, 'service');
+    let clusterName: string;
+    let serviceName: string;
+    if (Token.isUnresolved(resourceName)) {
+      clusterName = Fn.select(0, Fn.split('/', resourceName));
+      serviceName = Fn.select(1, Fn.split('/', resourceName));
+    } else {
+      const resourceNameParts = resourceName.split('/');
+      if (resourceNameParts.length !== 2) {
+        throw new Error(`resource name ${resourceName} from service ARN: ${serviceArn} is not using the ARN cluster format`);
+      }
+      clusterName = resourceNameParts[0];
+      serviceName = resourceNameParts[1];
     }
-    const resourceNameParts = resourceName.split('/');
-    if (resourceNameParts.length !== 2) {
-      throw new Error(`resource name ${resourceName} from service ARN: ${serviceArn} is not using the ARN cluster format`);
-    }
-    const clusterName = resourceNameParts[0];
-    const serviceName = resourceNameParts[1];
 
     const clusterArn = Stack.of(scope).formatArn({
       partition: arn.partition,
@@ -494,6 +603,12 @@ export abstract class BaseService extends Resource
   protected networkConfiguration?: CfnService.NetworkConfigurationProperty;
 
   /**
+   * The deployment alarms property - this will be rendered directly and lazily as the CfnService.alarms
+   * property.
+   */
+  protected deploymentAlarms?: CfnService.DeploymentAlarmsProperty;
+
+  /**
    * The details of the service discovery registries to assign to this service.
    * For more information, see Service Discovery.
    */
@@ -507,6 +622,11 @@ export abstract class BaseService extends Resource
 
   private readonly resource: CfnService;
   private scalableTaskCount?: ScalableTaskCount;
+
+  /**
+   * All volumes
+   */
+  private readonly volumes: ServiceManagedVolume[] = [];
 
   /**
    * Constructs a new instance of the BaseService class.
@@ -534,7 +654,6 @@ export abstract class BaseService extends Resource
 
     const propagateTagsFromSource = props.propagateTaskTagsFrom ?? props.propagateTags ?? PropagatedTagSource.NONE;
     const deploymentController = this.getDeploymentController(props);
-
     this.resource = new CfnService(this, 'Service', {
       desiredCount: props.desiredCount,
       serviceName: this.physicalName,
@@ -543,9 +662,10 @@ export abstract class BaseService extends Resource
         maximumPercent: props.maxHealthyPercent || 200,
         minimumHealthyPercent: props.minHealthyPercent === undefined ? 50 : props.minHealthyPercent,
         deploymentCircuitBreaker: props.circuitBreaker ? {
-          enable: true,
+          enable: props.circuitBreaker.enable ?? true,
           rollback: props.circuitBreaker.rollback ?? false,
         } : undefined,
+        alarms: Lazy.any({ produce: () => this.deploymentAlarms }, { omitEmptyArray: true }),
       },
       propagateTags: propagateTagsFromSource === PropagatedTagSource.NONE ? undefined : props.propagateTags,
       enableEcsManagedTags: props.enableECSManagedTags ?? false,
@@ -558,13 +678,14 @@ export abstract class BaseService extends Resource
       networkConfiguration: Lazy.any({ produce: () => this.networkConfiguration }, { omitEmptyArray: true }),
       serviceRegistries: Lazy.any({ produce: () => this.serviceRegistries }, { omitEmptyArray: true }),
       serviceConnectConfiguration: Lazy.any({ produce: () => this._serviceConnectConfig }, { omitEmptyArray: true }),
+      volumeConfigurations: Lazy.any({ produce: () => this.renderVolumes() }, { omitEmptyArray: true }),
       ...additionalProps,
     });
 
     this.node.addDependency(this.taskDefinition.taskRole);
 
     if (props.deploymentController?.type === DeploymentControllerType.EXTERNAL) {
-      Annotations.of(this).addWarning('taskDefinition and launchType are blanked out when using external deployment controller.');
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-ecs:externalDeploymentController', 'taskDefinition and launchType are blanked out when using external deployment controller.');
     }
 
     if (props.circuitBreaker
@@ -572,11 +693,36 @@ export abstract class BaseService extends Resource
         && deploymentController.type !== DeploymentControllerType.ECS) {
       Annotations.of(this).addError('Deployment circuit breaker requires the ECS deployment controller.');
     }
+
+    if (props.deploymentAlarms
+      && deploymentController
+      && deploymentController.type !== DeploymentControllerType.ECS) {
+      throw new Error('Deployment alarms requires the ECS deployment controller.');
+    }
+
+    if (
+      props.deploymentController?.type === DeploymentControllerType.CODE_DEPLOY
+      && props.taskDefinitionRevision
+      && props.taskDefinitionRevision !== TaskDefinitionRevision.LATEST
+    ) {
+      throw new Error('CODE_DEPLOY deploymentController can only be used with the `latest` task definition revision');
+    }
+
+    if (props.minHealthyPercent === undefined) {
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-ecs:minHealthyPercent', 'minHealthyPercent has not been configured so the default value of 50% is used. The number of running tasks will decrease below the desired count during deployments etc. See https://github.com/aws/aws-cdk/issues/31705');
+    }
+
     if (props.deploymentController?.type === DeploymentControllerType.CODE_DEPLOY) {
       // Strip the revision ID from the service's task definition property to
       // prevent new task def revisions in the stack from triggering updates
       // to the stack's ECS service resource
       this.resource.taskDefinition = taskDefinition.family;
+      this.node.addDependency(taskDefinition);
+    } else if (props.taskDefinitionRevision) {
+      this.resource.taskDefinition = taskDefinition.family;
+      if (props.taskDefinitionRevision !== TaskDefinitionRevision.LATEST) {
+        this.resource.taskDefinition += `:${props.taskDefinitionRevision.revision}`;
+      }
       this.node.addDependency(taskDefinition);
     }
 
@@ -597,6 +743,10 @@ export abstract class BaseService extends Resource
       this.enableServiceConnect(props.serviceConnectConfiguration);
     }
 
+    if (props.volumeConfigurations) {
+      props.volumeConfigurations.forEach(v => this.addVolume(v));
+    }
+
     if (props.enableExecuteCommand) {
       this.enableExecuteCommand();
 
@@ -609,10 +759,127 @@ export abstract class BaseService extends Resource
         this.executeCommandLogConfiguration();
       }
     }
+
+    if (props.deploymentAlarms) {
+      if (props.deploymentAlarms.alarmNames.length === 0) {
+        throw new Error('at least one alarm name is required when specifying deploymentAlarms, received empty array');
+      }
+      this.deploymentAlarms = {
+        alarmNames: props.deploymentAlarms.alarmNames,
+        enable: true,
+        rollback: props.deploymentAlarms.behavior !== AlarmBehavior.FAIL_ON_ALARM,
+      };
+    // CloudWatch alarms is only supported for Amazon ECS services that use the rolling update (ECS) deployment controller.
+    } else if ((!props.deploymentController ||
+      props.deploymentController?.type === DeploymentControllerType.ECS) && this.deploymentAlarmsAvailableInRegion()) {
+      // Only set default deployment alarms settings when feature flag is not enabled.
+      if (!FeatureFlags.of(this).isEnabled(cxapi.ECS_REMOVE_DEFAULT_DEPLOYMENT_ALARM)) {
+        this.deploymentAlarms = {
+          alarmNames: [],
+          enable: false,
+          rollback: false,
+        };
+      }
+    }
+
     this.node.defaultChild = this.resource;
   }
 
-  /**   * Enable Service Connect
+  /**
+   * Adds a volume to the Service.
+   */
+  public addVolume(volume: ServiceManagedVolume) {
+    this.volumes.push(volume);
+  }
+
+  private renderVolumes(): CfnService.ServiceVolumeConfigurationProperty[] {
+    if (this.volumes.length > 1) {
+      throw new Error(`Only one EBS volume can be specified for 'volumeConfigurations', got: ${this.volumes.length}`);
+    }
+    return this.volumes.map(renderVolume);
+    function renderVolume(spec: ServiceManagedVolume): CfnService.ServiceVolumeConfigurationProperty {
+      const tagSpecifications = spec.config?.tagSpecifications?.map(ebsTagSpec => {
+        return {
+          resourceType: 'volume',
+          propagateTags: ebsTagSpec.propagateTags,
+          tags: ebsTagSpec.tags ? Object.entries(ebsTagSpec.tags).map(([key, value]) => ({
+            key: key,
+            value: value,
+          })) : undefined,
+        } as CfnService.EBSTagSpecificationProperty;
+      });
+
+      return {
+        name: spec.name,
+        managedEbsVolume: spec.config && {
+          roleArn: spec.role.roleArn,
+          encrypted: spec.config.encrypted,
+          filesystemType: spec.config.fileSystemType,
+          iops: spec.config.iops,
+          kmsKeyId: spec.config.kmsKeyId?.keyId,
+          throughput: spec.config.throughput,
+          volumeType: spec.config.volumeType,
+          snapshotId: spec.config.snapShotId,
+          sizeInGiB: spec.config.size?.toGibibytes(),
+          tagSpecifications: tagSpecifications,
+        },
+      };
+    }
+  }
+
+  /**
+   * Enable Deployment Alarms which take advantage of arbitrary alarms and configure them after service initialization.
+   * If you have already enabled deployment alarms, this function can be used to tell ECS about additional alarms that
+   * should interrupt a deployment.
+   *
+   * New alarms specified in subsequent calls of this function will be appended to the existing list of alarms.
+   *
+   * The same Alarm Behavior must be used on all deployment alarms. If you specify different AlarmBehavior values in
+   * multiple calls to this function, or the Alarm Behavior used here doesn't match the one used in the service
+   * constructor, an error will be thrown.
+   *
+   * If the alarm's metric references the service, you cannot pass `Alarm.alarmName` here. That will cause a circular
+   * dependency between the service and its deployment alarm. See this package's README for options to alarm on service
+   * metrics, and avoid this circular dependency.
+   *
+   */
+  public enableDeploymentAlarms(alarmNames: string[], options?: DeploymentAlarmOptions) {
+    if (alarmNames.length === 0 ) {
+      throw new Error('at least one alarm name is required when calling enableDeploymentAlarms(), received empty array');
+    }
+
+    alarmNames.forEach(alarmName => {
+      if (Token.isUnresolved(alarmName)) {
+        Annotations.of(this).addInfo(
+          `Deployment alarm (${JSON.stringify(this.stack.resolve(alarmName))}) enabled on ${this.node.id} may cause a circular dependency error when this stack deploys. The alarm name references the alarm's logical id, or another resource. See the 'Deployment alarms' section in the module README for more details.`,
+        );
+      }
+    });
+
+    if (this.deploymentAlarms?.enable && options?.behavior) {
+      if (
+        (AlarmBehavior.ROLLBACK_ON_ALARM === options.behavior && !this.deploymentAlarms.rollback) ||
+        (AlarmBehavior.FAIL_ON_ALARM === options.behavior && this.deploymentAlarms.rollback)
+      ) {
+        throw new Error(`all deployment alarms on an ECS service must have the same AlarmBehavior. Attempted to enable deployment alarms with ${options.behavior}, but alarms were previously enabled with ${this.deploymentAlarms.rollback ? AlarmBehavior.ROLLBACK_ON_ALARM : AlarmBehavior.FAIL_ON_ALARM}`);
+      }
+    }
+
+    if (!this.deploymentAlarms?.enable) {
+      this.deploymentAlarms = {
+        enable: true,
+        alarmNames: alarmNames,
+        rollback: options?.behavior !== AlarmBehavior.FAIL_ON_ALARM,
+      };
+    } else {
+      // If deployment alarms have previously been enabled, we only need to add
+      // the new alarm names, since rollback behaviors can't be updated/mixed.
+      this.deploymentAlarms.alarmNames.concat(alarmNames);
+    }
+  }
+
+  /**
+   * Enable Service Connect on this service.
    */
   public enableServiceConnect(config?: ServiceConnectProps) {
     if (this._serviceConnectConfig) {
@@ -658,6 +925,7 @@ export abstract class BaseService extends Resource
         discoveryName: svc.discoveryName,
         ingressPortOverride: svc.ingressPortOverride,
         clientAliases: [alias],
+        timeout: this.renderTimeout(svc.idleTimeout, svc.perRequestTimeout),
       } as CfnService.ServiceConnectServiceProperty;
     });
 
@@ -769,23 +1037,30 @@ export abstract class BaseService extends Resource
   }
 
   private executeCommandLogConfiguration() {
+    const reducePermissions = FeatureFlags.of(this).isEnabled(cxapi.REDUCE_EC2_FARGATE_CLOUDWATCH_PERMISSIONS);
     const logConfiguration = this.cluster.executeCommandConfiguration?.logConfiguration;
-    this.taskDefinition.addToTaskRolePolicy(new iam.PolicyStatement({
-      actions: [
-        'logs:DescribeLogGroups',
-      ],
-      resources: ['*'],
-    }));
 
-    const logGroupArn = logConfiguration?.cloudWatchLogGroup ? `arn:${this.stack.partition}:logs:${this.env.region}:${this.env.account}:log-group:${logConfiguration.cloudWatchLogGroup.logGroupName}:*` : '*';
-    this.taskDefinition.addToTaskRolePolicy(new iam.PolicyStatement({
-      actions: [
-        'logs:CreateLogStream',
-        'logs:DescribeLogStreams',
-        'logs:PutLogEvents',
-      ],
-      resources: [logGroupArn],
-    }));
+    // When Feature Flag is false, keep the previous behaviour for non-breaking changes.
+    // When Feature Flag is true and when cloudwatch log group is specified in logConfiguration, then
+    // append the necessary permissions to the task definition.
+    if (!reducePermissions || logConfiguration?.cloudWatchLogGroup) {
+      this.taskDefinition.addToTaskRolePolicy(new iam.PolicyStatement({
+        actions: [
+          'logs:DescribeLogGroups',
+        ],
+        resources: ['*'],
+      }));
+
+      const logGroupArn = logConfiguration?.cloudWatchLogGroup ? `arn:${this.stack.partition}:logs:${this.env.region}:${this.env.account}:log-group:${logConfiguration.cloudWatchLogGroup.logGroupName}:*` : '*';
+      this.taskDefinition.addToTaskRolePolicy(new iam.PolicyStatement({
+        actions: [
+          'logs:CreateLogStream',
+          'logs:DescribeLogStreams',
+          'logs:PutLogEvents',
+        ],
+        resources: [logGroupArn],
+      }));
+    }
 
     if (logConfiguration?.s3Bucket?.bucketName) {
       this.taskDefinition.addToTaskRolePolicy(new iam.PolicyStatement({
@@ -894,14 +1169,14 @@ export abstract class BaseService extends Resource
     return {
       attachToApplicationTargetGroup(targetGroup: elbv2.ApplicationTargetGroup): elbv2.LoadBalancerTargetProps {
         targetGroup.registerConnectable(self, self.taskDefinition._portRangeFromPortMapping(target.portMapping));
-        return self.attachToELBv2(targetGroup, target.containerName, target.portMapping.containerPort);
+        return self.attachToELBv2(targetGroup, target.containerName, target.portMapping.containerPort!);
       },
       attachToNetworkTargetGroup(targetGroup: elbv2.NetworkTargetGroup): elbv2.LoadBalancerTargetProps {
-        return self.attachToELBv2(targetGroup, target.containerName, target.portMapping.containerPort);
+        return self.attachToELBv2(targetGroup, target.containerName, target.portMapping.containerPort!);
       },
       connections,
       attachToClassicLB(loadBalancer: elb.LoadBalancer): void {
-        return self.attachToELB(loadBalancer, target.containerName, target.portMapping.containerPort);
+        return self.attachToELB(loadBalancer, target.containerName, target.portMapping.containerPort!);
       },
     };
   }
@@ -1230,6 +1505,29 @@ export abstract class BaseService extends Resource
       resources: ['*'],
     }));
   }
+
+  private deploymentAlarmsAvailableInRegion(): boolean {
+    const unsupportedPartitions = ['aws-cn', 'aws-us-gov', 'aws-iso', 'aws-iso-b'];
+    const currentRegion = RegionInfo.get(this.stack.resolve(this.stack.region));
+    if (currentRegion.partition) {
+      return !unsupportedPartitions.includes(currentRegion.partition);
+    }
+    return true;
+  }
+
+  private renderTimeout(idleTimeout?: Duration, perRequestTimeout?: Duration): CfnService.TimeoutConfigurationProperty | undefined {
+    if (!idleTimeout && !perRequestTimeout) return undefined;
+    if (idleTimeout && idleTimeout.toMilliseconds() > 0 && idleTimeout.toMilliseconds() < Duration.seconds(1).toMilliseconds()) {
+      throw new Error(`idleTimeout must be at least 1 second or 0 to disable it, got ${idleTimeout.toMilliseconds()}ms.`);
+    }
+    if (perRequestTimeout && perRequestTimeout.toMilliseconds() > 0 && perRequestTimeout.toMilliseconds() < Duration.seconds(1).toMilliseconds()) {
+      throw new Error(`perRequestTimeout must be at least 1 second or 0 to disable it, got ${perRequestTimeout.toMilliseconds()}ms.`);
+    }
+    return {
+      idleTimeoutSeconds: idleTimeout?.toSeconds(),
+      perRequestTimeoutSeconds: perRequestTimeout?.toSeconds(),
+    };
+  }
 }
 
 /**
@@ -1241,7 +1539,7 @@ export interface CloudMapOptions {
    *
    * @default CloudFormation-generated name
    */
-  readonly name?: string,
+  readonly name?: string;
 
   /**
    * The service discovery namespace for the Cloud Map service to attach to the ECS service.
@@ -1255,7 +1553,7 @@ export interface CloudMapOptions {
    *
    * @default - DnsRecordType.A if TaskDefinition.networkMode = AWS_VPC, otherwise DnsRecordType.SRV
    */
-  readonly dnsRecordType?: cloudmap.DnsRecordType.A | cloudmap.DnsRecordType.SRV,
+  readonly dnsRecordType?: cloudmap.DnsRecordType.A | cloudmap.DnsRecordType.SRV;
 
   /**
    * The amount of time that you want DNS resolvers to cache the settings for this record.
@@ -1352,7 +1650,7 @@ export enum LaunchType {
   /**
    * The service will be launched using the EXTERNAL launch type
    */
-  EXTERNAL = 'EXTERNAL'
+  EXTERNAL = 'EXTERNAL',
 }
 
 /**
@@ -1373,7 +1671,7 @@ export enum DeploymentControllerType {
   /**
    * The external (EXTERNAL) deployment type enables you to use any third-party deployment controller
    */
-  EXTERNAL = 'EXTERNAL'
+  EXTERNAL = 'EXTERNAL',
 }
 
 /**
@@ -1393,7 +1691,7 @@ export enum PropagatedTagSource {
   /**
    * Do not propagate
    */
-  NONE = 'NONE'
+  NONE = 'NONE',
 }
 
 /**

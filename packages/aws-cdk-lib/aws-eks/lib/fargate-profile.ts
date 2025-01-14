@@ -1,5 +1,5 @@
 import { Construct } from 'constructs';
-import { Cluster } from './cluster';
+import { Cluster, AuthenticationMode } from './cluster';
 import { FARGATE_PROFILE_RESOURCE_TYPE } from './cluster-resource-handler/consts';
 import { ClusterResourceProvider } from './cluster-resource-provider';
 import * as ec2 from '../../aws-ec2';
@@ -155,7 +155,7 @@ export class FargateProfile extends Construct implements ITaggable {
     this.podExecutionRole.grantPassRole(props.cluster.adminRole);
 
     if (props.subnetSelection && !props.vpc) {
-      Annotations.of(this).addWarning('Vpc must be defined to use a custom subnet selection. All private subnets belonging to the EKS cluster will be used by default');
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-eks:fargateProfileDefaultToPrivateSubnets', 'Vpc must be defined to use a custom subnet selection. All private subnets belonging to the EKS cluster will be used by default');
     }
 
     let subnets: string[] | undefined;
@@ -201,15 +201,23 @@ export class FargateProfile extends Construct implements ITaggable {
       resource.node.addDependency(previousProfile);
     }
 
-    // map the fargate pod execution role to the relevant groups in rbac
-    // see https://github.com/aws/aws-cdk/issues/7981
-    props.cluster.awsAuth.addRoleMapping(this.podExecutionRole, {
-      username: 'system:node:{{SessionName}}',
-      groups: [
-        'system:bootstrappers',
-        'system:nodes',
-        'system:node-proxier',
-      ],
-    });
+    const supportConfigMap = [
+      undefined,
+      AuthenticationMode.CONFIG_MAP,
+      AuthenticationMode.API_AND_CONFIG_MAP,
+    ].includes(props.cluster.authenticationMode);
+
+    if (supportConfigMap) {
+      // map the fargate pod execution role to the relevant groups in rbac
+      // see https://github.com/aws/aws-cdk/issues/7981
+      props.cluster.awsAuth.addRoleMapping(this.podExecutionRole, {
+        username: 'system:node:{{SessionName}}',
+        groups: [
+          'system:bootstrappers',
+          'system:nodes',
+          'system:node-proxier',
+        ],
+      });
+    }
   }
 }

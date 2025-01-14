@@ -12,9 +12,9 @@ import { AwsCustomResource, AwsCustomResourcePolicy, PhysicalResourceId } from '
 import { Construct } from 'constructs';
 
 interface CognitoUserProps {
-  userPool: cognito.UserPool
-  username: string
-  password: string
+  userPool: cognito.UserPool;
+  username: string;
+  password: string;
 }
 /**
  * Cognito User for testing
@@ -76,9 +76,9 @@ class CognitoUser extends Construct {
 }
 
 interface AlbOidcStackProps extends StackProps {
-  hostedZoneId: string
-  hostedZoneName: string
-  domainName: string
+  hostedZoneId: string;
+  hostedZoneName: string;
+  domainName: string;
 }
 
 class AlbOidcStack extends Stack {
@@ -155,11 +155,11 @@ class AlbOidcStack extends Stack {
  *
 */
 const hostedZoneId = process.env.CDK_INTEG_HOSTED_ZONE_ID ?? process.env.HOSTED_ZONE_ID;
-if (!hostedZoneId) throw new Error('For this test you must provide your own HostedZoneId as an env var "HOSTED_ZONE_ID"');
+if (!hostedZoneId) throw new Error('For this test you must provide your own HostedZoneId as an env var "HOSTED_ZONE_ID". See framework-integ/README.md for details.');
 const hostedZoneName = process.env.CDK_INTEG_HOSTED_ZONE_NAME ?? process.env.HOSTED_ZONE_NAME;
-if (!hostedZoneName) throw new Error('For this test you must provide your own HostedZoneName as an env var "HOSTED_ZONE_NAME"');
+if (!hostedZoneName) throw new Error('For this test you must provide your own HostedZoneName as an env var "HOSTED_ZONE_NAME". See framework-integ/README.md for details.');
 const domainName = process.env.CDK_INTEG_DOMAIN_NAME ?? process.env.DOMAIN_NAME;
-if (!domainName) throw new Error('For this test you must provide your own Domain Name as an env var "DOMAIN_NAME"');
+if (!domainName) throw new Error('For this test you must provide your own DomainName as an env var "DOMAIN_NAME". See framework-integ/README.md for details.');
 
 const app = new App();
 const testCase = new AlbOidcStack(app, 'IntegAlbOidc', {
@@ -169,16 +169,18 @@ const testCase = new AlbOidcStack(app, 'IntegAlbOidc', {
 });
 const test = new integ.IntegTest(app, 'IntegTestAlbOidc', {
   testCases: [testCase],
+  diffAssets: true,
 });
-const testUser = new CognitoUser(testCase, 'User', {
+const cognitoUserProps = {
   userPool: testCase.userPool,
   username: 'test-user@example.com',
   password: 'TestUser@123',
-});
+};
+const testUser = new CognitoUser(testCase, 'User', cognitoUserProps);
 // this function signs in to the website and returns text content of the authenticated page body
 const signinFunction = new lambda.Function(testCase, 'Signin', {
   functionName: 'cdk-integ-alb-oidc-signin-handler',
-  code: lambda.Code.fromAsset('alb-oidc-signin-handler'),
+  code: lambda.Code.fromAsset('alb-oidc-signin-handler', { exclude: ['*.ts'] }),
   handler: 'index.handler',
   runtime: lambda.Runtime.NODEJS_18_X,
   environment: {
@@ -194,5 +196,27 @@ const invoke = test.assertions.invokeFunction({
 });
 invoke.expect(integ.ExpectedResult.objectLike({
   Payload: '"Authenticated"',
+}));
+const cognitoUser = test.assertions.awsApiCall('CognitoIdentityServiceProvider', 'adminGetUser', {
+  UserPoolId: cognitoUserProps.userPool.userPoolId,
+  Username: cognitoUserProps.username,
+});
+cognitoUser.expect(integ.ExpectedResult.objectLike({
+  UserStatus: 'CONFIRMED',
+  Enabled: true,
+  UserAttributes: [
+    {
+      Name: 'email',
+      Value: cognitoUserProps.username,
+    },
+    {
+      Name: 'email_verified',
+      Value: 'true',
+    },
+    {
+      Name: 'sub',
+      Value: integ.Match.stringLikeRegexp('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'),
+    },
+  ],
 }));
 app.synth();

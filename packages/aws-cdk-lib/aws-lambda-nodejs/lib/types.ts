@@ -97,7 +97,7 @@ export interface BundlingOptions extends DockerRunOptions {
    *
    * @default - automatically discovered by `esbuild`
    */
-  readonly tsconfig? : string
+  readonly tsconfig? : string;
 
   /**
    * This option tells esbuild to write out a JSON file relative to output directory with metadata about the build.
@@ -124,7 +124,7 @@ export interface BundlingOptions extends DockerRunOptions {
    * @see https://esbuild.github.io/api/#metafile
    * @default false
    */
-  readonly metafile?: boolean
+  readonly metafile?: boolean;
 
   /**
    * Use this to insert an arbitrary string at the beginning of generated JavaScript files.
@@ -135,7 +135,7 @@ export interface BundlingOptions extends DockerRunOptions {
    *
    * @default - no comments are passed
    */
-  readonly banner? : string
+  readonly banner? : string;
 
   /**
    * Use this to insert an arbitrary string at the end of generated JavaScript files.
@@ -146,7 +146,7 @@ export interface BundlingOptions extends DockerRunOptions {
    *
    * @default - no comments are passed
    */
-  readonly footer? : string
+  readonly footer? : string;
 
   /**
    * The charset to use for esbuild's output.
@@ -176,9 +176,18 @@ export interface BundlingOptions extends DockerRunOptions {
    * A list of modules that should be considered as externals (already available
    * in the runtime).
    *
-   * @default - ['aws-sdk'] if the runtime is < Node.js 18.x, ['@aws-sdk/*'] otherwise.
+   * @default - no replacements are made
    */
   readonly externalModules?: string[];
+
+  /**
+   * Includes AWS SDK in the bundle asset.
+   *
+   * @default - false
+   * if `true` the `aws-sdk` will be included in the asset bundle and not be
+   * resolved to the Lambda provided sdk.
+   */
+  readonly bundleAwsSDK?: boolean;
 
   /**
    * A list of modules that should be installed instead of bundled. Modules are
@@ -241,18 +250,18 @@ export interface BundlingOptions extends DockerRunOptions {
   *
   * @default false
   */
-  readonly preCompilation?: boolean
+  readonly preCompilation?: boolean;
 
   /**
    * A custom bundling Docker image.
    *
    * This image should have esbuild installed globally. If you plan to use `nodeModules`
-   * it should also have `npm`, `yarn` or `pnpm` depending on the lock file you're using.
+   * it should also have `npm`, `yarn`, `bun` or `pnpm` depending on the lock file you're using.
    *
-   * See https://github.com/aws/aws-cdk/blob/main/packages/%40aws-cdk/aws-lambda-nodejs/lib/Dockerfile
-   * for the default image provided by @aws-cdk/aws-lambda-nodejs.
+   * See https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/aws-lambda-nodejs/lib/Dockerfile
+   * for the default image provided by aws-cdk-lib/aws-lambda-nodejs.
    *
-   * @default - use the Docker image provided by @aws-cdk/aws-lambda-nodejs
+   * @default - use the Docker image provided by aws-cdk-lib/aws-lambda-nodejs
    */
   readonly dockerImage?: DockerImage;
 
@@ -300,7 +309,7 @@ export interface BundlingOptions extends DockerRunOptions {
    * @see https://esbuild.github.io/api/#inject
    * @default - no code is injected
    */
-  readonly inject?: string[]
+  readonly inject?: string[];
 
   /**
    * Which option to use to copy the source files to the docker container and output files back
@@ -323,7 +332,7 @@ export enum OutputFormat {
    *
    * Requires a running environment that supports `import` and `export` syntax.
    */
-  ESM = 'esm'
+  ESM = 'esm',
 }
 
 /**
@@ -373,6 +382,10 @@ export interface ICommandHooks {
  */
 export enum LogLevel {
   /** Show everything */
+  VERBOSE = 'verbose',
+  /** Show everything from info and some additional messages for debugging */
+  DEBUG = 'debug',
+  /** Show warnings, errors, and an output file summary */
   INFO = 'info',
   /** Show warnings and errors */
   WARNING = 'warning',
@@ -404,7 +417,7 @@ export enum SourceMapMode {
   /**
    * Both sourceMap mode - If you want to have the effect of both inline and external simultaneously
    */
-  BOTH = 'both'
+  BOTH = 'both',
 }
 
 /**
@@ -423,5 +436,5 @@ export enum Charset {
    *
    * Keep original characters without using escape sequences
    */
-  UTF8 = 'utf8'
+  UTF8 = 'utf8',
 }

@@ -46,7 +46,7 @@ describe('Messages', () => {
 
     test('no match', () => {
       expect(() => annotations.hasError('/Default/Fred', Match.anyValue()))
-        .toThrowError(/Stack has 1 messages.*but none match as expected./);
+        .toThrow(/Stack has 1 messages.*but none match as expected./);
     });
   });
 
@@ -57,7 +57,7 @@ describe('Messages', () => {
 
     test('no match', () => {
       expect(() => annotations.hasNoError('/Default/Foo', 'this is an error'))
-        .toThrowError(/Expected no matches, but stack has 1 messages as follows:/);
+        .toThrow(/Expected no matches, but stack has 1 messages as follows:/);
     });
   });
 
@@ -75,11 +75,11 @@ describe('Messages', () => {
 
   describe('hasWarning', () => {
     test('match', () => {
-      annotations.hasWarning('/Default/Fred', 'this is a warning');
+      annotations.hasWarning('/Default/Fred', 'this is a warning [ack: Fred]');
     });
 
     test('no match', () => {
-      expect(() => annotations.hasWarning('/Default/Foo', Match.anyValue())).toThrowError(/Stack has 1 messages.*but none match as expected./);
+      expect(() => annotations.hasWarning('/Default/Foo', Match.anyValue())).toThrow(/Stack has 1 messages.*but none match as expected./);
     });
   });
 
@@ -89,8 +89,8 @@ describe('Messages', () => {
     });
 
     test('no match', () => {
-      expect(() => annotations.hasNoWarning('/Default/Fred', 'this is a warning'))
-        .toThrowError(/Expected no matches, but stack has 1 messages as follows:/);
+      expect(() => annotations.hasNoWarning('/Default/Fred', 'this is a warning [ack: Fred]'))
+        .toThrow(/Expected no matches, but stack has 1 messages as follows:/);
     });
   });
 
@@ -112,7 +112,7 @@ describe('Messages', () => {
     });
 
     test('no match', () => {
-      expect(() => annotations.hasInfo('/Default/Qux', 'this info is incorrect')).toThrowError(/Stack has 1 messages.*but none match as expected./);
+      expect(() => annotations.hasInfo('/Default/Qux', 'this info is incorrect')).toThrow(/Stack has 1 messages.*but none match as expected./);
     });
   });
 
@@ -123,7 +123,7 @@ describe('Messages', () => {
 
     test('no match', () => {
       expect(() => annotations.hasNoInfo('/Default/Qux', 'this is an info'))
-        .toThrowError(/Expected no matches, but stack has 1 messages as follows:/);
+        .toThrow(/Expected no matches, but stack has 1 messages as follows:/);
     });
   });
 
@@ -147,7 +147,7 @@ describe('Messages', () => {
 
     test('not', () => {
       expect(() => annotations.hasError('/Default/Foo', Match.not('this is an error')))
-        .toThrowError(/Found unexpected match: "this is an error"/);
+        .toThrow(/Found unexpected match: "this is an error"/);
     });
 
     test('stringLikeRegEx', () => {
@@ -183,7 +183,7 @@ describe('Multiple Messages on the Resource', () => {
   test('succeeds on hasXxx APIs', () => {
     annotations.hasError('/Default/Foo', 'error: this is an error');
     annotations.hasError('/Default/Foo', 'error: unsupported type Foo::Bar');
-    annotations.hasWarning('/Default/Foo', 'warning: Foo::Bar is deprecated');
+    annotations.hasWarning('/Default/Foo', 'warning: Foo::Bar is deprecated [ack: Foo]');
   });
 
   test('succeeds on findXxx APIs', () => {
@@ -191,8 +191,8 @@ describe('Multiple Messages on the Resource', () => {
     expect(result1.length).toEqual(4);
     const result2 = annotations.findError('/Default/Bar', Match.stringLikeRegexp('error:.*'));
     expect(result2.length).toEqual(2);
-    const result3 = annotations.findWarning('/Default/Bar', 'warning: Foo::Bar is deprecated');
-    expect(result3[0].entry.data).toEqual('warning: Foo::Bar is deprecated');
+    const result3 = annotations.findWarning('/Default/Bar', 'warning: Foo::Bar is deprecated [ack: Bar]');
+    expect(result3[0].entry.data).toEqual('warning: Foo::Bar is deprecated [ack: Bar]');
   });
 });
 class MyAspect implements IAspect {
@@ -209,7 +209,8 @@ class MyAspect implements IAspect {
   };
 
   protected warn(node: IConstruct, message: string): void {
-    Annotations.of(node).addWarning(message);
+    // Use construct ID as suppression string, just to make it unique easily
+    Annotations.of(node).addWarningV2(node.node.id, message);
   }
 
   protected error(node: IConstruct, message: string): void {
@@ -231,7 +232,7 @@ class MultipleAspectsPerNode implements IAspect {
   }
 
   protected warn(node: IConstruct, message: string): void {
-    Annotations.of(node).addWarning(message);
+    Annotations.of(node).addWarningV2(node.node.id, message);
   }
 
   protected error(node: IConstruct, message: string): void {

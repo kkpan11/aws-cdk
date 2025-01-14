@@ -1,12 +1,6 @@
 {
-  "version": "20.0.0",
+  "version": "35.0.0",
   "artifacts": {
-    "Tree": {
-      "type": "cdk:tree",
-      "properties": {
-        "file": "tree.json"
-      }
-    },
     "aws-ecs-patterns-queue.assets": {
       "type": "cdk:asset-manifest",
       "properties": {
@@ -20,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "aws-ecs-patterns-queue.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/b7814a3967091801a00c200962fe3e15f7b2f335dbf60041edcb4ce0de933a20.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/7861afb1e7cd1bf4b6256da8aea3d3ce43e2a98850241cc4ee98e1c2c93e0d00.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -228,10 +223,7 @@
         "/aws-ecs-patterns-queue/QueueProcessingService/QueueProcessingTaskDef/Resource": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "QueueProcessingServiceQueueProcessingTaskDef4982F68B",
-            "trace": [
-              "!!DESTRUCTIVE_CHANGES: WILL_REPLACE"
-            ]
+            "data": "QueueProcessingServiceQueueProcessingTaskDef4982F68B"
           }
         ],
         "/aws-ecs-patterns-queue/QueueProcessingService/QueueProcessingTaskDef/QueueProcessingContainer/LogGroup/Resource": [
@@ -334,6 +326,7 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "queueProcessingFargateServiceTestDefaultTestDeployAssert73AFD2F6.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
@@ -367,6 +360,12 @@
         ]
       },
       "displayName": "queueProcessingFargateServiceTest/DefaultTest/DeployAssert"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
     }
   }
 }

@@ -46,7 +46,7 @@ export interface BundlingProps extends BundlingOptions {
    * Which option to use to copy the source files to the docker container and output files back
    * @default - BundlingFileAccess.BIND_MOUNT
    */
-  bundlingFileAccess?: BundlingFileAccess
+  bundlingFileAccess?: BundlingFileAccess;
 }
 
 /**
@@ -63,7 +63,7 @@ export class Bundling implements CdkBundlingOptions {
   }
 
   public readonly image: DockerImage;
-  public readonly entrypoint?: string[]
+  public readonly entrypoint?: string[];
   public readonly command: string[];
   public readonly volumes?: DockerVolume[];
   public readonly volumesFrom?: string[];
@@ -82,6 +82,7 @@ export class Bundling implements CdkBundlingOptions {
       outputPathSuffix = '',
       image,
       poetryIncludeHashes,
+      poetryWithoutUrls,
       commandHooks,
       assetExcludes = [],
     } = props;
@@ -93,11 +94,12 @@ export class Bundling implements CdkBundlingOptions {
       inputDir: AssetStaging.BUNDLING_INPUT_DIR,
       outputDir: outputPath,
       poetryIncludeHashes,
+      poetryWithoutUrls,
       commandHooks,
       assetExcludes,
     });
 
-    this.image = image ?? DockerImage.fromBuild(path.join(__dirname, '../lib'), {
+    this.image = image ?? DockerImage.fromBuild(path.join(__dirname, '..', 'lib'), {
       buildArgs: {
         ...props.buildArgs,
         IMAGE: runtime.bundlingImage.image,
@@ -117,7 +119,7 @@ export class Bundling implements CdkBundlingOptions {
   }
 
   private createBundlingCommand(options: BundlingCommandOptions): string[] {
-    const packaging = Packaging.fromEntry(options.entry, options.poetryIncludeHashes);
+    const packaging = Packaging.fromEntry(options.entry, options.poetryIncludeHashes, options.poetryWithoutUrls);
     let bundlingCommands: string[] = [];
     bundlingCommands.push(...options.commandHooks?.beforeBundling(options.inputDir, options.outputDir) ?? []);
     const exclusionStr = options.assetExcludes?.map(item => `--exclude='${item}'`).join(' ');
@@ -140,6 +142,7 @@ interface BundlingCommandOptions {
   readonly outputDir: string;
   readonly assetExcludes?: string[];
   readonly poetryIncludeHashes?: boolean;
+  readonly poetryWithoutUrls?: boolean;
   readonly commandHooks?: ICommandHooks;
 }
 

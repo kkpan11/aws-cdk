@@ -42,6 +42,7 @@ export function parseCliArgs(args: string[] = []) {
       default: ['javascript', 'typescript', 'python', 'go'],
       choices: ['javascript', 'typescript', 'python', 'go'],
       type: 'array',
+      nargs: 1,
       desc: 'Use these presets to run integration tests for the selected languages',
     })
     .option('app', { type: 'string', default: undefined, desc: 'The custom CLI command that will be used to run the test files. You can include {filePath} to specify where in the command the test file path should be inserted. Example: --app="python3.8 {filePath}".' })
@@ -106,12 +107,12 @@ export async function main(args: string[]) {
     return;
   }
 
-  const pool = workerpool.pool(path.join(__dirname, '../lib/workers/extract/index.js'), {
+  const pool = workerpool.pool(path.join(__dirname, '..', 'lib', 'workers', 'extract', 'index.js'), {
     maxWorkers: options.watch ? 1 : options.maxWorkers,
   });
 
   const testsToRun: IntegTestWorkerConfig[] = [];
-  const destructiveChanges: DestructiveChange[] = [];
+  let destructiveChanges: boolean = false;
   let failedSnapshots: IntegTestWorkerConfig[] = [];
   let testsSucceeded = false;
   validateWatchArgs({
@@ -130,7 +131,11 @@ export async function main(args: string[]) {
         verbose: options.verbose,
       });
       for (const failure of failedSnapshots) {
-        destructiveChanges.push(...failure.destructiveChanges ?? []);
+        logger.warning(`Failed: ${failure.fileName}`);
+        if (failure.destructiveChanges && failure.destructiveChanges.length > 0) {
+          printDestructiveChanges(failure.destructiveChanges);
+          destructiveChanges = true;
+        }
       }
       if (!options.force) {
         testsToRun.push(...failedSnapshots);
@@ -182,8 +187,7 @@ export async function main(args: string[]) {
     void pool.terminate();
   }
 
-  if (destructiveChanges.length > 0) {
-    printDestructiveChanges(destructiveChanges);
+  if (destructiveChanges) {
     throw new Error('Some changes were destructive!');
   }
   if (failedSnapshots.length > 0) {
@@ -199,15 +203,15 @@ export async function main(args: string[]) {
 }
 
 function validateWatchArgs(args: {
-  tests: IntegTest[],
-  testRegions?: string[],
-  profiles?: string[],
-  maxWorkers: number,
-  force: boolean,
-  dryRun: boolean,
-  disableUpdateWorkflow: boolean,
-  runUpdateOnFailed: boolean,
-  watch: boolean,
+  tests: IntegTest[];
+  testRegions?: string[];
+  profiles?: string[];
+  maxWorkers: number;
+  force: boolean;
+  dryRun: boolean;
+  disableUpdateWorkflow: boolean;
+  runUpdateOnFailed: boolean;
+  watch: boolean;
 }) {
   if (args.watch) {
     if (

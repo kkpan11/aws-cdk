@@ -44,9 +44,9 @@
               "version": "0.0.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "test-condition-with-ref/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "test-condition-with-ref/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -82,7 +82,7 @@
               }
             },
             "constructInfo": {
-              "fqn": "aws-cdk-lib.CustomResourceProvider",
+              "fqn": "aws-cdk-lib.CustomResourceProviderBase",
               "version": "0.0.0"
             }
           },
@@ -187,7 +187,7 @@
                 "path": "iam-test-condition-with-ref/DefaultTest/Default",
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.1.270"
+                  "version": "10.4.2"
                 }
               },
               "DeployAssert": {
@@ -233,7 +233,7 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.1.270"
+          "version": "10.4.2"
         }
       }
     },

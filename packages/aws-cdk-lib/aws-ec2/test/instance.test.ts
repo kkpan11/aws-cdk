@@ -1,9 +1,10 @@
 import * as path from 'path';
 import { Annotations, Match, Template } from '../../assertions';
+import { InstanceProfile, Role, ServicePrincipal } from '../../aws-iam';
 import { Key } from '../../aws-kms';
 import { Asset } from '../../aws-s3-assets';
 import { StringParameter } from '../../aws-ssm';
-import { App, Stack } from '../../core';
+import { App, Stack, Duration } from '../../core';
 import * as cxapi from '../../cx-api';
 import {
   AmazonLinuxImage,
@@ -21,6 +22,13 @@ import {
   Vpc,
   SubnetType,
   SecurityGroup,
+  WindowsImage,
+  WindowsVersion,
+  KeyPair,
+  KeyPairType,
+  CpuCredits,
+  InstanceInitiatedShutdownBehavior,
+  PlacementGroup,
 } from '../lib';
 
 let stack: Stack;
@@ -104,7 +112,7 @@ describe('instance', () => {
   test('instance architecture is correctly discerned for arm instances', () => {
     // GIVEN
     const sampleInstanceClasses = [
-      'a1', 't4g', 'c6g', 'c7g', 'c6gd', 'c6gn', 'm6g', 'm6gd', 'm7g', 'r6g', 'r6gd', 'r7g', 'g5g', 'im4gn', 'is4gen', // current Graviton-based instance classes
+      'a1', 't4g', 'c6g', 'c7g', 'c6gd', 'c6gn', 'c7g', 'c7gd', 'm6g', 'm6gd', 'm7g', 'm7gd', 'r6g', 'r6gd', 'r7g', 'r7gd', 'g5g', 'im4gn', 'is4gen', // current Graviton-based instance classes
       'a13', 't11g', 'y10ng', 'z11ngd', // theoretical future Graviton-based instance classes
     ];
 
@@ -119,7 +127,7 @@ describe('instance', () => {
   });
   test('instance architecture is correctly discerned for x86-64 instance', () => {
     // GIVEN
-    const sampleInstanceClasses = ['c5', 'm5ad', 'r5n', 'm6', 't3a', 'r6i', 'r6a', 'p4de']; // A sample of x86-64 instance classes
+    const sampleInstanceClasses = ['c5', 'm5ad', 'r5n', 'm6', 't3a', 'r6i', 'r6a', 'g6', 'p4de', 'p5', 'm7i-flex']; // A sample of x86-64 instance classes
 
     for (const instanceClass of sampleInstanceClasses) {
       // WHEN
@@ -129,6 +137,24 @@ describe('instance', () => {
       expect(instanceType.architecture).toBe(InstanceArchitecture.X86_64);
     }
 
+  });
+
+  test('sameInstanceClassAs compares InstanceTypes contains dashes', () => {
+    // GIVEN
+    const comparitor = InstanceType.of(InstanceClass.M7I_FLEX, InstanceSize.LARGE);
+    //WHEN
+    const largerInstanceType = InstanceType.of(InstanceClass.M7I_FLEX, InstanceSize.XLARGE);
+    //THEN
+    expect(largerInstanceType.sameInstanceClassAs(comparitor)).toBeTruthy();
+  });
+
+  test('sameInstanceClassAs compares InstanceSize contains dashes', () => {
+    // GIVEN
+    const comparitor = new InstanceType('c7a.metal-48xl');
+    //WHEN
+    const largerInstanceType = new InstanceType('c7a.xlarge');
+    //THEN
+    expect(largerInstanceType.sameInstanceClassAs(comparitor)).toBeTruthy();
   });
 
   test('instances with local NVME drive are correctly named', () => {
@@ -185,6 +211,38 @@ describe('instance', () => {
     // THEN
     Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
       PropagateTagsToVolumeOnCreation: true,
+    });
+  });
+  // placementGroup
+  describe('placementGroup', () => {
+    test('can set placementGroup', () => {
+      // WHEN
+      // create a new placementgroup
+      const pg1 = new PlacementGroup(stack, 'myPlacementGroup1');
+      new PlacementGroup(stack, 'myPlacementGroup2');
+      new Instance(stack, 'Instance1', {
+        vpc,
+        machineImage: new AmazonLinuxImage(),
+        instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+        placementGroup: pg1,
+      });
+      new Instance(stack, 'Instance2', {
+        vpc,
+        machineImage: new AmazonLinuxImage(),
+        instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+        placementGroup: PlacementGroup.fromPlacementGroupName(stack, 'importedPlacementGroup', 'myPlacementGroup2'),
+      });
+
+      const t = Template.fromStack(stack);
+      // THEN
+      t.hasResourceProperties('AWS::EC2::Instance', {
+        PlacementGroupName: {
+          'Fn::GetAtt': ['myPlacementGroup180969E8B', 'GroupName'],
+        },
+      });
+      t.hasResourceProperties('AWS::EC2::Instance', {
+        PlacementGroupName: 'myPlacementGroup2',
+      });
     });
   });
   describe('blockDeviceMappings', () => {
@@ -365,7 +423,7 @@ describe('instance', () => {
       });
 
       // THEN
-      Annotations.fromStack(stack).hasWarning('/Default/Instance', 'iops will be ignored without volumeType: IO1, IO2, or GP3');
+      Annotations.fromStack(stack).hasWarning('/Default/Instance', 'iops will be ignored without volumeType: IO1, IO2, or GP3 [ack: @aws-cdk/aws-ec2:iopsIgnored]');
     });
 
     test('warning if iops and invalid volumeType', () => {
@@ -385,7 +443,46 @@ describe('instance', () => {
       });
 
       // THEN
-      Annotations.fromStack(stack).hasWarning('/Default/Instance', 'iops will be ignored without volumeType: IO1, IO2, or GP3');
+      Annotations.fromStack(stack).hasWarning('/Default/Instance', 'iops will be ignored without volumeType: IO1, IO2, or GP3 [ack: @aws-cdk/aws-ec2:iopsIgnored]');
+    });
+  });
+
+  describe('instanceProfile', () => {
+    let instanceProfile: InstanceProfile;
+    let role: Role;
+
+    beforeEach(() => {
+      role = new Role(stack, 'MyRole', {
+        assumedBy: new ServicePrincipal('ec2.amazonaws.com'),
+      });
+      instanceProfile = new InstanceProfile(stack, 'MyInstanceProfile', {
+        role,
+      });
+    });
+
+    test('can specify instanceProfile', () => {
+      new Instance(stack, 'Instance', {
+        vpc,
+        machineImage: new AmazonLinuxImage(),
+        instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+        instanceProfile,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::IAM::InstanceProfile', {
+        Roles: [{ Ref: 'MyRoleF48FFE04' }],
+      });
+    });
+
+    test('throws if used with role', () => {
+      expect(() => {
+        new Instance(stack, 'Instance', {
+          vpc,
+          machineImage: new AmazonLinuxImage(),
+          instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+          instanceProfile,
+          role,
+        });
+      }).toThrow(/You cannot provide both instanceProfile and role/);
     });
   });
 
@@ -402,6 +499,57 @@ describe('instance', () => {
     Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
       InstanceType: 't3.large',
       PrivateIpAddress: '10.0.0.2',
+    });
+
+  });
+
+  test('instance can be created with Private IP Address AND Associate Public IP Address', () => {
+    const privateIpAddress = '10.0.0.2';
+    // GIVEN
+    const securityGroup = new SecurityGroup(stack, 'SecurityGroup', { vpc });
+
+    // WHEN
+    new Instance(stack, 'Instance', {
+      vpc,
+      vpcSubnets: { subnetType: SubnetType.PUBLIC },
+      securityGroup,
+      machineImage: new AmazonLinuxImage(),
+      instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+      privateIpAddress: privateIpAddress,
+      associatePublicIpAddress: true,
+    });
+
+    // THEN
+    // PrivateIpAddress AND NetworkInterfaces cannot both be present
+    Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
+      PrivateIpAddress: Match.absent(),
+    });
+    Template.fromStack(stack).hasResource('AWS::EC2::Instance', {
+      Properties: {
+        NetworkInterfaces: [{
+          PrivateIpAddress: privateIpAddress,
+          AssociatePublicIpAddress: true,
+          DeviceIndex: '0',
+          GroupSet: [
+            {
+              'Fn::GetAtt': [
+                'SecurityGroupDD263621',
+                'GroupId',
+              ],
+            },
+          ],
+          SubnetId: {
+            Ref: 'VPCPublicSubnet1SubnetB4246D30',
+          },
+        }],
+      },
+      DependsOn: [
+        'InstanceInstanceRoleE9785DE5',
+        'VPCPublicSubnet1DefaultRoute91CEF279',
+        'VPCPublicSubnet1RouteTableAssociation0B0896DC',
+        'VPCPublicSubnet2DefaultRouteB7481BBA',
+        'VPCPublicSubnet2RouteTableAssociation5A808732',
+      ],
     });
 
   });
@@ -433,6 +581,55 @@ describe('instance', () => {
       LaunchTemplate: {
         LaunchTemplateName: stack.resolve(launchTemplate.launchTemplateName),
       },
+    });
+  });
+
+  it('throws an error on incompatible Key Pair for operating system', () => {
+    // GIVEN
+    const keyPair = new KeyPair(stack, 'KeyPair', {
+      type: KeyPairType.ED25519,
+    });
+
+    // THEN
+    expect(() => new Instance(stack, 'Instance', {
+      vpc,
+      machineImage: new WindowsImage(WindowsVersion.WINDOWS_SERVER_2022_ENGLISH_CORE_BASE),
+      instanceType: new InstanceType('t2.micro'),
+      keyPair,
+    })).toThrow('ed25519 keys are not compatible with the chosen AMI');
+  });
+
+  it('throws an error if keyName and keyPair both provided', () => {
+    // GIVEN
+    const keyPair = new KeyPair(stack, 'KeyPair');
+
+    // THEN
+    expect(() => new Instance(stack, 'Instance', {
+      vpc,
+      instanceType: new InstanceType('t2.micro'),
+      machineImage: new AmazonLinuxImage(),
+      keyName: 'test-key-pair',
+      keyPair,
+    })).toThrow('Cannot specify both of \'keyName\' and \'keyPair\'; prefer \'keyPair\'');
+  });
+
+  it('correctly associates a key pair', () => {
+    // GIVEN
+    const keyPair = new KeyPair(stack, 'KeyPair', {
+      keyPairName: 'test-key-pair',
+    });
+
+    // WHEN
+    new Instance(stack, 'Instance', {
+      vpc,
+      instanceType: new InstanceType('t2.micro'),
+      machineImage: new AmazonLinuxImage(),
+      keyPair,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
+      KeyName: stack.resolve(keyPair.keyPairName),
     });
   });
 
@@ -491,6 +688,51 @@ describe('instance', () => {
     });
   });
 
+  test('burstable instance with explicit credit specification', () => {
+    // WHEN
+    new Instance(stack, 'Instance', {
+      vpc,
+      machineImage: new AmazonLinuxImage(),
+      instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+      creditSpecification: CpuCredits.STANDARD,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
+      InstanceType: 't3.large',
+      CreditSpecification: {
+        CPUCredits: 'standard',
+      },
+    });
+  });
+
+  test('throw if creditSpecification is defined for a non-burstable instance type', () => {
+    // THEN
+    expect(() => {
+      new Instance(stack, 'Instance', {
+        vpc,
+        machineImage: new AmazonLinuxImage(),
+        instanceType: InstanceType.of(InstanceClass.M5, InstanceSize.LARGE),
+        creditSpecification: CpuCredits.STANDARD,
+      });
+    }).toThrow('creditSpecification is supported only for T4g, T3a, T3, T2 instance type, got: m5.large');
+  });
+
+  test('set instanceInitiatedShutdownBehavior', () => {
+    // WHEN
+    new Instance(stack, 'Instance', {
+      vpc,
+      machineImage: new AmazonLinuxImage(),
+      instanceType: new InstanceType('t2.micro'),
+      instanceInitiatedShutdownBehavior: InstanceInitiatedShutdownBehavior.TERMINATE,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
+      InstanceType: 't2.micro',
+      InstanceInitiatedShutdownBehavior: 'terminate',
+    });
+  });
 });
 
 test('add CloudFormation Init to instance', () => {
@@ -736,4 +978,301 @@ test('associate public IP address with instance and no public subnet', () => {
       associatePublicIpAddress: true,
     });
   }).toThrow("To set 'associatePublicIpAddress: true' you must select Public subnets (vpcSubnets: { subnetType: SubnetType.PUBLIC })");
+});
+
+test('specify ebs optimized instance', () => {
+  // WHEN
+  new Instance(stack, 'Instance', {
+    vpc,
+    machineImage: new AmazonLinuxImage(),
+    instanceType: new InstanceType('t3.large'),
+    ebsOptimized: true,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
+    InstanceType: 't3.large',
+    EbsOptimized: true,
+  });
+});
+
+test('specify disable api termination', () => {
+  // WHEN
+  new Instance(stack, 'Instance', {
+    vpc,
+    machineImage: new AmazonLinuxImage(),
+    instanceType: new InstanceType('t3.large'),
+    disableApiTermination: true,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
+    InstanceType: 't3.large',
+    DisableApiTermination: true,
+  });
+});
+
+test.each([
+  [true, true],
+  [false, false],
+])('given enclaveEnabled %p', (given: boolean, expected: boolean) => {
+  // WHEN
+  new Instance(stack, 'Instance', {
+    vpc,
+    machineImage: new AmazonLinuxImage(),
+    instanceType: InstanceType.of(InstanceClass.M5, InstanceSize.XLARGE),
+    enclaveEnabled: given,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
+    EnclaveOptions: {
+      Enabled: expected,
+    },
+  });
+});
+
+test.each([
+  [true, true],
+  [false, false],
+])('given hibernationEnabled %p', (given: boolean, expected: boolean) => {
+  // WHEN
+  new Instance(stack, 'Instance', {
+    vpc,
+    machineImage: new AmazonLinuxImage(),
+    instanceType: InstanceType.of(InstanceClass.M5, InstanceSize.XLARGE),
+    hibernationEnabled: given,
+    blockDevices: [{
+      deviceName: '/dev/xvda',
+      volume: BlockDeviceVolume.ebs(30, {
+        volumeType: EbsDeviceVolumeType.GP3,
+        encrypted: true,
+        deleteOnTermination: true,
+      }),
+    }],
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
+    HibernationOptions: {
+      Configured: expected,
+    },
+  });
+});
+
+test('throw if both enclaveEnabled and hibernationEnabled are set to true', () => {
+  // WHEN/THEN
+  expect(() => {
+    new Instance(stack, 'Instance', {
+      vpc,
+      machineImage: new AmazonLinuxImage(),
+      instanceType: InstanceType.of(InstanceClass.M5, InstanceSize.LARGE),
+      enclaveEnabled: true,
+      hibernationEnabled: true,
+      blockDevices: [{
+        deviceName: '/dev/xvda',
+        volume: BlockDeviceVolume.ebs(30, {
+          volumeType: EbsDeviceVolumeType.GP3,
+          encrypted: true,
+          deleteOnTermination: true,
+        }),
+      }],
+    });
+  }).toThrow('You can\'t set both `enclaveEnabled` and `hibernationEnabled` to true on the same instance');
+});
+
+test('instance with ipv6 address count', () => {
+  // WHEN
+  new Instance(stack, 'Instance', {
+    vpc,
+    machineImage: new AmazonLinuxImage(),
+    instanceType: new InstanceType('t2.micro'),
+    ipv6AddressCount: 2,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::EC2::Instance', {
+    InstanceType: 't2.micro',
+    Ipv6AddressCount: 2,
+  });
+});
+
+test.each([-1, 0.1, 1.1])('throws if ipv6AddressCount is not a positive integer', (ipv6AddressCount: number) => {
+  // THEN
+  expect(() => {
+    new Instance(stack, 'Instance', {
+      vpc,
+      machineImage: new AmazonLinuxImage(),
+      instanceType: new InstanceType('t2.micro'),
+      ipv6AddressCount: ipv6AddressCount,
+    });
+  }).toThrow(`\'ipv6AddressCount\' must be a non-negative integer, got: ${ipv6AddressCount}`);
+});
+
+test.each([true, false])('throw error for specifying ipv6AddressCount with associatePublicIpAddress', (associatePublicIpAddress) => {
+  // THEN
+  expect(() => {
+    new Instance(stack, 'Instance', {
+      vpc,
+      machineImage: new AmazonLinuxImage(),
+      instanceType: new InstanceType('t2.micro'),
+      ipv6AddressCount: 2,
+      associatePublicIpAddress,
+    });
+  }).toThrow('You can\'t set both \'ipv6AddressCount\' and \'associatePublicIpAddress\'');
+});
+
+test('resourceSignalTimeout overwrites initOptions.timeout when feature flag turned off', () => {
+  // GIVEN
+  const app = new App({
+    context: {
+      [cxapi.EC2_SUM_TIMEOUT_ENABLED]: false,
+    },
+  });
+  stack = new Stack(app);
+  vpc = new Vpc(stack, 'Vpc)');
+  new Instance(stack, 'Instance', {
+    vpc,
+    machineImage: new AmazonLinuxImage(),
+    instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+    init: CloudFormationInit.fromElements(
+      InitCommand.shellCommand('echo hello'),
+    ),
+    initOptions: {
+      timeout: Duration.minutes(30),
+    },
+    resourceSignalTimeout: Duration.minutes(10),
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResource('AWS::EC2::Instance', {
+    CreationPolicy: {
+      ResourceSignal: {
+        Count: 1,
+        Timeout: 'PT10M',
+      },
+    },
+  });
+});
+
+test('initOptions.timeout and resourceSignalTimeout are both not set. Timeout is set to default of 5 min', () => {
+  // GIVEN
+  const app = new App({
+    context: {
+      [cxapi.EC2_SUM_TIMEOUT_ENABLED]: true,
+    },
+  });
+  stack = new Stack(app);
+  vpc = new Vpc(stack, 'Vpc)');
+  new Instance(stack, 'Instance', {
+    vpc,
+    machineImage: new AmazonLinuxImage(),
+    instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+    init: CloudFormationInit.fromElements(
+      InitCommand.shellCommand('echo hello'),
+    ),
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResource('AWS::EC2::Instance', {
+    CreationPolicy: {
+      ResourceSignal: {
+        Timeout: 'PT5M',
+      },
+    },
+  });
+});
+
+test('initOptions.timeout is set and not resourceSignalTimeout. Timeout is set to initOptions.timeout value', () => {
+  // GIVEN
+  const app = new App({
+    context: {
+      [cxapi.EC2_SUM_TIMEOUT_ENABLED]: true,
+    },
+  });
+  stack = new Stack(app);
+  vpc = new Vpc(stack, 'Vpc)');
+  new Instance(stack, 'Instance', {
+    vpc,
+    machineImage: new AmazonLinuxImage(),
+    instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+    init: CloudFormationInit.fromElements(
+      InitCommand.shellCommand('echo hello'),
+    ),
+    initOptions: {
+      timeout: Duration.minutes(10),
+    },
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResource('AWS::EC2::Instance', {
+    CreationPolicy: {
+      ResourceSignal: {
+        Count: 1,
+        Timeout: 'PT10M',
+      },
+    },
+  });
+});
+
+test('resourceSignalTimeout is set and not initOptions.timeout. Timeout is set to resourceSignalTimeout value', () => {
+  // GIVEN
+  const app = new App({
+    context: {
+      [cxapi.EC2_SUM_TIMEOUT_ENABLED]: true,
+    },
+  });
+  stack = new Stack(app);
+  vpc = new Vpc(stack, 'Vpc)');
+  new Instance(stack, 'Instance', {
+    vpc,
+    machineImage: new AmazonLinuxImage(),
+    instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+    init: CloudFormationInit.fromElements(
+      InitCommand.shellCommand('echo hello'),
+    ),
+    resourceSignalTimeout: Duration.minutes(10),
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResource('AWS::EC2::Instance', {
+    CreationPolicy: {
+      ResourceSignal: {
+        Timeout: 'PT15M',
+      },
+    },
+  });
+});
+
+test('resourceSignalTimeout and initOptions.timeout are both set, sum timeout and log warning', () => {
+  // GIVEN
+  const app = new App({
+    context: {
+      [cxapi.EC2_SUM_TIMEOUT_ENABLED]: true,
+    },
+  });
+  stack = new Stack(app);
+  vpc = new Vpc(stack, 'Vpc)');
+  new Instance(stack, 'Instance', {
+    vpc,
+    machineImage: new AmazonLinuxImage(),
+    instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.LARGE),
+    init: CloudFormationInit.fromElements(
+      InitCommand.shellCommand('echo hello'),
+    ),
+    initOptions: {
+      timeout: Duration.minutes(10),
+    },
+    resourceSignalTimeout: Duration.minutes(10),
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResource('AWS::EC2::Instance', {
+    CreationPolicy: {
+      ResourceSignal: {
+        Count: 1,
+        Timeout: 'PT20M',
+      },
+    },
+  });
 });

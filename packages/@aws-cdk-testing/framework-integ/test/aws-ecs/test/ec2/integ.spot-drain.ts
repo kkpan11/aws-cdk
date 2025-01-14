@@ -2,7 +2,12 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 
-const app = new cdk.App();
+const app = new cdk.App({
+  postCliContext: {
+    '@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature': false,
+    '@aws-cdk/aws-ecs:disableEcsImdsBlocking': false,
+  },
+});
 const stack = new cdk.Stack(app, 'aws-ecs-integ-spot');
 
 const vpc = new ec2.Vpc(stack, 'Vpc', { maxAzs: 2, restrictDefaultSecurityGroup: false });
@@ -10,9 +15,9 @@ const vpc = new ec2.Vpc(stack, 'Vpc', { maxAzs: 2, restrictDefaultSecurityGroup:
 const cluster = new ecs.Cluster(stack, 'EcsCluster', { vpc });
 
 cluster.addCapacity('asgSpot', {
-  maxCapacity: 2,
-  minCapacity: 2,
-  desiredCapacity: 2,
+  maxCapacity: 3,
+  minCapacity: 3,
+  desiredCapacity: 3,
   instanceType: new ec2.InstanceType('c5.xlarge'),
   spotPrice: '0.0735',
   spotInstanceDraining: true,

@@ -7,199 +7,10 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "cff916937906abb9c99e0ecbb4accbc091c734ce975c7ff64b3f4bfae4372b9c.zip"
+     "S3Key": "f24ba5e516d9d80b64bc7b0f406eedd12c36b20e7461f3e7719b7ffbdad72410.zip"
     },
     "Description": "/opt/awscli/aws"
    }
-  },
-  "Lambdapython37ServiceRoleB5A704D4": {
-   "Type": "AWS::IAM::Role",
-   "Properties": {
-    "AssumeRolePolicyDocument": {
-     "Statement": [
-      {
-       "Action": "sts:AssumeRole",
-       "Effect": "Allow",
-       "Principal": {
-        "Service": "lambda.amazonaws.com"
-       }
-      }
-     ],
-     "Version": "2012-10-17"
-    },
-    "ManagedPolicyArns": [
-     {
-      "Fn::Join": [
-       "",
-       [
-        "arn:",
-        {
-         "Ref": "AWS::Partition"
-        },
-        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-       ]
-      ]
-     }
-    ]
-   }
-  },
-  "Lambdapython3780349E0A": {
-   "Type": "AWS::Lambda::Function",
-   "Properties": {
-    "Code": {
-     "S3Bucket": {
-      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
-     },
-     "S3Key": "5dff6208ccd5fb196bb0354fd6e47faa8431a789e6125d20386586fef761ed48.zip"
-    },
-    "Role": {
-     "Fn::GetAtt": [
-      "Lambdapython37ServiceRoleB5A704D4",
-      "Arn"
-     ]
-    },
-    "Handler": "index.handler",
-    "Layers": [
-     {
-      "Ref": "AwsCliLayerF44AAF94"
-     }
-    ],
-    "MemorySize": 512,
-    "Runtime": "python3.7",
-    "Timeout": 30
-   },
-   "DependsOn": [
-    "Lambdapython37ServiceRoleB5A704D4"
-   ]
-  },
-  "Providerpython37frameworkonEventServiceRole9EA6B2B0": {
-   "Type": "AWS::IAM::Role",
-   "Properties": {
-    "AssumeRolePolicyDocument": {
-     "Statement": [
-      {
-       "Action": "sts:AssumeRole",
-       "Effect": "Allow",
-       "Principal": {
-        "Service": "lambda.amazonaws.com"
-       }
-      }
-     ],
-     "Version": "2012-10-17"
-    },
-    "ManagedPolicyArns": [
-     {
-      "Fn::Join": [
-       "",
-       [
-        "arn:",
-        {
-         "Ref": "AWS::Partition"
-        },
-        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-       ]
-      ]
-     }
-    ]
-   }
-  },
-  "Providerpython37frameworkonEventServiceRoleDefaultPolicyA9099DC2": {
-   "Type": "AWS::IAM::Policy",
-   "Properties": {
-    "PolicyDocument": {
-     "Statement": [
-      {
-       "Action": "lambda:InvokeFunction",
-       "Effect": "Allow",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "Lambdapython3780349E0A",
-          "Arn"
-         ]
-        },
-        {
-         "Fn::Join": [
-          "",
-          [
-           {
-            "Fn::GetAtt": [
-             "Lambdapython3780349E0A",
-             "Arn"
-            ]
-           },
-           ":*"
-          ]
-         ]
-        }
-       ]
-      }
-     ],
-     "Version": "2012-10-17"
-    },
-    "PolicyName": "Providerpython37frameworkonEventServiceRoleDefaultPolicyA9099DC2",
-    "Roles": [
-     {
-      "Ref": "Providerpython37frameworkonEventServiceRole9EA6B2B0"
-     }
-    ]
-   }
-  },
-  "Providerpython37frameworkonEvent3AA4F69E": {
-   "Type": "AWS::Lambda::Function",
-   "Properties": {
-    "Code": {
-     "S3Bucket": {
-      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
-     },
-     "S3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-    },
-    "Role": {
-     "Fn::GetAtt": [
-      "Providerpython37frameworkonEventServiceRole9EA6B2B0",
-      "Arn"
-     ]
-    },
-    "Description": "AWS CDK resource provider framework - onEvent (lambda-layer-awscli-integ-stack/Providerpython3.7)",
-    "Environment": {
-     "Variables": {
-      "USER_ON_EVENT_FUNCTION_ARN": {
-       "Fn::GetAtt": [
-        "Lambdapython3780349E0A",
-        "Arn"
-       ]
-      }
-     }
-    },
-    "Handler": "framework.onEvent",
-    "Runtime": {
-     "Fn::FindInMap": [
-      "DefaultCrNodeVersionMap",
-      {
-       "Ref": "AWS::Region"
-      },
-      "value"
-     ]
-    },
-    "Timeout": 900
-   },
-   "DependsOn": [
-    "Providerpython37frameworkonEventServiceRoleDefaultPolicyA9099DC2",
-    "Providerpython37frameworkonEventServiceRole9EA6B2B0"
-   ]
-  },
-  "CustomResourcepython37": {
-   "Type": "AWS::CloudFormation::CustomResource",
-   "Properties": {
-    "ServiceToken": {
-     "Fn::GetAtt": [
-      "Providerpython37frameworkonEvent3AA4F69E",
-      "Arn"
-     ]
-    }
-   },
-   "UpdateReplacePolicy": "Delete",
-   "DeletionPolicy": "Delete"
   },
   "Lambdapython39ServiceRoleE2CFED77": {
    "Type": "AWS::IAM::Role",
@@ -241,12 +52,6 @@
      },
      "S3Key": "5dff6208ccd5fb196bb0354fd6e47faa8431a789e6125d20386586fef761ed48.zip"
     },
-    "Role": {
-     "Fn::GetAtt": [
-      "Lambdapython39ServiceRoleE2CFED77",
-      "Arn"
-     ]
-    },
     "Handler": "index.handler",
     "Layers": [
      {
@@ -254,6 +59,12 @@
      }
     ],
     "MemorySize": 512,
+    "Role": {
+     "Fn::GetAtt": [
+      "Lambdapython39ServiceRoleE2CFED77",
+      "Arn"
+     ]
+    },
     "Runtime": "python3.9",
     "Timeout": 30
    },
@@ -341,13 +152,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-    },
-    "Role": {
-     "Fn::GetAtt": [
-      "Providerpython39frameworkonEventServiceRoleA299F5C1",
-      "Arn"
-     ]
+     "S3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
     },
     "Description": "AWS CDK resource provider framework - onEvent (lambda-layer-awscli-integ-stack/Providerpython3.9)",
     "Environment": {
@@ -361,9 +166,15 @@
      }
     },
     "Handler": "framework.onEvent",
+    "Role": {
+     "Fn::GetAtt": [
+      "Providerpython39frameworkonEventServiceRoleA299F5C1",
+      "Arn"
+     ]
+    },
     "Runtime": {
      "Fn::FindInMap": [
-      "DefaultCrNodeVersionMap",
+      "LatestNodeRuntimeMap",
       {
        "Ref": "AWS::Region"
       },
@@ -389,108 +200,318 @@
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
+  },
+  "Lambdapython310ServiceRoleD185E0B6": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   }
+  },
+  "Lambdapython310815BD7E9": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "5dff6208ccd5fb196bb0354fd6e47faa8431a789e6125d20386586fef761ed48.zip"
+    },
+    "Handler": "index.handler",
+    "Layers": [
+     {
+      "Ref": "AwsCliLayerF44AAF94"
+     }
+    ],
+    "MemorySize": 512,
+    "Role": {
+     "Fn::GetAtt": [
+      "Lambdapython310ServiceRoleD185E0B6",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.10",
+    "Timeout": 30
+   },
+   "DependsOn": [
+    "Lambdapython310ServiceRoleD185E0B6"
+   ]
+  },
+  "Providerpython310frameworkonEventServiceRoleB6DF2879": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   }
+  },
+  "Providerpython310frameworkonEventServiceRoleDefaultPolicyC0E8697B": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "lambda:InvokeFunction",
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "Lambdapython310815BD7E9",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "Lambdapython310815BD7E9",
+             "Arn"
+            ]
+           },
+           ":*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "Providerpython310frameworkonEventServiceRoleDefaultPolicyC0E8697B",
+    "Roles": [
+     {
+      "Ref": "Providerpython310frameworkonEventServiceRoleB6DF2879"
+     }
+    ]
+   }
+  },
+  "Providerpython310frameworkonEvent7294D715": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
+    },
+    "Description": "AWS CDK resource provider framework - onEvent (lambda-layer-awscli-integ-stack/Providerpython3.10)",
+    "Environment": {
+     "Variables": {
+      "USER_ON_EVENT_FUNCTION_ARN": {
+       "Fn::GetAtt": [
+        "Lambdapython310815BD7E9",
+        "Arn"
+       ]
+      }
+     }
+    },
+    "Handler": "framework.onEvent",
+    "Role": {
+     "Fn::GetAtt": [
+      "Providerpython310frameworkonEventServiceRoleB6DF2879",
+      "Arn"
+     ]
+    },
+    "Runtime": {
+     "Fn::FindInMap": [
+      "LatestNodeRuntimeMap",
+      {
+       "Ref": "AWS::Region"
+      },
+      "value"
+     ]
+    },
+    "Timeout": 900
+   },
+   "DependsOn": [
+    "Providerpython310frameworkonEventServiceRoleDefaultPolicyC0E8697B",
+    "Providerpython310frameworkonEventServiceRoleB6DF2879"
+   ]
+  },
+  "CustomResourcepython310": {
+   "Type": "AWS::CloudFormation::CustomResource",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "Providerpython310frameworkonEvent7294D715",
+      "Arn"
+     ]
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete"
   }
  },
  "Mappings": {
-  "DefaultCrNodeVersionMap": {
+  "LatestNodeRuntimeMap": {
    "af-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-south-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-4": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-5": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-7": {
+    "value": "nodejs20.x"
    },
    "ca-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "ca-west-1": {
+    "value": "nodejs20.x"
    },
    "cn-north-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "cn-northwest-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "eu-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-central-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "eu-isoe-west-1": {
+    "value": "nodejs18.x"
    },
    "eu-north-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-south-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "il-central-1": {
+    "value": "nodejs20.x"
    },
    "me-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "me-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "mx-central-1": {
+    "value": "nodejs20.x"
    },
    "sa-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-east-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-gov-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "us-gov-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "us-iso-east-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-iso-west-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-isob-east-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-west-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    }
   }
  },

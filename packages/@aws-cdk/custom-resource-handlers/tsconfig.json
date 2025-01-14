@@ -6,19 +6,25 @@
         "strict": true,
         "alwaysStrict": true,
         "declaration": true,
-        "inlineSourceMap": true,
-        "inlineSources": true,
+        "sourceMap": false,
+        "inlineSourceMap": false,
+        "inlineSources": false,
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
         "resolveJsonModule": true,
         "composite": true,
-        "incremental": true
-      },
+        "incremental": true,
+        "skipLibCheck": true,
+    },
     "include": [
         "**/*.ts",
         "**/*.d.ts",
-    ]
+    ],
+    "exclude": [
+        "**/test/**/*.ts",
+        "dist",
+        "runtime-determiner",
+    ],
 }
-

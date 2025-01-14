@@ -76,14 +76,39 @@ For monorepos, the reference architecture becomes:
 
 All properties of `lambda.Function` can be used to customize the underlying `lambda.Function`.
 
-See also the [AWS Lambda construct library](https://github.com/aws/aws-cdk/tree/main/packages/%40aws-cdk/aws-lambda).
+See also the [AWS Lambda construct library](https://github.com/aws/aws-cdk/tree/main/packages/aws-cdk-lib/aws-lambda).
 
 The `NodejsFunction` construct automatically [reuses existing connections](https://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/node-reusing-connections.html)
-when working with the AWS SDK for JavaScript. Set the `awsSdkConnectionReuse` prop to `false` to disable it.
+when working with the AWS SDK v2 for JavaScript. Set the `awsSdkConnectionReuse` prop to `false` to disable it.
+
+The AWS SDK v3 for JavaScript does not include the environment variable set by `awsSdkConnectionReuse`. See [this guide](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/node-reusing-connections.html) for information about reusing connections. Therefore, for runtimes >= Node 18, which include SDK v3, the prop defaults to `false`, and must be explicitly set to `true` in order for the environment variable to be set.
+
+## Runtime
+
+When the `@aws-cdk/aws-lambda-nodejs:useLatestRuntimeVersion` feature flag is enabled, the `NODEJS_LATEST` runtime 
+will be used by default. This runtime will be updated to use the latest Node.js version currently available in lambda.
+Since this runtime can change from version to version, you should ensure that all of your dependencies are included
+during packaging and avoid relying on depdendencies being globally installed. See [externals](#externals) for details.
+
+**When using `NODEJS_LATEST` runtime make sure that all of your dependencies are included during bundling, or as layers.
+Usage of globally installed packages in the lambda environment may cause your function to break in future versions. If
+you need to rely on packages pre-installed in the lambda environment, you must explicitly set your runtime.**
+
+This can be set via `lambda.Runtime`:
+
+```ts
+import { Runtime } from 'aws-cdk-lib/aws-lambda';
+
+new nodejs.NodejsFunction(this, 'my-function', {
+    runtime: Runtime.NODEJS_18_X,
+});
+```
+
+With the `@aws-cdk/aws-lambda-nodejs:useLatestRuntimeVersion` disabled, the runtime will default to `NODEJ_16_X`.
 
 ## Lock file
 
-The `NodejsFunction` requires a dependencies lock file (`yarn.lock`, `pnpm-lock.yaml` or
+The `NodejsFunction` requires a dependencies lock file (`yarn.lock`, `pnpm-lock.yaml`, `bun.lockb` or
 `package-lock.json`). When bundling in a Docker container, the path containing this lock file is
 used as the source (`/asset-input`) for the volume mounted in the container.
 
@@ -95,7 +120,7 @@ used by your function. Otherwise bundling will fail.
 ## Local bundling
 
 If `esbuild` is available it will be used to bundle your code in your environment. Otherwise,
-bundling will happen in a [Lambda compatible Docker container](https://gallery.ecr.aws/sam/build-nodejs12.x)
+bundling will happen in a [Lambda compatible Docker container](https://gallery.ecr.aws/sam/build-nodejs18.x)
 with the Docker platform based on the target architecture of the Lambda function.
 
 For macOS the recommended approach is to install `esbuild` as Docker volume performance is really poor.
@@ -126,16 +151,35 @@ compatible environment. This is usually the case with modules using native depen
 
 ### Externals
 
-By default, all node modules are bundled except for `aws-sdk`. This can be configured by specifying
-`bundling.externalModules`:
+When the `NODEJS_LATEST` runtime is used, no modules are excluded from bundling by default. This is because the runtime
+will change as new NodeJs versions become available in lambda, which may change what packages are vended as part of the
+environment.
+
+When passing a runtime that is known to include a version of the aws sdk, it will be excluded by default. For example, when
+passing `NODEJS_16_X`, `aws-sdk` is excluded. When passing `NODEJS_18_X`,  all `@aws-sdk/*` packages are excluded.
+
+> [!WARNING]
+> The NodeJS runtime of Node 16 will be deprecated by Lambda on June 12, 2024. Lambda runtimes Node 18 and higher include SDKv3 and not SDKv2. Updating your Lambda runtime from <=Node 16 to any newer version will require bundling the SDK with your handler code, or updating all SDK calls in your handler code to use SDKv3 (which is not a trivial update). Please account for this added complexity and update as soon as possible.
+
+
+
+This can be configured by specifying `bundling.externalModules`:
 
 ```ts
 new nodejs.NodejsFunction(this, 'my-handler', {
   bundling: {
     externalModules: [
-      'aws-sdk', // Use the 'aws-sdk' available in the Lambda runtime
+      '@aws-sdk/*', // Use the AWS SDK for JS v3 available in the Lambda runtime
       'cool-module', // 'cool-module' is already available in a Layer
     ],
+  },
+});
+```
+Includes AWS SDK in the bundle asset by setting `bundleAwsSDK` to `true`. This will exclude SDK from the external module and would not be resolved to Lambda provided SDK.
+```ts
+new nodejs.NodejsFunction(this, 'my-handler', {
+  bundling: {
+    bundleAwsSDK: true,
   },
 });
 ```
@@ -157,8 +201,8 @@ new nodejs.NodejsFunction(this, 'my-handler', {
 
 The modules listed in `nodeModules` must be present in the `package.json`'s dependencies or
 installed. The same version will be used for installation. The lock file (`yarn.lock`,
-`pnpm-lock.yaml` or `package-lock.json`) will be used along with the right installer (`yarn`,
-`pnpm` or `npm`).
+`pnpm-lock.yaml`, `bun.lockb` or `package-lock.json`) will be used along with the right installer (`yarn`,
+`pnpm`, `bun` or `npm`).
 
 When working with `nodeModules` using native dependencies, you might want to force bundling in a
 Docker container even if `esbuild` is available in your environment. This can be done by setting
@@ -185,14 +229,14 @@ new nodejs.NodejsFunction(this, 'my-handler', {
       'process.env.PRODUCTION': JSON.stringify(true),
       'process.env.NUMBER': JSON.stringify(123),
     },
-    logLevel: nodejs.LogLevel.SILENT, // defaults to LogLevel.WARNING
+    logLevel: nodejs.LogLevel.ERROR, // defaults to LogLevel.WARNING
     keepNames: true, // defaults to false
     tsconfig: 'custom-tsconfig.json', // use custom-tsconfig.json instead of default,
     metafile: true, // include meta file, defaults to false
     banner: '/* comments */', // requires esbuild >= 0.9.0, defaults to none
     footer: '/* comments */', // requires esbuild >= 0.9.0, defaults to none
     charset: nodejs.Charset.UTF8, // do not escape non-ASCII characters, defaults to Charset.ASCII
-    format: nodejs.OutputFormat.ESM, // ECMAScript module output format, defaults to OutputFormat.CJS (OutputFormat.ESM requires Node.js 14.x)
+    format: nodejs.OutputFormat.ESM, // ECMAScript module output format, defaults to OutputFormat.CJS (OutputFormat.ESM requires Node.js >= 14)
     mainFields: ['module', 'main'], // prefer ECMAScript versions of dependencies
     inject: ['./my-shim.js', './other-shim.js'], // allows to automatically replace a global variable with an import from another file
     esbuildArgs: { // Pass additional arguments to esbuild
@@ -298,9 +342,9 @@ new nodejs.NodejsFunction(this, 'my-handler', {
 ```
 
 This image should have `esbuild` installed **globally**. If you plan to use `nodeModules` it
-should also have `npm`, `yarn` or `pnpm` depending on the lock file you're using.
+should also have `npm`, `yarn`, `bun` or `pnpm` depending on the lock file you're using.
 
-Use the [default image provided by `@aws-cdk/aws-lambda-nodejs`](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/aws-lambda-nodejs/lib/Dockerfile)
+Use the [default image provided by `aws-cdk-lib/aws-lambda-nodejs`](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/aws-lambda-nodejs/lib/Dockerfile)
 as a source of inspiration.
 
 You can set additional Docker options to configure the build environment:
@@ -346,3 +390,65 @@ In situtations where this does not work, like Docker-in-Docker setups or when us
   },
 });
 ```
+
+## Running a custom build script as part of cdk synthesis
+
+If you need more control over bundling -- or the build process in general -- then we include the ability to invoke your own build script. For example, if you have the following `build.mjs` file:
+
+```
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+import esbuild from "esbuild";
+import { cache } from "esbuild-plugin-cache";
+import time from "esbuild-plugin-time";
+
+const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
+const __dirname = path.dirname(__filename); // get the name of the directory
+
+await esbuild
+  .build({
+    entryPoints: [path.join(__dirname, 'handler', 'index.ts')],
+    outfile: path.join(__dirname, 'build-output', 'index.js'),
+    external: ['@aws-sdk/*', 'aws-sdk'],
+    format: 'cjs',
+    platform: 'node',
+    target: 'node18',
+    bundle: true,
+    minify: true,
+    plugins: [time(), cache({ directory: ".cache" })],
+  })
+  .catch((error) => {
+    console.log(error);
+    process.exit(1)
+  });
+```
+
+then you could use `build.mjs` in a cdk construct as follows:
+
+```
+export class ExampleStack extends Stack {
+  public constructor(scope: Construct, id: string, props?: StackProps) {
+    super(scope, id, props);
+
+    const pathToBuildFile = path.join(__dirname, 'build.mjs');
+
+    // assuming the `handler` property is specified as 'index.handler' (as in this example), then 
+    // this 'build-output' directory must contain an index.js file with an exported `handler` function.
+    const pathToOutputFile = path.join(__dirname, 'build-output'); 
+    const handler = 'index.handler';
+
+    const commandThatIsRanDuringCdkSynth = ['node', pathToBuildFile];
+    const code = lambda.Code.fromCustomCommand(
+      pathToOutputFile,
+      commandThatIsRanDuringCdkSynth,
+    );
+
+    new nodejs.NodejsFunction(this, 'NodejsFunctionBuild', {
+      code,
+      handler,
+    });
+  }
+}
+```
+
+where the `build-output` would be a directory that contains an `index.js` file with an exported `handler` function.

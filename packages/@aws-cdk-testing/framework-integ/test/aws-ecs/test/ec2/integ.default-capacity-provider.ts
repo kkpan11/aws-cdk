@@ -4,7 +4,12 @@ import * as cdk from 'aws-cdk-lib';
 import * as integ from '@aws-cdk/integ-tests-alpha';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 
-const app = new cdk.App();
+const app = new cdk.App({
+  postCliContext: {
+    '@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature': false,
+    '@aws-cdk/aws-ecs:disableEcsImdsBlocking': false,
+  },
+});
 const stack = new cdk.Stack(app, 'integ-default-capacity-provider');
 
 const vpc = new ec2.Vpc(stack, 'Vpc', { maxAzs: 2, restrictDefaultSecurityGroup: false });
@@ -26,6 +31,7 @@ const cp = new ecs.AsgCapacityProvider(stack, 'EC2CapacityProvider', {
   autoScalingGroup,
   // This is to allow cdk destroy to work; otherwise deletion will hang bc ASG cannot be deleted
   enableManagedTerminationProtection: false,
+  instanceWarmupPeriod: 301,
 });
 
 const cluster = new ecs.Cluster(stack, 'EC2CPCluster', {

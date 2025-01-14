@@ -259,14 +259,6 @@ export class NetworkTargetGroup extends TargetGroupBase implements INetworkTarge
       }
     }
 
-    if (healthCheck.healthyThresholdCount && healthCheck.unhealthyThresholdCount &&
-      healthCheck.healthyThresholdCount !== healthCheck.unhealthyThresholdCount) {
-      ret.push([
-        `Healthy and Unhealthy Threshold Counts must be the same: ${healthCheck.healthyThresholdCount}`,
-        `is not equal to ${healthCheck.unhealthyThresholdCount}.`,
-      ].join(' '));
-    }
-
     if (!healthCheck.protocol) {
       return ret;
     }
@@ -287,9 +279,6 @@ export class NetworkTargetGroup extends TargetGroupBase implements INetworkTarge
       const timeoutSeconds = healthCheck.timeout.toSeconds();
       if (timeoutSeconds < lowHealthCheckTimeout || timeoutSeconds > highHealthCheckTimeout) {
         ret.push(`Health check timeout '${timeoutSeconds}' not supported. Must be a number between ${lowHealthCheckTimeout} and ${highHealthCheckTimeout}.`);
-      }
-      if (healthCheck.interval && healthCheck.interval.toSeconds() < timeoutSeconds) {
-        ret.push(`Health check timeout '${timeoutSeconds}' must not be greater than the interval '${healthCheck.interval.toSeconds()}'`);
       }
     }
 

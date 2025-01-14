@@ -92,6 +92,24 @@ test('deploy with configured log retention', () => {
   Template.fromStack(stack).hasResourceProperties('Custom::LogRetention', { RetentionInDays: 7 });
 });
 
+test('deploy with log group', () => {
+  // GIVEN
+  const stack = new cdk.Stack();
+  const bucket = new s3.Bucket(stack, 'Dest');
+
+  // WHEN
+  new s3deploy.BucketDeployment(stack, 'Deploy', {
+    sources: [s3deploy.Source.asset(path.join(__dirname, 'my-website'))],
+    destinationBucket: bucket,
+    logGroup: new logs.LogGroup(stack, 'LogGroup', {
+      retention: logs.RetentionDays.ONE_WEEK,
+    }),
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::Logs::LogGroup', { RetentionInDays: 7 });
+});
+
 test('deploy from local directory assets', () => {
   // GIVEN
   const app = new cdk.App({ context: { [cxapi.NEW_STYLE_STACK_SYNTHESIS_CONTEXT]: false } });
@@ -1358,6 +1376,7 @@ test('"SourceMarkers" is not included if none of the sources have markers', () =
     'SourceObjectKeys',
     'DestinationBucketName',
     'Prune',
+    'OutputObjectKeys',
   ]);
 });
 
@@ -1522,6 +1541,29 @@ test('DeployTimeSubstitutedFile can be used to add substitutions in a file', () 
   expect(content).toContain('changedMockTypeSuccess');
 });
 
+test('DeployTimeSubstitutedFile can be used to add substitutions in a file with a defined destination key', () => {
+  const app = new cdk.App();
+  const stack = new cdk.Stack(app, 'Test');
+  const bucket = new s3.Bucket(stack, 'Bucket');
+  const destinationKey = 'helloworld.yaml';
+  new s3deploy.DeployTimeSubstitutedFile(stack, 'MyFile', {
+    source: path.join(__dirname, 'file-substitution-test', 'sample-definition.yaml'),
+    destinationKey: destinationKey,
+    destinationBucket: bucket,
+    substitutions: {
+      testMethod: 'changedTestMethodSuccess',
+      mock: 'changedMockTypeSuccess',
+    },
+  });
+
+  const result = app.synth();
+  const content = readDataFile(result, destinationKey);
+  expect(content).not.toContain('testMethod');
+  expect(content).toContain('changedTestMethodSuccess');
+  expect(content).not.toContain('mock');
+  expect(content).toContain('changedMockTypeSuccess');
+});
+
 test('DeployTimeSubstitutedFile throws error when source file path is invalid', () => {
   const app = new cdk.App();
   const stack = new cdk.Stack(app, 'Test');
@@ -1638,3 +1680,60 @@ function readDataFile(casm: cxapi.CloudAssembly, relativePath: string): string {
 
   throw new Error(`File ${relativePath} not found in any of the assets of the assembly`);
 }
+
+test('DeployTimeSubstitutedFile allows custom role to be supplied', () => {
+  const app = new cdk.App();
+  const stack = new cdk.Stack(app, 'Test');
+  const bucket = new s3.Bucket(stack, 'Bucket');
+  const existingRole = new iam.Role(stack, 'Role', {
+    assumedBy: new iam.ServicePrincipal('lambda.amazon.com'),
+  });
+
+  new s3deploy.DeployTimeSubstitutedFile(stack, 'MyFile', {
+    source: path.join(__dirname, 'file-substitution-test', 'sample-definition.yaml'),
+    destinationBucket: bucket,
+    substitutions: {
+      testMethod: 'changedTestMethodSuccess',
+      mock: 'changedMockTypeSuccess',
+    },
+    role: existingRole,
+  });
+
+  Template.fromStack(stack).resourceCountIs('AWS::IAM::Role', 1);
+  Template.fromStack(stack).resourceCountIs('AWS::Lambda::Function', 1);
+  Template.fromStack(stack).hasResourceProperties('AWS::Lambda::Function', {
+    Role: {
+      'Fn::GetAtt': [
+        'Role1ABCC5F0',
+        'Arn',
+      ],
+    },
+  });
+});
+
+test('outputObjectKeys to control SourceObjectKeys being sent back', () => {
+  const stack = new cdk.Stack();
+  const bucket = new s3.Bucket(stack, 'Dest');
+  new s3deploy.BucketDeployment(stack, 'Deploy', {
+    sources: [s3deploy.Source.asset(path.join(__dirname, 'my-website'))],
+    destinationBucket: bucket,
+    outputObjectKeys: false,
+  });
+
+  Template.fromStack(stack).hasResourceProperties('Custom::CDKBucketDeployment', {
+    OutputObjectKeys: false,
+  });
+});
+
+test('outputObjectKeys default value is true', () => {
+  const stack = new cdk.Stack();
+  const bucket = new s3.Bucket(stack, 'Dest');
+  new s3deploy.BucketDeployment(stack, 'Deploy', {
+    sources: [s3deploy.Source.asset(path.join(__dirname, 'my-website'))],
+    destinationBucket: bucket,
+  });
+
+  Template.fromStack(stack).hasResourceProperties('Custom::CDKBucketDeployment', {
+    OutputObjectKeys: true,
+  });
+});

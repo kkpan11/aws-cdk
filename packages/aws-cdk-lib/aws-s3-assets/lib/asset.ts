@@ -49,6 +49,11 @@ export interface AssetOptions extends CopyOptions, cdk.FileCopyOptions, cdk.Asse
    * @default false
    */
   readonly deployTime?: boolean;
+  /**
+   * The ARN of the KMS key used to encrypt the handler code.
+   * @default - the default server-side encryption with Amazon S3 managed keys(SSE-S3) key will be used.
+   */
+  readonly sourceKMSKey?: kms.IKey;
 }
 
 export interface AssetProps extends AssetOptions {
@@ -136,6 +141,10 @@ export class Asset extends Construct implements cdk.IAsset {
 
   constructor(scope: Construct, id: string, props: AssetProps) {
     super(scope, id);
+
+    if (!props.path) {
+      throw new Error('Asset path cannot be empty');
+    }
 
     this.isBundled = props.bundling != null;
 

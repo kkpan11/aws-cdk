@@ -1,10 +1,11 @@
 {
-  "version": "32.0.0",
+  "version": "36.0.5",
   "testCases": {
     "aws-stepfunctions-tasks-eks-call-integ/DefaultTest": {
       "stacks": [
         "aws-stepfunctions-tasks-eks-call-integ-test"
       ],
+      "diffAssets": false,
       "cdkCommandOptions": {
         "deploy": {
           "args": {

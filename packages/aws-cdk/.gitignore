@@ -4,6 +4,7 @@
 !lib/init-templates/**/javascript/**/*
 lib/init-templates/**/*.hook.js
 lib/init-templates/**/*.hook.d.ts
+lib/init-templates/.*.json
 node_modules
 dist
 
@@ -40,5 +41,6 @@ test/integ/cli/*.d.ts
 
 junit.xml
 
-# Exclude the noctilucent WASM package
-lib/vendor/noctilucent/
+
+lib/**/*.wasm
+db.json.gz

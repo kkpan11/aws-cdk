@@ -42,7 +42,7 @@ test('Bundling a function without dependencies', () => {
     }),
   }));
 
-  expect(DockerImage.fromBuild).toHaveBeenCalledWith(expect.stringMatching(path.join(__dirname, '../lib')), expect.objectContaining({
+  expect(DockerImage.fromBuild).toHaveBeenCalledWith(expect.stringMatching(path.join(__dirname, '..', 'lib')), expect.objectContaining({
     buildArgs: expect.objectContaining({
       IMAGE: expect.stringMatching(/build-python/),
     }),
@@ -193,7 +193,7 @@ test('Bundling a function with pipenv dependencies', () => {
     bundling: expect.objectContaining({
       command: [
         'bash', '-c',
-        'rsync -rLv /asset-input/ /asset-output/python && cd /asset-output/python && PIPENV_VENV_IN_PROJECT=1 pipenv lock -r > requirements.txt && rm -rf .venv && python -m pip install -r requirements.txt -t /asset-output/python',
+        'rsync -rLv /asset-input/ /asset-output/python && cd /asset-output/python && PIPENV_VENV_IN_PROJECT=1 pipenv requirements > requirements.txt && rm -rf .venv && python -m pip install -r requirements.txt -t /asset-output/python',
       ],
     }),
   }));
@@ -221,7 +221,7 @@ test('Bundling a function with pipenv dependencies with assetExcludes', () => {
     bundling: expect.objectContaining({
       command: [
         'bash', '-c',
-        "rsync -rLv --exclude='.ignorefile' /asset-input/ /asset-output/python && cd /asset-output/python && PIPENV_VENV_IN_PROJECT=1 pipenv lock -r > requirements.txt && rm -rf .venv && python -m pip install -r requirements.txt -t /asset-output/python",
+        "rsync -rLv --exclude='.ignorefile' /asset-input/ /asset-output/python && cd /asset-output/python && PIPENV_VENV_IN_PROJECT=1 pipenv requirements > requirements.txt && rm -rf .venv && python -m pip install -r requirements.txt -t /asset-output/python",
       ],
     }),
   }));
@@ -331,6 +331,34 @@ test('Bundling a function with poetry dependencies, with hashes', () => {
   expect(files).toContain('.ignorefile');
 });
 
+test('Bundling a function with poetry dependencies, without urls', () => {
+  const entry = path.join(__dirname, 'lambda-handler-poetry');
+
+  const assetCode = Bundling.bundle({
+    entry: path.join(entry, '.'),
+    runtime: Runtime.PYTHON_3_9,
+    architecture: Architecture.X86_64,
+    outputPathSuffix: 'python',
+    poetryWithoutUrls: true,
+  });
+
+  expect(Code.fromAsset).toHaveBeenCalledWith(entry, expect.objectContaining({
+    bundling: expect.objectContaining({
+      command: [
+        'bash', '-c',
+        'rsync -rLv /asset-input/ /asset-output/python && cd /asset-output/python && poetry export --without-hashes --without-urls --with-credentials --format requirements.txt --output requirements.txt && python -m pip install -r requirements.txt -t /asset-output/python',
+      ],
+    }),
+  }));
+
+  const files = fs.readdirSync(assetCode.path);
+  expect(files).toContain('index.py');
+  expect(files).toContain('pyproject.toml');
+  expect(files).toContain('poetry.lock');
+  // Contains hidden files.
+  expect(files).toContain('.ignorefile');
+});
+
 test('Bundling a function with custom bundling image', () => {
   const entry = path.join(__dirname, 'lambda-handler-custom-build');
   const image = DockerImage.fromBuild(path.join(entry));
@@ -366,7 +394,7 @@ test('Bundling with custom build args', () => {
     buildArgs: { PIP_INDEX_URL: testPypi },
   });
 
-  expect(DockerImage.fromBuild).toHaveBeenCalledWith(expect.stringMatching(path.join(__dirname, '../lib')), expect.objectContaining({
+  expect(DockerImage.fromBuild).toHaveBeenCalledWith(expect.stringMatching(path.join(__dirname, '..', 'lib')), expect.objectContaining({
     buildArgs: expect.objectContaining({
       PIP_INDEX_URL: testPypi,
     }),

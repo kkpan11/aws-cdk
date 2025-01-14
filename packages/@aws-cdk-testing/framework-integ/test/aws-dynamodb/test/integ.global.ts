@@ -1,3 +1,5 @@
+/// !cdk-integ *
+
 import { App, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
@@ -34,6 +36,7 @@ const stack = new TestStack(app, 'cdk-dynamodb-global-20191121', { env: { region
 
 new IntegTest(app, 'cdk-dynamodb-global-20191121-test', {
   testCases: [stack],
+  diffAssets: true,
 });
 
 app.synth();

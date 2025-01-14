@@ -42,6 +42,23 @@ export interface AthenaStartQueryExecutionProps extends sfn.TaskStateBaseProps {
    * @default - No work group
    */
   readonly workGroup?: string;
+
+  /**
+   * A list of values for the parameters in a query.
+   *
+   * The values are applied sequentially to the parameters in the query in the order
+   * in which the parameters occur.
+   *
+   * @default - No parameters
+   */
+  readonly executionParameters?: string[];
+
+  /**
+   * Specifies, in minutes, the maximum age of a previous query result that Athena should consider for reuse.
+   *
+   * @default - Query results are not reused
+   */
+  readonly resultReuseConfigurationMaxAge?: cdk.Duration;
 }
 
 /**
@@ -66,8 +83,33 @@ export class AthenaStartQueryExecution extends sfn.TaskStateBase {
     this.integrationPattern = props.integrationPattern ?? sfn.IntegrationPattern.REQUEST_RESPONSE;
 
     validatePatternSupported(this.integrationPattern, AthenaStartQueryExecution.SUPPORTED_INTEGRATION_PATTERNS);
+    this.validateExecutionParameters(props.executionParameters);
+    this.validateMaxAgeInMinutes(props.resultReuseConfigurationMaxAge);
 
     this.taskPolicies = this.createPolicyStatements();
+  }
+
+  private validateExecutionParameters(executionParameters?: string[]) {
+    if (executionParameters === undefined || cdk.Token.isUnresolved(executionParameters)) return;
+    if (executionParameters.length == 0) {
+      throw new Error('\'executionParameters\' must be a non-empty list');
+    }
+    const invalidExecutionParameters = executionParameters.some(p => p.length < 1 || p.length > 1024);
+    if (invalidExecutionParameters) {
+      throw new Error('\'executionParameters\' items\'s length must be between 1 and 1024 characters');
+    }
+  }
+
+  private validateMaxAgeInMinutes(resultReuseConfigurationMaxAge?: cdk.Duration) {
+    if (resultReuseConfigurationMaxAge === undefined || cdk.Token.isUnresolved(resultReuseConfigurationMaxAge)) return;
+    const maxAgeInMillis = resultReuseConfigurationMaxAge.toMilliseconds();
+    if (maxAgeInMillis > 0 && maxAgeInMillis < cdk.Duration.minutes(1).toMilliseconds()) {
+      throw new Error(`resultReuseConfigurationMaxAge must be greater than or equal to 1 minute or be equal to 0, got ${maxAgeInMillis} ms`);
+    }
+    const maxAgeInMinutes = resultReuseConfigurationMaxAge.toMinutes();
+    if (maxAgeInMinutes > 10080) {
+      throw new Error(`resultReuseConfigurationMaxAge must either be 0 or between 1 and 10080 minutes, got ${maxAgeInMinutes}`);
+    };
   }
 
   private createPolicyStatements(): iam.PolicyStatement[] {
@@ -208,7 +250,14 @@ export class AthenaStartQueryExecution extends sfn.TaskStateBase {
           EncryptionConfiguration: this.renderEncryption(),
           OutputLocation: this.props.resultConfiguration?.outputLocation ? `s3://${this.props.resultConfiguration.outputLocation.bucketName}/${this.props.resultConfiguration.outputLocation.objectKey}/` : undefined,
         },
-        WorkGroup: this.props?.workGroup,
+        WorkGroup: this.props.workGroup,
+        ExecutionParameters: this.props.executionParameters,
+        ResultReuseConfiguration: this.props.resultReuseConfigurationMaxAge ? {
+          ResultReuseByAgeConfiguration: {
+            Enabled: true,
+            MaxAgeInMinutes: this.props.resultReuseConfigurationMaxAge.toMinutes(),
+          },
+        } : undefined,
       }),
     };
   }
@@ -233,9 +282,9 @@ export interface ResultConfiguration {
   /**
    * Encryption option used if enabled in S3
    *
-   * @default - SSE_S3 encrpytion is enabled with default encryption key
+   * @default - SSE_S3 encryption is enabled with default encryption key
    */
-  readonly encryptionConfiguration?: EncryptionConfiguration
+  readonly encryptionConfiguration?: EncryptionConfiguration;
 }
 
 /**
@@ -285,7 +334,7 @@ export enum EncryptionOption {
    *
    * @see https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingClientSideEncryption.html
    */
-  CLIENT_SIDE_KMS = 'CSE_KMS'
+  CLIENT_SIDE_KMS = 'CSE_KMS',
 }
 
 /**

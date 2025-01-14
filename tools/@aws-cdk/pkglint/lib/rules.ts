@@ -55,24 +55,10 @@ export class DescriptionIsRequired extends ValidationRule {
 export class PublishConfigTagIsRequired extends ValidationRule {
   public readonly name = 'package-info/publish-config-tag';
 
-  // The list of packages that are publicly published in both v1 and v2.
-  private readonly SHARED_PACKAGES = [
-    '@aws-cdk/cloud-assembly-schema',
-    '@aws-cdk/cloudformation-diff',
-    '@aws-cdk/cx-api',
-    '@aws-cdk/region-info',
-    'aws-cdk',
-    'awslint',
-    'cdk-assets',
-  ];
-
   public validate(pkg: PackageJson): void {
     if (pkg.json.private) { return; }
 
-    // v1 packages that are v1-only (e.g., `@aws-cdk/aws-s3`) are always published as `latest`.
-    // Packages that are published with the same namespace to both v1 and v2 are published as `latest-1` on v1 and `latest` on v2.
-    // All v2-only packages are just `latest`.
-    const defaultPublishTag = (cdkMajorVersion() === 2 || !this.SHARED_PACKAGES.includes(pkg.packageName)) ? 'latest' : 'latest-1';
+    const defaultPublishTag = 'latest';
 
     if (pkg.json.publishConfig?.tag !== defaultPublishTag) {
       pkg.report({
@@ -899,12 +885,12 @@ function cdkModuleName(name: string) {
     '@aws-cdk/assertions': 'assertions',
     '@aws-cdk/assertions-alpha': 'assertions-alpha',
   };
-  /* eslint-disable @typescript-eslint/indent */
+  /* eslint-disable @stylistic/indent */
   const mavenArtifactId =
     name in mavenIdMap ? mavenIdMap[name] :
     (suffix.startsWith('aws-') || suffix.startsWith('alexa-')) ? suffix.replace(/aws-/, '') :
     suffix.startsWith('cdk-') ? suffix : `cdk-${suffix}`;
-  /* eslint-enable @typescript-eslint/indent */
+  /* eslint-enable @stylistic/indent */
 
   return {
     javaPackage: `software.amazon.awscdk${isLegacyCdkPkg ? '' : `.${suffix.replace(/aws-/, 'services-').replace(/-/g, '.')}`}`,
@@ -1043,16 +1029,16 @@ export class RegularDependenciesMustSatisfyPeerDependencies extends ValidationRu
   public readonly name = 'dependencies/peer-dependencies-satisfied';
 
   public validate(pkg: PackageJson): void {
-    for (const [depName, peerVersion] of Object.entries(pkg.peerDependencies)) {
-      const depVersion = pkg.dependencies[depName];
-      if (depVersion === undefined) { continue; }
+    for (const [depName, peerRange] of Object.entries(pkg.peerDependencies)) {
+      const depRange = pkg.dependencies[depName];
+      if (depRange === undefined) { continue; }
 
       // Make sure that depVersion satisfies peerVersion.
-      if (!semver.intersects(depVersion, peerVersion)) {
+      if (!semver.intersects(depRange, peerRange, { includePrerelease: true })) {
         pkg.report({
           ruleName: this.name,
-          message: `dependency ${depName}: concrete version ${depVersion} does not match peer version '${peerVersion}'`,
-          fix: () => pkg.addPeerDependency(depName, depVersion),
+          message: `dependency ${depName}: concrete version ${depRange} does not match peer version '${peerRange}'`,
+          fix: () => pkg.addPeerDependency(depName, depRange),
         });
       }
     }
@@ -1074,8 +1060,10 @@ export class MustDependonCdkByPointVersions extends ValidationRule {
     // using scripts/align-version.sh
     const expectedVersion = require(path.join(monoRepoRoot(), 'package.json')).version; // eslint-disable-line @typescript-eslint/no-require-imports
     const ignore = [
+      '@aws-cdk/aws-service-spec',
+      '@aws-cdk/service-spec-importers',
+      '@aws-cdk/service-spec-types',
       '@aws-cdk/cloudformation-diff',
-      '@aws-cdk/cfnspec',
       '@aws-cdk/cx-api',
       '@aws-cdk/cloud-assembly-schema',
       '@aws-cdk/region-info',
@@ -1083,7 +1071,7 @@ export class MustDependonCdkByPointVersions extends ValidationRule {
       ...fs.readdirSync(path.join(monoRepoRoot(), 'tools', '@aws-cdk')).map((name) => `@aws-cdk/${name}`),
       // Packages in the @aws-cdk namespace that are vended outside of the monorepo
       '@aws-cdk/asset-kubectl-v20',
-      '@aws-cdk/asset-node-proxy-agent-v5',
+      '@aws-cdk/asset-node-proxy-agent-v6',
       '@aws-cdk/asset-awscli-v1',
       '@aws-cdk/cdk-cli-wrapper',
     ];
@@ -1229,7 +1217,7 @@ export class MustHaveIntegCommand extends ValidationRule {
   public validate(pkg: PackageJson): void {
     if (!hasIntegTests(pkg)) { return; }
 
-    expectJSON(this.name, pkg, 'scripts.integ', 'integ-runner');
+    expectJSON(this.name, pkg, 'scripts.integ', /integ-runner/, undefined, false, true);
 
     // We can't ACTUALLY require cdk-build-tools/package.json here,
     // because WE don't depend on cdk-build-tools and we don't know if
@@ -1301,6 +1289,24 @@ export class NoStarDeps extends ValidationRule {
   }
 }
 
+export class NoMixedDeps extends ValidationRule {
+  public readonly name = 'dependencies/no-mixed-deps';
+
+  public validate(pkg: PackageJson) {
+    const deps = Object.keys(pkg.json.dependencies ?? {});
+    const devDeps = Object.keys(pkg.json.devDependencies ?? {});
+
+    const shared = deps.filter((dep) => devDeps.includes(dep));
+    for (const dep of shared) {
+      pkg.report({
+        ruleName: this.name,
+        message: `dependency may not be both in dependencies and devDependencies: ${dep}`,
+        fix: () => pkg.removeDevDependency(dep),
+      });
+    }
+  }
+}
+
 interface VersionCount {
   version: string;
   count: number;
@@ -1364,7 +1370,7 @@ export class AllVersionsTheSame extends ValidationRule {
 
   private validateDep(pkg: PackageJson, depField: string, dep: string) {
     if (dep in this.ourPackages) {
-      expectJSON(this.name, pkg, depField + '.' + dep, this.ourPackages[dep]);
+      expectJSON(this.name, pkg, [depField, dep], this.ourPackages[dep]);
       return;
     }
 
@@ -1374,7 +1380,7 @@ export class AllVersionsTheSame extends ValidationRule {
 
     const versions = this.usedDeps[dep];
     versions.sort((a, b) => b.count - a.count);
-    expectJSON(this.name, pkg, depField + '.' + dep, versions[0].version);
+    expectJSON(this.name, pkg, [depField, dep], versions[0].version);
   }
 }
 
@@ -1394,18 +1400,6 @@ export class AwsLint extends ValidationRule {
   }
 }
 
-export class Cfn2Ts extends ValidationRule {
-  public readonly name = 'cfn2ts';
-
-  public validate(pkg: PackageJson) {
-    if (!isJSII(pkg) || !isAWS(pkg)) {
-      return expectJSON(this.name, pkg, 'scripts.cfn2ts', undefined);
-    }
-
-    expectJSON(this.name, pkg, 'scripts.cfn2ts', 'cfn2ts');
-  }
-}
-
 /**
  * Packages inside JSII packages (typically used for embedding Lambda handles)
  * must only have dev dependencies and their node_modules must not be published.
@@ -1417,7 +1411,7 @@ export class PackageInJsiiPackageNoRuntimeDeps extends ValidationRule {
   public readonly name = 'lambda-packages-no-runtime-deps';
 
   public validate(pkg: PackageJson) {
-    if (!isJSII(pkg)) { return; }
+    if (!isJSII(pkg) || pkg.packageName === '@aws-cdk/cli-lib-alpha') { return; }
 
     for (const inner of findInnerPackages(pkg.packageRoot)) {
       const innerPkg = PackageJson.fromDirectory(inner);
@@ -1526,6 +1520,28 @@ export class ConstructsDependency extends ValidationRule {
           message: `"constructs" must have a version requirement ${REQUIRED_VERSION} in peerDependencies`,
           fix: () => {
             pkg.addPeerDependency('constructs', REQUIRED_VERSION);
+          },
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Peer dependencies should be a range, not a point version, to maximize compatibility
+ */
+export class PeerDependencyRange extends ValidationRule {
+  public readonly name = 'peerdependency/range';
+
+  public validate(pkg: PackageJson) {
+    const packages = ['aws-cdk-lib'];
+    for (const [name, version] of Object.entries(pkg.peerDependencies)) {
+      if (packages.includes(name) && version.match(/^[0-9]/)) {
+        pkg.report({
+          ruleName: this.name,
+          message: `peerDependency on" ${name}" should be a range, not a point version: "${version}"`,
+          fix: () => {
+            pkg.addPeerDependency(name, '^' + version);
           },
         });
       }
@@ -1647,8 +1663,7 @@ export class UbergenPackageVisibility extends ValidationRule {
   // The ONLY (non-alpha) packages that should be published for v2.
   // These include dependencies of the CDK CLI (aws-cdk).
   private readonly v2PublicPackages = [
-    '@aws-cdk/cfnspec',
-    '@aws-cdk/cloud-assembly-schema',
+    '@aws-cdk/cli-plugin-contract',
     '@aws-cdk/cloudformation-diff',
     '@aws-cdk/cx-api',
     '@aws-cdk/region-info',
@@ -1656,7 +1671,6 @@ export class UbergenPackageVisibility extends ValidationRule {
     'aws-cdk',
     'awslint',
     'cdk',
-    'cdk-assets',
     '@aws-cdk/integ-runner',
     '@aws-cdk-testing/cli-integ',
   ];
@@ -1857,7 +1871,7 @@ function isIncludedInMonolith(pkg: PackageJson): boolean {
 }
 
 function beginEndRegex(label: string) {
-  return new RegExp(`(<\!--BEGIN ${label}-->)([\s\S]+)(<\!--END ${label}-->)`, 'm');
+  return new RegExp(`(<\!--BEGIN ${label}-->)([\\s\\S]+)(<\!--END ${label}-->)`, 'm');
 }
 
 function readIfExists(filename: string): string | undefined {

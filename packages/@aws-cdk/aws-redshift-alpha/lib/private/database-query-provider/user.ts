@@ -1,13 +1,13 @@
 /* eslint-disable-next-line import/no-unresolved */
 import * as AWSLambda from 'aws-lambda';
 /* eslint-disable-next-line import/no-extraneous-dependencies */
-import * as SecretsManager from 'aws-sdk/clients/secretsmanager';
+import { SecretsManager } from '@aws-sdk/client-secrets-manager';
 import { executeStatement } from './redshift-data';
 import { ClusterProps } from './types';
 import { makePhysicalId } from './util';
 import { UserHandlerProps } from '../handler-props';
 
-const secretsManager = new SecretsManager();
+const secretsManager = new SecretsManager({});
 
 export async function handler(props: UserHandlerProps & ClusterProps, event: AWSLambda.CloudFormationCustomResourceEvent) {
   const username = props.username;
@@ -21,7 +21,11 @@ export async function handler(props: UserHandlerProps & ClusterProps, event: AWS
     await dropUser(username, clusterProps);
     return;
   } else if (event.RequestType === 'Update') {
-    const { replace } = await updateUser(username, passwordSecretArn, clusterProps, event.OldResourceProperties as UserHandlerProps & ClusterProps);
+    const { replace } = await updateUser(
+      username,
+      passwordSecretArn,
+      clusterProps,
+      event.OldResourceProperties as unknown as UserHandlerProps & ClusterProps);
     const physicalId = replace ? makePhysicalId(username, clusterProps, event.RequestId) : event.PhysicalResourceId;
     return { PhysicalResourceId: physicalId, Data: { username: username } };
   } else {
@@ -73,7 +77,7 @@ async function updateUser(
 async function getPasswordFromSecret(passwordSecretArn: string): Promise<string> {
   const secretValue = await secretsManager.getSecretValue({
     SecretId: passwordSecretArn,
-  }).promise();
+  });
   const secretString = secretValue.SecretString;
   if (!secretString) {
     throw new Error(`Secret string for ${passwordSecretArn} was empty`);

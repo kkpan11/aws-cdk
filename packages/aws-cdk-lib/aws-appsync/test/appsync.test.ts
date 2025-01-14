@@ -13,7 +13,7 @@ beforeEach(() => {
   api = new appsync.GraphqlApi(stack, 'api', {
     authorizationConfig: {},
     name: 'api',
-    schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql')),
+    definition: appsync.Definition.fromSchema(appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql'))),
     logConfig: {},
   });
 });
@@ -63,7 +63,7 @@ test('appsync should error when creating pipeline resolver with data source', ()
       fieldName: 'test2',
       pipelineConfig: [test1, test2],
     });
-  }).toThrowError('Pipeline Resolver cannot have data source. Received: none');
+  }).toThrow('Pipeline Resolver cannot have data source. Received: none');
 });
 
 test('appsync should configure resolver as unit when pipelineConfig is empty', () => {
@@ -228,7 +228,7 @@ test('log retention should be configured with given retention time when specifie
   });
 });
 
-test('log retention should not appear when no retention time is specified', () => {
+test('log retention will appear whenever logconfig is set', () => {
   // WHEN
   new appsync.GraphqlApi(stack, 'no-log-retention', {
     authorizationConfig: {},
@@ -237,7 +237,7 @@ test('log retention should not appear when no retention time is specified', () =
   });
 
   // THEN
-  Template.fromStack(stack).resourceCountIs('Custom::LogRetention', 0);
+  Template.fromStack(stack).resourceCountIs('Custom::LogRetention', 1);
 });
 
 test('when visibility is set it should be used when creating the API', () => {
@@ -253,4 +253,171 @@ test('when visibility is set it should be used when creating the API', () => {
   Template.fromStack(stack).hasResourceProperties('AWS::AppSync::GraphQLApi', {
     Visibility: 'PRIVATE',
   });
+});
+
+test('appsync should support deprecated schema property', () => {
+  // WHEN
+  const schemaFile = appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql'));
+  const apiWithSchema = new appsync.GraphqlApi(stack, 'apiWithSchema', {
+    authorizationConfig: {},
+    name: 'api',
+    schema: schemaFile,
+  });
+
+  // THEN
+  expect(apiWithSchema.schema).toBe(schemaFile);
+});
+
+test('appsync api from file', () => {
+  // WHEN
+  const apiWithSchema = new appsync.GraphqlApi(stack, 'apiWithSchema', {
+    authorizationConfig: {},
+    name: 'api',
+    definition: appsync.Definition.fromFile(path.join(__dirname, 'appsync.test.graphql')),
+  });
+
+  // THEN
+  expect(apiWithSchema.schema).not.toBeNull();
+});
+
+test('appsync fails when properties schema and definition are undefined', () => {
+  // THEN
+  expect(() => {
+    new appsync.GraphqlApi(stack, 'apiWithoutSchemaAndDefinition', {
+      name: 'api',
+    });
+  }).toThrow('You must specify a GraphQL schema or source APIs in property definition.');
+});
+
+test('appsync fails when specifing schema and definition', () => {
+  // THEN
+  expect(() => {
+    new appsync.GraphqlApi(stack, 'apiWithSchemaAndDefinition', {
+      name: 'api',
+      schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql')),
+      definition: appsync.Definition.fromSchema(appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql'))),
+    });
+  }).toThrow('You cannot specify both properties schema and definition.');
+});
+
+test('when introspectionConfig is set it should be used when creating the API', () => {
+  // WHEN
+  new appsync.GraphqlApi(stack, 'disabled-introspection', {
+    authorizationConfig: {},
+    name: 'disabled-introspection',
+    schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql')),
+    introspectionConfig: appsync.IntrospectionConfig.DISABLED,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::AppSync::GraphQLApi', {
+    IntrospectionConfig: 'DISABLED',
+  });
+});
+
+test('when query limits are set, they should be used on API', () => {
+  // WHEN
+  new appsync.GraphqlApi(stack, 'query-limits', {
+    authorizationConfig: {},
+    name: 'query-limits',
+    schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql')),
+    queryDepthLimit: 2,
+    resolverCountLimit: 2,
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::AppSync::GraphQLApi', {
+    QueryDepthLimit: 2,
+    ResolverCountLimit: 2,
+  });
+});
+
+test('when query depth limit is out of range, it throws an error', () => {
+
+  const errorString = 'You must specify a query depth limit between 0 and 75.';
+
+  const buildWithLimit = (name, queryDepthLimit) => {
+    new appsync.GraphqlApi(stack, name, {
+      authorizationConfig: {},
+      name: 'query-limits',
+      schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql')),
+      queryDepthLimit,
+    });
+  };
+
+  expect(() => buildWithLimit('query-limit-low', -1)).toThrow(errorString);
+  expect(() => buildWithLimit('query-limit-min', 0)).not.toThrow(errorString);
+  expect(() => buildWithLimit('query-limit-max', 75)).not.toThrow(errorString);
+  expect(() => buildWithLimit('query-limit-high', 76)).toThrow(errorString);
+
+});
+
+test('when resolver limit is out of range, it throws an error', () => {
+
+  const errorString = 'You must specify a resolver count limit between 0 and 10000.';
+
+  const buildWithLimit = (name, resolverCountLimit) => {
+    new appsync.GraphqlApi(stack, name, {
+      authorizationConfig: {},
+      name: 'query-limits',
+      schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql')),
+      resolverCountLimit,
+    });
+  };
+
+  expect(() => buildWithLimit('resolver-limit-low', -1)).toThrow(errorString);
+  expect(() => buildWithLimit('resolver-limit-min', 0)).not.toThrow(errorString);
+  expect(() => buildWithLimit('resolver-limit-max', 10000)).not.toThrow(errorString);
+  expect(() => buildWithLimit('resolver-limit-high', 10001)).toThrow(errorString);
+
+});
+
+test.each([
+  [appsync.FieldLogLevel.ALL],
+  [appsync.FieldLogLevel.ERROR],
+  [appsync.FieldLogLevel.NONE],
+  [appsync.FieldLogLevel.INFO],
+  [appsync.FieldLogLevel.DEBUG],
+])('GraphQLApi with LogLevel %s', (fieldLogLevel) => {
+  // WHEN
+  new appsync.GraphqlApi(stack, 'GraphQLApi', {
+    name: 'api',
+    schema: appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql')),
+    logConfig: {
+      fieldLogLevel,
+    },
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::AppSync::GraphQLApi', {
+    LogConfig: {
+      FieldLogLevel: fieldLogLevel,
+    },
+  });
+});
+
+test('when owner contact is set, they should be used on API', () => {
+  // WHEN
+  new appsync.GraphqlApi(stack, 'owner-contact', {
+    name: 'owner-contact',
+    definition: appsync.Definition.fromSchema(appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql'))),
+    ownerContact: 'test',
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::AppSync::GraphQLApi', {
+    OwnerContact: 'test',
+  });
+});
+
+test('when owner contact exceeds 256 characters, it throws an error', () => {
+  const buildWithOwnerContact = () => {
+    new appsync.GraphqlApi(stack, 'owner-contact-length-exceeded', {
+      name: 'owner-contact',
+      definition: appsync.Definition.fromSchema(appsync.SchemaFile.fromAsset(path.join(__dirname, 'appsync.test.graphql'))),
+      ownerContact: 'a'.repeat(256 + 1),
+    });
+  };
+
+  expect(() => buildWithOwnerContact()).toThrow('You must specify `ownerContact` as a string of 256 characters or less.');
 });

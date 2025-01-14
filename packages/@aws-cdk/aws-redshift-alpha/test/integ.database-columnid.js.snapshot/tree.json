@@ -96,9 +96,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             0,
@@ -122,7 +119,10 @@
                             "key": "Name",
                             "value": "aws-cdk-redshift-cluster-database/Vpc/PublicSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -144,15 +144,15 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "aws-cdk-redshift-cluster-database/Vpc/PublicSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -185,12 +185,12 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Route",
                       "aws:cdk:cloudformation:props": {
-                        "routeTableId": {
-                          "Ref": "VpcPublicSubnet1RouteTable6C95E38E"
-                        },
                         "destinationCidrBlock": "0.0.0.0/0",
                         "gatewayId": {
                           "Ref": "VpcIGWD7BA715C"
+                        },
+                        "routeTableId": {
+                          "Ref": "VpcPublicSubnet1RouteTable6C95E38E"
                         }
                       }
                     },
@@ -225,14 +225,14 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::NatGateway",
                       "aws:cdk:cloudformation:props": {
-                        "subnetId": {
-                          "Ref": "VpcPublicSubnet1Subnet5C2D37C4"
-                        },
                         "allocationId": {
                           "Fn::GetAtt": [
                             "VpcPublicSubnet1EIPD7E02669",
                             "AllocationId"
                           ]
+                        },
+                        "subnetId": {
+                          "Ref": "VpcPublicSubnet1Subnet5C2D37C4"
                         },
                         "tags": [
                           {
@@ -263,9 +263,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             1,
@@ -289,7 +286,10 @@
                             "key": "Name",
                             "value": "aws-cdk-redshift-cluster-database/Vpc/PublicSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -311,15 +311,15 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "aws-cdk-redshift-cluster-database/Vpc/PublicSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -352,12 +352,12 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Route",
                       "aws:cdk:cloudformation:props": {
-                        "routeTableId": {
-                          "Ref": "VpcPublicSubnet2RouteTable94F7E489"
-                        },
                         "destinationCidrBlock": "0.0.0.0/0",
                         "gatewayId": {
                           "Ref": "VpcIGWD7BA715C"
+                        },
+                        "routeTableId": {
+                          "Ref": "VpcPublicSubnet2RouteTable94F7E489"
                         }
                       }
                     },
@@ -392,14 +392,14 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::NatGateway",
                       "aws:cdk:cloudformation:props": {
-                        "subnetId": {
-                          "Ref": "VpcPublicSubnet2Subnet691E08A3"
-                        },
                         "allocationId": {
                           "Fn::GetAtt": [
                             "VpcPublicSubnet2EIP3C605A87",
                             "AllocationId"
                           ]
+                        },
+                        "subnetId": {
+                          "Ref": "VpcPublicSubnet2Subnet691E08A3"
                         },
                         "tags": [
                           {
@@ -430,9 +430,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             0,
@@ -456,7 +453,10 @@
                             "key": "Name",
                             "value": "aws-cdk-redshift-cluster-database/Vpc/PrivateSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -478,15 +478,15 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "aws-cdk-redshift-cluster-database/Vpc/PrivateSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -519,12 +519,12 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Route",
                       "aws:cdk:cloudformation:props": {
-                        "routeTableId": {
-                          "Ref": "VpcPrivateSubnet1RouteTableB2C5B500"
-                        },
                         "destinationCidrBlock": "0.0.0.0/0",
                         "natGatewayId": {
                           "Ref": "VpcPublicSubnet1NATGateway4D7517AA"
+                        },
+                        "routeTableId": {
+                          "Ref": "VpcPrivateSubnet1RouteTableB2C5B500"
                         }
                       }
                     },
@@ -549,9 +549,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             1,
@@ -575,7 +572,10 @@
                             "key": "Name",
                             "value": "aws-cdk-redshift-cluster-database/Vpc/PrivateSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -597,15 +597,15 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "aws-cdk-redshift-cluster-database/Vpc/PrivateSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -638,12 +638,12 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Route",
                       "aws:cdk:cloudformation:props": {
-                        "routeTableId": {
-                          "Ref": "VpcPrivateSubnet2RouteTableA678073B"
-                        },
                         "destinationCidrBlock": "0.0.0.0/0",
                         "natGatewayId": {
                           "Ref": "VpcPublicSubnet2NATGateway9182C01D"
+                        },
+                        "routeTableId": {
+                          "Ref": "VpcPrivateSubnet2RouteTableA678073B"
                         }
                       }
                     },
@@ -683,11 +683,11 @@
                 "attributes": {
                   "aws:cdk:cloudformation:type": "AWS::EC2::VPCGatewayAttachment",
                   "aws:cdk:cloudformation:props": {
-                    "vpcId": {
-                      "Ref": "Vpc8378EB38"
-                    },
                     "internetGatewayId": {
                       "Ref": "VpcIGWD7BA715C"
+                    },
+                    "vpcId": {
+                      "Ref": "Vpc8378EB38"
                     }
                   }
                 },
@@ -837,8 +837,17 @@
                 "attributes": {
                   "aws:cdk:cloudformation:type": "AWS::Redshift::Cluster",
                   "aws:cdk:cloudformation:props": {
+                    "allowVersionUpgrade": true,
+                    "automatedSnapshotRetentionPeriod": 1,
+                    "clusterSubnetGroupName": {
+                      "Ref": "ClusterSubnetsDCFA5CB7"
+                    },
                     "clusterType": "multi-node",
                     "dbName": "my_db",
+                    "encrypted": true,
+                    "kmsKeyId": {
+                      "Ref": "customkmskey377C6F9A"
+                    },
                     "masterUsername": {
                       "Fn::Join": [
                         "",
@@ -864,15 +873,6 @@
                       ]
                     },
                     "nodeType": "dc2.large",
-                    "allowVersionUpgrade": true,
-                    "automatedSnapshotRetentionPeriod": 1,
-                    "clusterSubnetGroupName": {
-                      "Ref": "ClusterSubnetsDCFA5CB7"
-                    },
-                    "encrypted": true,
-                    "kmsKeyId": {
-                      "Ref": "customkmskey377C6F9A"
-                    },
                     "numberOfNodes": 2,
                     "publiclyAccessible": true,
                     "vpcSecurityGroupIds": [
@@ -920,123 +920,6 @@
                         "id": "framework-onEvent",
                         "path": "aws-cdk-redshift-cluster-database/Table/Resource/Provider/framework-onEvent",
                         "children": {
-                          "ServiceRole": {
-                            "id": "ServiceRole",
-                            "path": "aws-cdk-redshift-cluster-database/Table/Resource/Provider/framework-onEvent/ServiceRole",
-                            "children": {
-                              "ImportServiceRole": {
-                                "id": "ImportServiceRole",
-                                "path": "aws-cdk-redshift-cluster-database/Table/Resource/Provider/framework-onEvent/ServiceRole/ImportServiceRole",
-                                "constructInfo": {
-                                  "fqn": "aws-cdk-lib.Resource",
-                                  "version": "0.0.0"
-                                }
-                              },
-                              "Resource": {
-                                "id": "Resource",
-                                "path": "aws-cdk-redshift-cluster-database/Table/Resource/Provider/framework-onEvent/ServiceRole/Resource",
-                                "attributes": {
-                                  "aws:cdk:cloudformation:type": "AWS::IAM::Role",
-                                  "aws:cdk:cloudformation:props": {
-                                    "assumeRolePolicyDocument": {
-                                      "Statement": [
-                                        {
-                                          "Action": "sts:AssumeRole",
-                                          "Effect": "Allow",
-                                          "Principal": {
-                                            "Service": "lambda.amazonaws.com"
-                                          }
-                                        }
-                                      ],
-                                      "Version": "2012-10-17"
-                                    },
-                                    "managedPolicyArns": [
-                                      {
-                                        "Fn::Join": [
-                                          "",
-                                          [
-                                            "arn:",
-                                            {
-                                              "Ref": "AWS::Partition"
-                                            },
-                                            ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-                                          ]
-                                        ]
-                                      }
-                                    ]
-                                  }
-                                },
-                                "constructInfo": {
-                                  "fqn": "aws-cdk-lib.aws_iam.CfnRole",
-                                  "version": "0.0.0"
-                                }
-                              },
-                              "DefaultPolicy": {
-                                "id": "DefaultPolicy",
-                                "path": "aws-cdk-redshift-cluster-database/Table/Resource/Provider/framework-onEvent/ServiceRole/DefaultPolicy",
-                                "children": {
-                                  "Resource": {
-                                    "id": "Resource",
-                                    "path": "aws-cdk-redshift-cluster-database/Table/Resource/Provider/framework-onEvent/ServiceRole/DefaultPolicy/Resource",
-                                    "attributes": {
-                                      "aws:cdk:cloudformation:type": "AWS::IAM::Policy",
-                                      "aws:cdk:cloudformation:props": {
-                                        "policyDocument": {
-                                          "Statement": [
-                                            {
-                                              "Action": "lambda:InvokeFunction",
-                                              "Effect": "Allow",
-                                              "Resource": [
-                                                {
-                                                  "Fn::GetAtt": [
-                                                    "QueryRedshiftDatabase3de5bea727da479686625efb56431b5f3DF81997",
-                                                    "Arn"
-                                                  ]
-                                                },
-                                                {
-                                                  "Fn::Join": [
-                                                    "",
-                                                    [
-                                                      {
-                                                        "Fn::GetAtt": [
-                                                          "QueryRedshiftDatabase3de5bea727da479686625efb56431b5f3DF81997",
-                                                          "Arn"
-                                                        ]
-                                                      },
-                                                      ":*"
-                                                    ]
-                                                  ]
-                                                }
-                                              ]
-                                            }
-                                          ],
-                                          "Version": "2012-10-17"
-                                        },
-                                        "policyName": "TableProviderframeworkonEventServiceRoleDefaultPolicyAD08715D",
-                                        "roles": [
-                                          {
-                                            "Ref": "TableProviderframeworkonEventServiceRoleC3128F67"
-                                          }
-                                        ]
-                                      }
-                                    },
-                                    "constructInfo": {
-                                      "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
-                                      "version": "0.0.0"
-                                    }
-                                  }
-                                },
-                                "constructInfo": {
-                                  "fqn": "aws-cdk-lib.aws_iam.Policy",
-                                  "version": "0.0.0"
-                                }
-                              }
-                            },
-                            "constructInfo": {
-                              "fqn": "aws-cdk-lib.aws_iam.Role",
-                              "version": "0.0.0"
-                            }
-                          },
                           "Code": {
                             "id": "Code",
                             "path": "aws-cdk-redshift-cluster-database/Table/Resource/Provider/framework-onEvent/Code",
@@ -1073,13 +956,7 @@
                                   "s3Bucket": {
                                     "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                                   },
-                                  "s3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-                                },
-                                "role": {
-                                  "Fn::GetAtt": [
-                                    "TableProviderframeworkonEventServiceRoleC3128F67",
-                                    "Arn"
-                                  ]
+                                  "s3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
                                 },
                                 "description": "AWS CDK resource provider framework - onEvent (aws-cdk-redshift-cluster-database/Table/Resource/Provider)",
                                 "environment": {
@@ -1093,9 +970,15 @@
                                   }
                                 },
                                 "handler": "framework.onEvent",
+                                "role": {
+                                  "Fn::GetAtt": [
+                                    "QueryRedshiftDatabase3de5bea727da479686625efb56431b5fInvokerRole900F47C9",
+                                    "Arn"
+                                  ]
+                                },
                                 "runtime": {
                                   "Fn::FindInMap": [
-                                    "DefaultCrNodeVersionMap",
+                                    "LatestNodeRuntimeMap",
                                     {
                                       "Ref": "AWS::Region"
                                     },
@@ -1143,7 +1026,7 @@
                 },
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.2.52"
+                  "version": "10.4.2"
                 }
               }
             },
@@ -1152,9 +1035,9 @@
               "version": "0.0.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "aws-cdk-redshift-cluster-database/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "aws-cdk-redshift-cluster-database/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -1309,25 +1192,25 @@
                       "s3Bucket": {
                         "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                       },
-                      "s3Key": "1c86c854dd7bf4e9476b013497c1b08c57bf296dbc4200f2a251f79ad102d15e.zip"
+                      "s3Key": "60d6644ca7559903aa3a4516f84720a5f2cc1310aa4f456b1aad45a0c1e28046.zip"
                     },
+                    "handler": "index.handler",
                     "role": {
                       "Fn::GetAtt": [
                         "QueryRedshiftDatabase3de5bea727da479686625efb56431b5fServiceRole0A90D717",
                         "Arn"
                       ]
                     },
-                    "handler": "index.handler",
                     "runtime": {
                       "Fn::FindInMap": [
-                        "DefaultCrNodeVersionMap",
+                        "LatestNodeRuntimeMap",
                         {
                           "Ref": "AWS::Region"
                         },
                         "value"
                       ]
                     },
-                    "timeout": 60
+                    "timeout": 300
                   }
                 },
                 "constructInfo": {
@@ -1338,6 +1221,123 @@
             },
             "constructInfo": {
               "fqn": "aws-cdk-lib.aws_lambda.Function",
+              "version": "0.0.0"
+            }
+          },
+          "Query Redshift Database3de5bea727da479686625efb56431b5fInvokerRole": {
+            "id": "Query Redshift Database3de5bea727da479686625efb56431b5fInvokerRole",
+            "path": "aws-cdk-redshift-cluster-database/Query Redshift Database3de5bea727da479686625efb56431b5fInvokerRole",
+            "children": {
+              "ImportQuery Redshift Database3de5bea727da479686625efb56431b5fInvokerRole": {
+                "id": "ImportQuery Redshift Database3de5bea727da479686625efb56431b5fInvokerRole",
+                "path": "aws-cdk-redshift-cluster-database/Query Redshift Database3de5bea727da479686625efb56431b5fInvokerRole/ImportQuery Redshift Database3de5bea727da479686625efb56431b5fInvokerRole",
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Resource",
+                  "version": "0.0.0"
+                }
+              },
+              "Resource": {
+                "id": "Resource",
+                "path": "aws-cdk-redshift-cluster-database/Query Redshift Database3de5bea727da479686625efb56431b5fInvokerRole/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::IAM::Role",
+                  "aws:cdk:cloudformation:props": {
+                    "assumeRolePolicyDocument": {
+                      "Statement": [
+                        {
+                          "Action": "sts:AssumeRole",
+                          "Effect": "Allow",
+                          "Principal": {
+                            "Service": "lambda.amazonaws.com"
+                          }
+                        }
+                      ],
+                      "Version": "2012-10-17"
+                    },
+                    "managedPolicyArns": [
+                      {
+                        "Fn::Join": [
+                          "",
+                          [
+                            "arn:",
+                            {
+                              "Ref": "AWS::Partition"
+                            },
+                            ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                          ]
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.CfnRole",
+                  "version": "0.0.0"
+                }
+              },
+              "DefaultPolicy": {
+                "id": "DefaultPolicy",
+                "path": "aws-cdk-redshift-cluster-database/Query Redshift Database3de5bea727da479686625efb56431b5fInvokerRole/DefaultPolicy",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "aws-cdk-redshift-cluster-database/Query Redshift Database3de5bea727da479686625efb56431b5fInvokerRole/DefaultPolicy/Resource",
+                    "attributes": {
+                      "aws:cdk:cloudformation:type": "AWS::IAM::Policy",
+                      "aws:cdk:cloudformation:props": {
+                        "policyDocument": {
+                          "Statement": [
+                            {
+                              "Action": "lambda:InvokeFunction",
+                              "Effect": "Allow",
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "QueryRedshiftDatabase3de5bea727da479686625efb56431b5f3DF81997",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "QueryRedshiftDatabase3de5bea727da479686625efb56431b5f3DF81997",
+                                          "Arn"
+                                        ]
+                                      },
+                                      ":*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "Version": "2012-10-17"
+                        },
+                        "policyName": "QueryRedshiftDatabase3de5bea727da479686625efb56431b5fInvokerRoleDefaultPolicy2BD7CC05",
+                        "roles": [
+                          {
+                            "Ref": "QueryRedshiftDatabase3de5bea727da479686625efb56431b5fInvokerRole900F47C9"
+                          }
+                        ]
+                      }
+                    },
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
+                      "version": "0.0.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_iam.Policy",
+                  "version": "0.0.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_iam.Role",
               "version": "0.0.0"
             }
           },
@@ -1376,7 +1376,7 @@
                 "path": "redshift-cluster-database-integ/DefaultTest/Default",
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.2.52"
+                  "version": "10.4.2"
                 }
               },
               "DeployAssert": {
@@ -1422,7 +1422,7 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.2.52"
+          "version": "10.4.2"
         }
       }
     },

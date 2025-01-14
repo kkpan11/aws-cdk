@@ -1,5 +1,5 @@
 {
-  "version": "31.0.0",
+  "version": "36.0.5",
   "artifacts": {
     "lambda-logssubscription-integ.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "lambda-logssubscription-integ.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/e29d7f4a88b2d7378ee1bf1114c060226575279991ff462a3c51e6930901128e.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/967a105d6d1c9c6a8f844fc6a4bd2734e595755301b3eb68f9f754a19cc812ed.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -99,10 +100,20 @@
             "data": "EventsLogGroupPolicylambdalogssubscriptionintegCustomRuleBA3E2AD7CustomResourcePolicy0DA87EF1"
           }
         ],
-        "/lambda-logssubscription-integ/DefaultCrNodeVersionMap": [
+        "/lambda-logssubscription-integ/LatestNodeRuntimeMap": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "DefaultCrNodeVersionMap"
+            "data": "LatestNodeRuntimeMap"
+          }
+        ],
+        "/lambda-logssubscription-integ/AWS679f53fac002430cb0da5b7982bd2287": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-singleton",
+            "data": true
+          },
+          {
+            "type": "aws:cdk:is-custom-resource-handler-runtime-family",
+            "data": 0
           }
         ],
         "/lambda-logssubscription-integ/AWS679f53fac002430cb0da5b7982bd2287/ServiceRole/Resource": [
@@ -151,10 +162,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "LambdaIntegDefaultTestDeployAssert7BC530B7.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/af95c1ad09bf79c1cf500842ea783e1f0c924d7856921d04e983bf03fe16f1a3.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/82d7bfc676e3f2624d2f8c6d3681ae44bb2a8bd476cb14ad4109b17852346a09.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -171,10 +183,10 @@
         "LambdaIntegDefaultTestDeployAssert7BC530B7.assets"
       ],
       "metadata": {
-        "/LambdaInteg/DefaultTest/DeployAssert/AwsApiCallEventBridgeputEvents/Default/Default": [
+        "/LambdaInteg/DefaultTest/DeployAssert/AwsApiCallEventBridgeputEvents9a20df3f29597ff1b9e82b1f34c42383/Default/Default": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "AwsApiCallEventBridgeputEvents"
+            "data": "AwsApiCallEventBridgeputEvents9a20df3f29597ff1b9e82b1f34c42383"
           }
         ],
         "/LambdaInteg/DefaultTest/DeployAssert/SingletonFunction1488541a7b23466481b69b4408076b81/Role": [
@@ -189,16 +201,22 @@
             "data": "SingletonFunction1488541a7b23466481b69b4408076b81HandlerCD40AE9F"
           }
         ],
-        "/LambdaInteg/DefaultTest/DeployAssert/AwsApiCallSQSreceiveMessage/Default/Default": [
+        "/LambdaInteg/DefaultTest/DeployAssert/LatestNodeRuntimeMap": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "AwsApiCallSQSreceiveMessage"
+            "data": "LatestNodeRuntimeMap"
           }
         ],
-        "/LambdaInteg/DefaultTest/DeployAssert/AwsApiCallSQSreceiveMessage/AssertionResults": [
+        "/LambdaInteg/DefaultTest/DeployAssert/AwsApiCallSQSreceiveMessage3913742af0f68967ecd340999fcff4d0/Default/Default": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "AssertionResultsAwsApiCallSQSreceiveMessage"
+            "data": "AwsApiCallSQSreceiveMessage3913742af0f68967ecd340999fcff4d0"
+          }
+        ],
+        "/LambdaInteg/DefaultTest/DeployAssert/AwsApiCallSQSreceiveMessage3913742af0f68967ecd340999fcff4d0/AssertionResults": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AssertionResultsAwsApiCallSQSreceiveMessage3913742af0f68967ecd340999fcff4d0"
           }
         ],
         "/LambdaInteg/DefaultTest/DeployAssert/BootstrapVersion": [

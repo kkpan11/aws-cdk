@@ -76,12 +76,44 @@ export class EngineVersion {
    * Neptune engine version 1.2.1.0
    */
   public static readonly V1_2_1_0 = new EngineVersion('1.2.1.0');
+  /**
+   * Neptune engine version 1.2.1.1
+   */
+  public static readonly V1_2_1_1 = new EngineVersion('1.2.1.1');
+  /**
+   * Neptune engine version 1.2.1.2
+   */
+  public static readonly V1_2_1_2 = new EngineVersion('1.2.1.2');
+  /**
+   * Neptune engine version 1.3.0.0
+   */
+  public static readonly V1_3_0_0 = new EngineVersion('1.3.0.0');
+  /**
+   * Neptune engine version 1.3.1.0
+   */
+  public static readonly V1_3_1_0 = new EngineVersion('1.3.1.0');
+  /**
+   * Neptune engine version 1.3.2.0
+   */
+  public static readonly V1_3_2_0 = new EngineVersion('1.3.2.0');
+  /**
+   * Neptune engine version 1.3.2.1
+   */
+  public static readonly V1_3_2_1 = new EngineVersion('1.3.2.1');
+  /**
+   * Neptune engine version 1.3.3.0
+   */
+  public static readonly V1_3_3_0 = new EngineVersion('1.3.3.0');
+  /**
+   * Neptune engine version 1.3.4.0
+   */
+  public static readonly V1_3_4_0 = new EngineVersion('1.3.4.0');
 
   /**
    * Constructor for specifying a custom engine version
    * @param version the engine version of Neptune
    */
-  public constructor(public readonly version: string) {}
+  public constructor(public readonly version: string) { }
 }
 
 /**
@@ -101,7 +133,19 @@ export class LogType {
    * Constructor for specifying a custom log type
    * @param value the log type
    */
-  public constructor(public readonly value: string) {}
+  public constructor(public readonly value: string) { }
+}
+
+export interface ServerlessScalingConfiguration {
+  /**
+   * Minimum NCU capacity (min value 1)
+   */
+  readonly minCapacity: number;
+
+  /**
+   * Maximum NCU capacity (min value 2.5 - max value 128)
+   */
+  readonly maxCapacity: number;
 }
 
 /**
@@ -114,13 +158,6 @@ export interface DatabaseClusterProps {
    * @default - The default engine version.
    */
   readonly engineVersion?: EngineVersion;
-
-  /**
-   * The port the Neptune cluster will listen on
-   *
-   * @default - The default engine port
-   */
-  readonly port?: number;
 
   /**
    * How many days to retain the backup
@@ -267,7 +304,7 @@ export interface DatabaseClusterProps {
    *
    * @default - Retain cluster.
    */
-  readonly removalPolicy?: RemovalPolicy
+  readonly removalPolicy?: RemovalPolicy;
 
   /**
    * If set to true, Neptune will automatically update the engine of the entire
@@ -304,6 +341,28 @@ export interface DatabaseClusterProps {
    * @default - a new role is created.
    */
   readonly cloudwatchLogsRetentionRole?: iam.IRole;
+
+  /**
+   * Specify minimum and maximum NCUs capacity for a serverless cluster.
+   * See https://docs.aws.amazon.com/neptune/latest/userguide/neptune-serverless-capacity-scaling.html
+   *
+   * @default - required if instanceType is db.serverless
+   */
+  readonly serverlessScalingConfiguration?: ServerlessScalingConfiguration;
+
+  /**
+   * Whether to copy tags to the snapshot when a snapshot is created.
+   *
+   * @default - false
+   */
+  readonly copyTagsToSnapshot?: boolean;
+
+  /**
+   * The port number on which the DB instances in the DB cluster accept connections.
+   *
+   * @default 8182
+   */
+  readonly port?: number;
 }
 
 /**
@@ -572,18 +631,24 @@ export class DatabaseCluster extends DatabaseClusterBase implements IDatabaseClu
 
     this.enableIamAuthentication = props.iamAuthentication;
 
+    if (props.instanceType === InstanceType.SERVERLESS && !props.serverlessScalingConfiguration) {
+      throw new Error('You need to specify a serverless scaling configuration with a db.serverless instance type.');
+    }
+
+    this.validateServerlessScalingConfiguration(props.serverlessScalingConfiguration);
+
     // Create the Neptune cluster
     const cluster = new CfnDBCluster(this, 'Resource', {
       // Basic
       engineVersion: props.engineVersion?.version,
       dbClusterIdentifier: props.dbClusterName,
       dbSubnetGroupName: this.subnetGroup.subnetGroupName,
-      port: props.port,
       vpcSecurityGroupIds: securityGroups.map(sg => sg.securityGroupId),
       dbClusterParameterGroupName: props.clusterParameterGroup?.clusterParameterGroupName,
       deletionProtection: deletionProtection,
       associatedRoles: props.associatedRoles ? props.associatedRoles.map(role => ({ roleArn: role.roleArn })) : undefined,
       iamAuthEnabled: Lazy.any({ produce: () => this.enableIamAuthentication }),
+      dbPort: props.port,
       // Backup
       backupRetentionPeriod: props.backupRetention?.toDays(),
       preferredBackupWindow: props.preferredBackupWindow,
@@ -593,6 +658,9 @@ export class DatabaseCluster extends DatabaseClusterBase implements IDatabaseClu
       // CloudWatch Logs exports
       enableCloudwatchLogsExports: props.cloudwatchLogsExports?.map(logType => logType.value),
       storageEncrypted,
+      serverlessScalingConfiguration: props.serverlessScalingConfiguration,
+      // Tags
+      copyTagsToSnapshot: props.copyTagsToSnapshot,
     });
 
     cluster.applyRemovalPolicy(props.removalPolicy, {
@@ -610,7 +678,7 @@ export class DatabaseCluster extends DatabaseClusterBase implements IDatabaseClu
     const retention = props.cloudwatchLogsRetention;
     if (retention) {
       props.cloudwatchLogsExports?.forEach(logType => {
-        new logs.LogRetention(this, `${logType}LogRetention`, {
+        new logs.LogRetention(this, `${logType.value}LogRetention`, {
           logGroupName: `/aws/neptune/${this.clusterIdentifier}/${logType.value}`,
           role: props.cloudwatchLogsRetentionRole,
           retention,
@@ -656,5 +724,19 @@ export class DatabaseCluster extends DatabaseClusterBase implements IDatabaseClu
       defaultPort: ec2.Port.tcp(port),
       securityGroups: securityGroups,
     });
+  }
+
+  private validateServerlessScalingConfiguration(serverlessScalingConfiguration?: ServerlessScalingConfiguration) {
+    if (!serverlessScalingConfiguration) return;
+    if (serverlessScalingConfiguration.minCapacity < 1) {
+      throw new Error(`ServerlessScalingConfiguration minCapacity must be greater or equal than 1, received ${serverlessScalingConfiguration.minCapacity}`);
+    }
+    if (serverlessScalingConfiguration.maxCapacity < 2.5 || serverlessScalingConfiguration.maxCapacity > 128) {
+      throw new Error(`ServerlessScalingConfiguration maxCapacity must be between 2.5 and 128, received ${serverlessScalingConfiguration.maxCapacity}`);
+    }
+    if (serverlessScalingConfiguration.minCapacity >= serverlessScalingConfiguration.maxCapacity) {
+      throw new Error(`ServerlessScalingConfiguration minCapacity ${serverlessScalingConfiguration.minCapacity} ` +
+        `must be less than serverlessScalingConfiguration maxCapacity ${serverlessScalingConfiguration.maxCapacity}`);
+    }
   }
 }

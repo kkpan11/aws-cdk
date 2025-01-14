@@ -153,6 +153,7 @@
                       "dedicatedMasterEnabled": false,
                       "instanceCount": 1,
                       "instanceType": "r5.large.search",
+                      "multiAzWithStandbyEnabled": false,
                       "zoneAwarenessEnabled": false
                     },
                     "domainEndpointOptions": {
@@ -169,15 +170,6 @@
                     },
                     "engineVersion": "Elasticsearch_7.1",
                     "logPublishingOptions": {
-                      "ES_APPLICATION_LOGS": {
-                        "enabled": true,
-                        "cloudWatchLogsLogGroupArn": {
-                          "Fn::GetAtt": [
-                            "Domain1AppLogs6E8D1D67",
-                            "Arn"
-                          ]
-                        }
-                      },
                       "SEARCH_SLOW_LOGS": {
                         "enabled": true,
                         "cloudWatchLogsLogGroupArn": {
@@ -186,10 +178,31 @@
                             "Arn"
                           ]
                         }
+                      },
+                      "ES_APPLICATION_LOGS": {
+                        "enabled": true,
+                        "cloudWatchLogsLogGroupArn": {
+                          "Fn::GetAtt": [
+                            "Domain1AppLogs6E8D1D67",
+                            "Arn"
+                          ]
+                        }
                       }
                     },
                     "nodeToNodeEncryptionOptions": {
                       "enabled": true
+                    },
+                    "offPeakWindowOptions": {
+                      "enabled": true,
+                      "offPeakWindow": {
+                        "windowStartTime": {
+                          "hours": 20,
+                          "minutes": 0
+                        }
+                      }
+                    },
+                    "softwareUpdateOptions": {
+                      "autoSoftwareUpdateEnabled": true
                     }
                   }
                 },
@@ -284,9 +297,9 @@
               "version": "0.0.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "cdk-integ-opensearch/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "cdk-integ-opensearch/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -389,18 +402,18 @@
                       "s3Bucket": {
                         "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                       },
-                      "s3Key": "a9d3d4d1afa000946b9863b3e7578a5a5ad86d88274b3639938aa2baebf822ce.zip"
+                      "s3Key": "9e8936ba1db43e0919ba2fc8265d50686eeaca82830c471ff8b7b0672c5970ec.zip"
                     },
+                    "handler": "index.handler",
                     "role": {
                       "Fn::GetAtt": [
                         "AWS679f53fac002430cb0da5b7982bd2287ServiceRoleC1EA0FF2",
                         "Arn"
                       ]
                     },
-                    "handler": "index.handler",
                     "runtime": {
                       "Fn::FindInMap": [
-                        "DefaultCrNodeVersionMap",
+                        "LatestNodeRuntimeMap",
                         {
                           "Ref": "AWS::Region"
                         },
@@ -566,6 +579,7 @@
                       "dedicatedMasterEnabled": false,
                       "instanceCount": 1,
                       "instanceType": "r5.large.search",
+                      "multiAzWithStandbyEnabled": false,
                       "zoneAwarenessEnabled": false
                     },
                     "domainEndpointOptions": {
@@ -582,15 +596,6 @@
                     },
                     "engineVersion": "Elasticsearch_7.1",
                     "logPublishingOptions": {
-                      "ES_APPLICATION_LOGS": {
-                        "enabled": true,
-                        "cloudWatchLogsLogGroupArn": {
-                          "Fn::GetAtt": [
-                            "Domain2AppLogs810876E2",
-                            "Arn"
-                          ]
-                        }
-                      },
                       "SEARCH_SLOW_LOGS": {
                         "enabled": true,
                         "cloudWatchLogsLogGroupArn": {
@@ -599,10 +604,31 @@
                             "Arn"
                           ]
                         }
+                      },
+                      "ES_APPLICATION_LOGS": {
+                        "enabled": true,
+                        "cloudWatchLogsLogGroupArn": {
+                          "Fn::GetAtt": [
+                            "Domain2AppLogs810876E2",
+                            "Arn"
+                          ]
+                        }
                       }
                     },
                     "nodeToNodeEncryptionOptions": {
                       "enabled": true
+                    },
+                    "offPeakWindowOptions": {
+                      "enabled": true,
+                      "offPeakWindow": {
+                        "windowStartTime": {
+                          "hours": 20,
+                          "minutes": 0
+                        }
+                      }
+                    },
+                    "softwareUpdateOptions": {
+                      "autoSoftwareUpdateEnabled": true
                     }
                   }
                 },
@@ -719,12 +745,66 @@
           "version": "0.0.0"
         }
       },
+      "OpenSearchInteg": {
+        "id": "OpenSearchInteg",
+        "path": "OpenSearchInteg",
+        "children": {
+          "DefaultTest": {
+            "id": "DefaultTest",
+            "path": "OpenSearchInteg/DefaultTest",
+            "children": {
+              "Default": {
+                "id": "Default",
+                "path": "OpenSearchInteg/DefaultTest/Default",
+                "constructInfo": {
+                  "fqn": "constructs.Construct",
+                  "version": "10.3.0"
+                }
+              },
+              "DeployAssert": {
+                "id": "DeployAssert",
+                "path": "OpenSearchInteg/DefaultTest/DeployAssert",
+                "children": {
+                  "BootstrapVersion": {
+                    "id": "BootstrapVersion",
+                    "path": "OpenSearchInteg/DefaultTest/DeployAssert/BootstrapVersion",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnParameter",
+                      "version": "0.0.0"
+                    }
+                  },
+                  "CheckBootstrapVersion": {
+                    "id": "CheckBootstrapVersion",
+                    "path": "OpenSearchInteg/DefaultTest/DeployAssert/CheckBootstrapVersion",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnRule",
+                      "version": "0.0.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Stack",
+                  "version": "0.0.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "@aws-cdk/integ-tests-alpha.IntegTestCase",
+              "version": "0.0.0"
+            }
+          }
+        },
+        "constructInfo": {
+          "fqn": "@aws-cdk/integ-tests-alpha.IntegTest",
+          "version": "0.0.0"
+        }
+      },
       "Tree": {
         "id": "Tree",
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.1.270"
+          "version": "10.3.0"
         }
       }
     },

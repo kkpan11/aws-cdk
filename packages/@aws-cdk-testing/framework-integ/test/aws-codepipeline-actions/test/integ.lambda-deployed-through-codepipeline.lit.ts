@@ -5,8 +5,13 @@ import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as cdk from 'aws-cdk-lib';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
+import { STANDARD_NODEJS_RUNTIME } from '../../config';
 
-const app = new cdk.App();
+const app = new cdk.App({
+  postCliContext: {
+    '@aws-cdk/aws-codepipeline:defaultPipelineTypeToV2': false,
+  },
+});
 
 /// !show
 const lambdaStack = new cdk.Stack(app, 'LambdaStack');
@@ -14,12 +19,14 @@ const lambdaCode = lambda.Code.fromCfnParameters();
 new lambda.Function(lambdaStack, 'Lambda', {
   code: lambdaCode,
   handler: 'index.handler',
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: STANDARD_NODEJS_RUNTIME,
 });
 // other resources that your Lambda needs, added to the lambdaStack...
 
 const pipelineStack = new cdk.Stack(app, 'PipelineStack');
-const pipeline = new codepipeline.Pipeline(pipelineStack, 'Pipeline');
+const pipeline = new codepipeline.Pipeline(pipelineStack, 'Pipeline', {
+  crossAccountKeys: true,
+});
 
 // add the source code repository containing this code to your Pipeline,
 // and the source code of the Lambda Function, if they're separate
@@ -49,7 +56,7 @@ pipeline.addStage({
 // adjust the build environment and/or commands accordingly
 const cdkBuildProject = new codebuild.Project(pipelineStack, 'CdkBuildProject', {
   environment: {
-    buildImage: codebuild.LinuxBuildImage.UBUNTU_14_04_NODEJS_10_1_0,
+    buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
   },
   buildSpec: codebuild.BuildSpec.fromObject({
     version: '0.2',
@@ -82,7 +89,7 @@ const cdkBuildAction = new codepipeline_actions.CodeBuildAction({
 // make sure to adjust the build environment and/or commands if they don't match your specific situation
 const lambdaBuildProject = new codebuild.Project(pipelineStack, 'LambdaBuildProject', {
   environment: {
-    buildImage: codebuild.LinuxBuildImage.UBUNTU_14_04_NODEJS_10_1_0,
+    buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
   },
   buildSpec: codebuild.BuildSpec.fromObject({
     version: '0.2',

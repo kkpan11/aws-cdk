@@ -1,6 +1,5 @@
 
 import * as fs from 'fs';
-import * as path from 'path';
 import { kebab as toKebabCase } from 'case';
 import { Construct } from 'constructs';
 import { ISource, SourceConfig, Source } from './source';
@@ -12,6 +11,7 @@ import * as lambda from '../../aws-lambda';
 import * as logs from '../../aws-logs';
 import * as s3 from '../../aws-s3';
 import * as cdk from '../../core';
+import { BucketDeploymentSingletonFunction } from '../../custom-resource-handlers/dist/aws-s3-deployment/bucket-deployment-provider.generated';
 import { AwsCliLayer } from '../../lambda-layer-awscli';
 
 // tag key has a limit of 128 characters
@@ -32,9 +32,12 @@ export interface BucketDeploymentProps {
   readonly destinationBucket: s3.IBucket;
 
   /**
-   * Key prefix in the destination bucket.
+   * Key prefix in the destination bucket. Must be <=104 characters
    *
-   * Must be <=104 characters
+   * If it's set with prune: true, it will only prune files with the prefix.
+   *
+   * We recommend to always configure the `destinationKeyPrefix` property. This will prevent the deployment
+   * from accidentally deleting data that wasn't uploaded by it.
    *
    * @default "/" (unzip to root of the destination bucket)
    */
@@ -58,7 +61,7 @@ export interface BucketDeploymentProps {
    * @default - No exclude filters are used
    * @see https://docs.aws.amazon.com/cli/latest/reference/s3/index.html#use-of-exclude-and-include-filters
    */
-  readonly exclude?: string[]
+  readonly exclude?: string[];
 
   /**
    * If this is set, matching files or objects will be included with the deployment's sync
@@ -68,9 +71,12 @@ export interface BucketDeploymentProps {
    * @default - No include filters are used and all files are included with the sync command
    * @see https://docs.aws.amazon.com/cli/latest/reference/s3/index.html#use-of-exclude-and-include-filters
    */
-  readonly include?: string[]
+  readonly include?: string[];
 
   /**
+   * By default, files in the destination bucket that don't exist in the source will be deleted
+   * when the BucketDeployment resource is created or updated.
+   *
    * If this is set to false, files in the destination bucket that
    * do not exist in the asset, will NOT be deleted during deployment (create/update).
    *
@@ -78,7 +84,7 @@ export interface BucketDeploymentProps {
    *
    * @default true
    */
-  readonly prune?: boolean
+  readonly prune?: boolean;
 
   /**
    * If this is set to "false", the destination files will be deleted when the
@@ -87,7 +93,7 @@ export interface BucketDeploymentProps {
    * NOTICE: Configuring this to "false" might have operational implications. Please
    * visit to the package documentation referred below to make sure you fully understand those implications.
    *
-   * @see https://github.com/aws/aws-cdk/tree/main/packages/%40aws-cdk/aws-s3-deployment#retain-on-delete
+   * @see https://github.com/aws/aws-cdk/tree/main/packages/aws-cdk-lib/aws-s3-deployment#retain-on-delete
    * @default true - when resource is deleted/updated, files are retained
    */
   readonly retainOnDelete?: boolean;
@@ -111,9 +117,22 @@ export interface BucketDeploymentProps {
   /**
    * The number of days that the lambda function's log events are kept in CloudWatch Logs.
    *
+   * This is a legacy API and we strongly recommend you migrate to `logGroup` if you can.
+   * `logGroup` allows you to create a fully customizable log group and instruct the Lambda function to send logs to it.
+   *
    * @default logs.RetentionDays.INFINITE
    */
   readonly logRetention?: logs.RetentionDays;
+
+  /**
+   * The Log Group used for logging of events emitted by the custom resource's lambda function.
+   *
+   * Providing a user-controlled log group was rolled out to commercial regions on 2023-11-16.
+   * If you are deploying to another type of region, please check regional availability first.
+   *
+   * @default - a default log group created by AWS Lambda
+   */
+  readonly logGroup?: logs.ILogGroup;
 
   /**
    * The amount of memory (in MiB) to allocate to the AWS Lambda function which
@@ -139,7 +158,7 @@ export interface BucketDeploymentProps {
    *
    * @default - No EFS. Lambda has access only to 512MB of disk space.
    */
-  readonly useEfs?: boolean
+  readonly useEfs?: boolean;
 
   /**
    * Execution role associated with this function
@@ -252,6 +271,16 @@ export interface BucketDeploymentProps {
    * @default - `x-amz-content-sha256` will not be computed
    */
   readonly signContent?: boolean;
+
+  /**
+   * If set to false, the custom resource will not send back the SourceObjectKeys.
+   * This is useful when you are facing the error `Response object is too long`
+   *
+   * See https://github.com/aws/aws-cdk/issues/28579
+   *
+   * @default true
+   */
+  readonly outputObjectKeys?: boolean;
 }
 
 /**
@@ -264,7 +293,11 @@ export class BucketDeployment extends Construct {
   private requestDestinationArn: boolean = false;
   private readonly destinationBucket: s3.IBucket;
   private readonly sources: SourceConfig[];
-  private readonly handlerRole: iam.IRole;
+
+  /**
+   * Execution role of the Lambda function behind the custom CloudFormation resource of type `Custom::CDKBucketDeployment`.
+   */
+  public readonly handlerRole: iam.IRole;
 
   constructor(scope: Construct, id: string, props: BucketDeploymentProps) {
     super(scope, id);
@@ -316,18 +349,15 @@ export class BucketDeployment extends Construct {
     }
 
     const mountPath = `/mnt${accessPointPath}`;
-    const handler = new lambda.SingletonFunction(this, 'CustomResourceHandler', {
+    const handler = new BucketDeploymentSingletonFunction(this, 'CustomResourceHandler', {
       uuid: this.renderSingletonUuid(props.memoryLimit, props.ephemeralStorageSize, props.vpc),
-      code: lambda.Code.fromAsset(path.join(__dirname, 'lambda')),
       layers: [new AwsCliLayer(this, 'AwsCliLayer')],
-      runtime: lambda.Runtime.PYTHON_3_9,
       environment: {
         ...props.useEfs ? { MOUNT_PATH: mountPath } : undefined,
         // Override the built-in CA bundle from the AWS CLI with the Lambda-curated one
         // This is necessary to make the CLI work in ADC regions.
         AWS_CA_BUNDLE: '/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem',
       },
-      handler: 'index.handler',
       lambdaPurpose: 'Custom::CDKBucketDeployment',
       timeout: cdk.Duration.minutes(15),
       role: props.role,
@@ -339,7 +369,10 @@ export class BucketDeployment extends Construct {
         accessPoint,
         mountPath,
       ) : undefined,
-      logRetention: props.logRetention,
+      // props.logRetention is deprecated, make sure we only set it if it is actually provided
+      // otherwise jsii will print warnings even for users that don't use this directly
+      ...(props.logRetention ? { logRetention: props.logRetention } : {}),
+      logGroup: props.logGroup,
     });
 
     const handlerRole = handler.role;
@@ -377,9 +410,9 @@ export class BucketDeployment extends Construct {
       serviceToken: handler.functionArn,
       resourceType: 'Custom::CDKBucketDeployment',
       properties: {
-        SourceBucketNames: cdk.Lazy.list({ produce: () => this.sources.map(source => source.bucket.bucketName) }),
-        SourceObjectKeys: cdk.Lazy.list({ produce: () => this.sources.map(source => source.zipObjectKey) }),
-        SourceMarkers: cdk.Lazy.any({
+        SourceBucketNames: cdk.Lazy.uncachedList({ produce: () => this.sources.map(source => source.bucket.bucketName) }),
+        SourceObjectKeys: cdk.Lazy.uncachedList({ produce: () => this.sources.map(source => source.zipObjectKey) }),
+        SourceMarkers: cdk.Lazy.uncachedAny({
           produce: () => {
             return this.sources.reduce((acc, source) => {
               if (source.markers) {
@@ -405,6 +438,7 @@ export class BucketDeployment extends Construct {
         DistributionId: props.distribution?.distributionId,
         DistributionPaths: props.distributionPaths,
         SignContent: props.signContent,
+        OutputObjectKeys: props.outputObjectKeys ?? true,
         // Passing through the ARN sequences dependency on the deployment
         DestinationBucketArn: cdk.Lazy.string({ produce: () => this.requestDestinationArn ? this.destinationBucket.bucketArn : undefined }),
       },
@@ -519,7 +553,10 @@ export class BucketDeployment extends Construct {
    * deployment.addSource(s3deploy.Source.asset('./another-asset'));
    */
   public addSource(source: ISource): void {
-    this.sources.push(source.bind(this, { handlerRole: this.handlerRole }));
+    const config = source.bind(this, { handlerRole: this.handlerRole });
+    if (!this.sources.some((c) => sourceConfigEqual(cdk.Stack.of(this), c, config))) {
+      this.sources.push(config);
+    }
   }
 
   private renderUniqueId(memoryLimit?: number, ephemeralStorageSize?: cdk.Size, vpc?: ec2.IVpc) {
@@ -586,6 +623,13 @@ export interface DeployTimeSubstitutedFileProps {
   readonly source: string;
 
   /**
+   * The object key in the destination bucket where the processed
+   * file would be written to.
+   * @default - Fingerprint of the file content would be used as object key
+   */
+  readonly destinationKey?: string;
+
+  /**
    * The S3 bucket to sync the contents of the zip file to.
    */
   readonly destinationBucket: s3.IBucket;
@@ -598,6 +642,13 @@ export interface DeployTimeSubstitutedFileProps {
    * substitution.
    */
   readonly substitutions: { [key: string]: string };
+
+  /**
+   * Execution role associated with this function
+   *
+   * @default - A role is automatically created
+   */
+  readonly role?: iam.IRole;
 }
 
 /**
@@ -618,13 +669,14 @@ export class DeployTimeSubstitutedFile extends BucketDeployment {
       return props.substitutions[expr] ?? match;
     });
 
-    const objectKey = cdk.FileSystem.fingerprint(props.source);
+    const objectKey = props.destinationKey ?? cdk.FileSystem.fingerprint(props.source);
     const fileSource = Source.data(objectKey, fileData);
     const fullBucketDeploymentProps: BucketDeploymentProps = {
       prune: false,
       extract: true,
       ...props,
       sources: [fileSource],
+      role: props.role,
     };
     super(scope, id, fullBucketDeploymentProps);
     // sets the object key
@@ -768,7 +820,7 @@ export enum ServerSideEncryption {
   /**
    * 'aws:kms'
    */
-  AWS_KMS = 'aws:kms'
+  AWS_KMS = 'aws:kms',
 }
 
 /**
@@ -810,7 +862,7 @@ export enum StorageClass {
   /**
    * 'DEEP_ARCHIVE'
    */
-  DEEP_ARCHIVE = 'DEEP_ARCHIVE'
+  DEEP_ARCHIVE = 'DEEP_ARCHIVE',
 }
 
 /**
@@ -868,4 +920,11 @@ export interface UserDefinedObjectMetadata {
    * @jsii ignore
    */
   readonly [key: string]: string;
+}
+
+function sourceConfigEqual(stack: cdk.Stack, a: SourceConfig, b: SourceConfig) {
+  return (
+    JSON.stringify(stack.resolve(a.bucket.bucketName)) === JSON.stringify(stack.resolve(b.bucket.bucketName))
+    && a.zipObjectKey === b.zipObjectKey
+    && a.markers === undefined && b.markers === undefined);
 }

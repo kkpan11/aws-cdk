@@ -34,7 +34,7 @@ interface StagedAsset {
   /**
    * The packaging of the asset
    */
-  readonly packaging: FileAssetPackaging,
+  readonly packaging: FileAssetPackaging;
 
   /**
    * Whether this asset is an archive
@@ -167,6 +167,7 @@ export class AssetStaging extends Construct {
     this.sourcePath = path.resolve(props.sourcePath);
     this.fingerprintOptions = {
       ...props,
+      exclude: ['.is_custom_resource', ...props.exclude ?? []],
       extraHash: props.extraHash || salt ? `${props.extraHash ?? ''}${salt ?? ''}` : undefined,
     };
 
@@ -277,9 +278,10 @@ export class AssetStaging extends Construct {
    */
   private stageByCopying(): StagedAsset {
     const assetHash = this.calculateHash(this.hashType);
-    const stagedPath = this.stagingDisabled
+    const targetPath = this.stagingDisabled
       ? this.sourcePath
       : path.resolve(this.assetOutdir, renderAssetFilename(assetHash, getExtension(this.sourcePath)));
+    const stagedPath = this.renderStagedPath(this.sourcePath, targetPath);
 
     if (!this.sourceStats.isDirectory() && !this.sourceStats.isFile()) {
       throw new Error(`Asset ${this.sourcePath} is expected to be either a directory or a regular file`);
@@ -337,23 +339,31 @@ export class AssetStaging extends Construct {
     // Calculate assetHash afterwards if we still must
     assetHash = assetHash ?? this.calculateHash(this.hashType, bundling, bundledAsset.path);
 
-    const stagedPath = path.resolve(this.assetOutdir, renderAssetFilename(assetHash, bundledAsset.extension));
+    const stagedPath = this.renderStagedPath(
+      bundledAsset.path,
+      path.resolve(this.assetOutdir, renderAssetFilename(assetHash, bundledAsset.extension)),
+    );
 
     this.stageAsset(bundledAsset.path, stagedPath, 'move');
 
     // If bundling produced a single archive file we "touch" this file in the bundling
-    // directory after it has been moved to the staging directory. This way if bundling
+    // directory after it has been moved to the staging directory if the hash is known before bundling. This way if bundling
     // is skipped because the bundling directory already exists we can still determine
     // the correct packaging type.
+    // If the hash is calculated after bundling we remove the temporary directory now.
     if (bundledAsset.packaging === FileAssetPackaging.FILE) {
-      fs.closeSync(fs.openSync(bundledAsset.path, 'w'));
+      if (this.hashType === AssetHashType.OUTPUT || this.hashType === AssetHashType.BUNDLE) {
+        fs.removeSync(path.dirname(bundledAsset.path));
+      } else {
+        fs.closeSync(fs.openSync(bundledAsset.path, 'w'));
+      }
     }
 
     return {
       assetHash,
       stagedPath,
       packaging: bundledAsset.packaging,
-      isArchive: true, // bundling always produces an archive
+      isArchive: bundlingOutputType !== BundlingOutput.SINGLE_FILE,
     };
   }
 
@@ -382,7 +392,7 @@ export class AssetStaging extends Construct {
     }
 
     // Moving can be done quickly
-    if (style == 'move') {
+    if (style === 'move') {
       fs.renameSync(sourcePath, targetPath);
       return;
     }
@@ -486,7 +496,7 @@ export class AssetStaging extends Construct {
 
       // If we're bundling an asset, include the bundling configuration in the hash
       if (bundling) {
-        hash.update(JSON.stringify(bundling));
+        hash.update(JSON.stringify(bundling, sanitizeHashValue));
       }
 
       return hash.digest('hex');
@@ -504,6 +514,17 @@ export class AssetStaging extends Construct {
       default:
         throw new Error('Unknown asset hash type.');
     }
+  }
+
+  private renderStagedPath(sourcePath: string, targetPath: string): string {
+    // Add a suffix to the asset file name
+    // because when a file without extension is specified, the source directory name is the same as the staged asset file name.
+    // But when the hashType is `AssetHashType.OUTPUT`, the source directory name begins with `bundling-temp-` and the staged asset file name is different.
+    // We only need to add a suffix when the hashType is not `AssetHashType.OUTPUT`.
+    if (this.hashType !== AssetHashType.OUTPUT && path.dirname(sourcePath) === targetPath) {
+      targetPath = targetPath + '_noext';
+    }
+    return targetPath;
   }
 }
 
@@ -537,7 +558,7 @@ function determineHashType(assetHashType?: AssetHashType, customSourceFingerprin
  */
 function calculateCacheKey<A extends object>(props: A): string {
   return crypto.createHash('sha256')
-    .update(JSON.stringify(sortObject(props)))
+    .update(JSON.stringify(sortObject(props), sanitizeHashValue))
     .digest('hex');
 }
 
@@ -556,9 +577,33 @@ function sortObject(object: { [key: string]: any }): { [key: string]: any } {
 }
 
 /**
+ * Removes the auth token from pip URLs if present to prevent an unnecessary
+ * rebuild.
+ *
+ * @see https://github.com/aws/aws-cdk/issues/27331
+ */
+function sanitizeHashValue(key: string, value: any): any {
+  if (key === 'PIP_INDEX_URL' || key === 'PIP_EXTRA_INDEX_URL') {
+    try {
+      let url = new URL(value);
+      if (url.password) {
+        url.password = '';
+        return url.toString();
+      }
+    } catch (e: any) {
+      if (e.name === 'TypeError') {
+        throw new Error(`${key} must be a valid URL, got ${value}.`);
+      }
+      throw e;
+    }
+  }
+  return value;
+}
+
+/**
  * Returns the single archive file of a directory or undefined
  */
-function singleArchiveFile(directory: string): string | undefined {
+function findSingleFile(directory: string, archiveOnly: boolean): string | undefined {
   if (!fs.existsSync(directory)) {
     throw new Error(`Directory ${directory} does not exist.`);
   }
@@ -571,7 +616,7 @@ function singleArchiveFile(directory: string): string | undefined {
   if (content.length === 1) {
     const file = path.join(directory, content[0]);
     const extension = getExtension(content[0]).toLowerCase();
-    if (fs.statSync(file).isFile() && ARCHIVE_EXTENSIONS.includes(extension)) {
+    if (fs.statSync(file).isFile() && (!archiveOnly || ARCHIVE_EXTENSIONS.includes(extension))) {
       return file;
     }
   }
@@ -580,9 +625,9 @@ function singleArchiveFile(directory: string): string | undefined {
 }
 
 interface BundledAsset {
-  path: string,
-  packaging: FileAssetPackaging,
-  extension?: string
+  path: string;
+  packaging: FileAssetPackaging;
+  extension?: string;
 }
 
 /**
@@ -590,7 +635,7 @@ interface BundledAsset {
  * and the type of output.
  */
 function determineBundledAsset(bundleDir: string, outputType: BundlingOutput): BundledAsset {
-  const archiveFile = singleArchiveFile(bundleDir);
+  const archiveFile = findSingleFile(bundleDir, outputType !== BundlingOutput.SINGLE_FILE);
 
   // auto-discover means that if there is an archive file, we take it as the
   // bundle, otherwise, we will archive here.
@@ -602,8 +647,9 @@ function determineBundledAsset(bundleDir: string, outputType: BundlingOutput): B
     case BundlingOutput.NOT_ARCHIVED:
       return { path: bundleDir, packaging: FileAssetPackaging.ZIP_DIRECTORY };
     case BundlingOutput.ARCHIVED:
+    case BundlingOutput.SINGLE_FILE:
       if (!archiveFile) {
-        throw new Error('Bundling output directory is expected to include only a single archive file when `output` is set to `ARCHIVED`');
+        throw new Error('Bundling output directory is expected to include only a single file when `output` is set to `ARCHIVED` or `SINGLE_FILE`');
       }
       return { path: archiveFile, packaging: FileAssetPackaging.FILE, extension: getExtension(archiveFile) };
   }

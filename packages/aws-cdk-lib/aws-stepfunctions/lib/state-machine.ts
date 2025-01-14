@@ -1,4 +1,7 @@
 import { Construct } from 'constructs';
+import { CustomerManagedEncryptionConfiguration } from './customer-managed-key-encryption-configuration';
+import { EncryptionConfiguration } from './encryption-configuration';
+import { buildEncryptionConfiguration } from './private/util';
 import { StateGraph } from './state-graph';
 import { StatesMetrics } from './stepfunctions-canned-metrics.generated';
 import { CfnStateMachine } from './stepfunctions.generated';
@@ -25,7 +28,7 @@ export enum StateMachineType {
   /**
    * Standard Workflows are ideal for long-running, durable, and auditable workflows.
    */
-  STANDARD = 'STANDARD'
+  STANDARD = 'STANDARD',
 }
 
 /**
@@ -51,7 +54,7 @@ export enum LogLevel {
   /**
    * Log fatal errors
    */
-  FATAL = 'FATAL'
+  FATAL = 'FATAL',
 }
 
 /**
@@ -101,7 +104,7 @@ export interface StateMachineProps {
   readonly definitionBody?: DefinitionBody;
 
   /**
-   * substitutions for the definition body aas a key-value map
+   * substitutions for the definition body as a key-value map
    */
   readonly definitionSubstitutions?: { [key: string]: string };
 
@@ -118,6 +121,13 @@ export interface StateMachineProps {
    * @default No timeout
    */
   readonly timeout?: Duration;
+
+  /**
+   * Comment that describes this state machine
+   *
+   * @default - No comment
+   */
+  readonly comment?: string;
 
   /**
    * Type of the state machine
@@ -146,13 +156,19 @@ export interface StateMachineProps {
    * @default RemovalPolicy.DESTROY
    */
   readonly removalPolicy?: RemovalPolicy;
+
+  /**
+   * Configures server-side encryption of the state machine definition and execution history.
+   *
+   * @default - data is transparently encrypted using an AWS owned key
+   */
+  readonly encryptionConfiguration?: EncryptionConfiguration;
 }
 
 /**
  * A new or imported state machine.
  */
 abstract class StateMachineBase extends Resource implements IStateMachine {
-
   /**
    * Import a state machine
    */
@@ -407,6 +423,12 @@ export class StateMachine extends StateMachineBase {
    */
   public readonly stateMachineType: StateMachineType;
 
+  /**
+   * Identifier for the state machine revision, which is an immutable, read-only snapshot of a state machine’s definition and configuration.
+   * @attribute
+   */
+  public readonly stateMachineRevisionId: string;
+
   constructor(scope: Construct, id: string, props: StateMachineProps) {
     super(scope, id, {
       physicalName: props.stateMachineName,
@@ -431,19 +453,72 @@ export class StateMachine extends StateMachineBase {
 
     this.stateMachineType = props.stateMachineType ?? StateMachineType.STANDARD;
 
+    let graph: StateGraph | undefined = undefined;
+    if (definitionBody instanceof ChainDefinitionBody) {
+      graph = new StateGraph(definitionBody.chainable.startState, 'State Machine definition');
+      graph.timeout = props.timeout;
+      for (const statement of graph.policyStatements) {
+        this.addToRolePolicy(statement);
+      }
+    }
+
+    if (props.encryptionConfiguration instanceof CustomerManagedEncryptionConfiguration) {
+      this.role.addToPrincipalPolicy(new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'kms:Decrypt', 'kms:GenerateDataKey',
+        ],
+        resources: [`${props.encryptionConfiguration.kmsKey.keyArn}`],
+        conditions: {
+          StringEquals: {
+            'kms:EncryptionContext:aws:states:stateMachineArn': Stack.of(this).formatArn({
+              service: 'states',
+              resource: 'stateMachine',
+              sep: ':',
+              resourceName: this.physicalName,
+            }),
+          },
+        },
+      }));
+
+      if (props.logs && props.logs.level !== LogLevel.OFF) {
+        this.role.addToPrincipalPolicy(new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: [
+            'kms:GenerateDataKey',
+          ],
+          resources: [`${props.encryptionConfiguration.kmsKey.keyArn}`],
+          conditions: {
+            StringEquals: {
+              'kms:EncryptionContext:SourceArn': Stack.of(this).formatArn({
+                service: 'logs',
+                resource: '*',
+                sep: ':',
+              }),
+            },
+          },
+        }));
+        props.encryptionConfiguration.kmsKey.addToResourcePolicy(new iam.PolicyStatement({
+          resources: ['*'],
+          actions: ['kms:Decrypt*'],
+          principals: [new iam.ServicePrincipal('delivery.logs.amazonaws.com')],
+        }));
+      }
+    }
+
     const resource = new CfnStateMachine(this, 'Resource', {
       stateMachineName: this.physicalName,
       stateMachineType: props.stateMachineType ?? undefined,
       roleArn: this.role.roleArn,
       loggingConfiguration: props.logs ? this.buildLoggingConfiguration(props.logs) : undefined,
-      tracingConfiguration: props.tracingEnabled ? this.buildTracingConfiguration() : undefined,
-      ...definitionBody.bind(this, this.role, props),
+      tracingConfiguration: this.buildTracingConfiguration(props.tracingEnabled),
+      ...definitionBody.bind(this, this.role, props, graph),
       definitionSubstitutions: props.definitionSubstitutions,
+      encryptionConfiguration: buildEncryptionConfiguration(props.encryptionConfiguration),
     });
     resource.applyRemovalPolicy(props.removalPolicy, { default: RemovalPolicy.DESTROY });
 
     resource.node.addDependency(this.role);
-
     this.stateMachineName = this.getResourceNameAttribute(resource.attrName);
     this.stateMachineArn = this.getResourceArnAttribute(resource.ref, {
       service: 'states',
@@ -451,6 +526,12 @@ export class StateMachine extends StateMachineBase {
       resourceName: this.physicalName,
       arnFormat: ArnFormat.COLON_RESOURCE_NAME,
     });
+
+    if (definitionBody instanceof ChainDefinitionBody) {
+      graph!.bind(this);
+    }
+
+    this.stateMachineRevisionId = resource.attrStateMachineRevisionId;
   }
 
   /**
@@ -505,21 +586,27 @@ export class StateMachine extends StateMachineBase {
     };
   }
 
-  private buildTracingConfiguration(): CfnStateMachine.TracingConfigurationProperty {
-    this.addToRolePolicy(new iam.PolicyStatement({
-      // https://docs.aws.amazon.com/xray/latest/devguide/security_iam_id-based-policy-examples.html#xray-permissions-resources
-      // https://docs.aws.amazon.com/step-functions/latest/dg/xray-iam.html
-      actions: [
-        'xray:PutTraceSegments',
-        'xray:PutTelemetryRecords',
-        'xray:GetSamplingRules',
-        'xray:GetSamplingTargets',
-      ],
-      resources: ['*'],
-    }));
+  private buildTracingConfiguration(isTracing?: boolean): CfnStateMachine.TracingConfigurationProperty | undefined {
+    if (isTracing === undefined) {
+      return undefined;
+    }
+
+    if (isTracing) {
+      this.addToRolePolicy(new iam.PolicyStatement({
+        // https://docs.aws.amazon.com/xray/latest/devguide/security_iam_id-based-policy-examples.html#xray-permissions-resources
+        // https://docs.aws.amazon.com/step-functions/latest/dg/xray-iam.html
+        actions: [
+          'xray:PutTraceSegments',
+          'xray:PutTelemetryRecords',
+          'xray:GetSamplingRules',
+          'xray:GetSamplingTargets',
+        ],
+        resources: ['*'],
+      }));
+    }
 
     return {
-      enabled: true,
+      enabled: isTracing,
     };
   }
 }
@@ -647,8 +734,7 @@ export interface DefinitionConfig {
 }
 
 export abstract class DefinitionBody {
-
-  public static fromFile(path: string, options: s3_assets.AssetOptions): DefinitionBody {
+  public static fromFile(path: string, options?: s3_assets.AssetOptions): DefinitionBody {
     return new FileDefinitionBody(path, options);
   }
 
@@ -660,17 +746,15 @@ export abstract class DefinitionBody {
     return new ChainDefinitionBody(chainable);
   }
 
-  public abstract bind(scope: Construct, sfnPrincipal: iam.IPrincipal, sfnProps: StateMachineProps): DefinitionConfig;
-
+  public abstract bind(scope: Construct, sfnPrincipal: iam.IPrincipal, sfnProps: StateMachineProps, graph?: StateGraph): DefinitionConfig;
 }
 
 export class FileDefinitionBody extends DefinitionBody {
-
   constructor(public readonly path: string, private readonly options: s3_assets.AssetOptions = {}) {
     super();
   }
 
-  public bind(scope: Construct, _sfnPrincipal: iam.IPrincipal, _sfnProps: StateMachineProps): DefinitionConfig {
+  public bind(scope: Construct, _sfnPrincipal: iam.IPrincipal, _sfnProps: StateMachineProps, _graph?: StateGraph): DefinitionConfig {
     const asset = new s3_assets.Asset(scope, 'DefinitionBody', {
       path: this.path,
       ...this.options,
@@ -682,16 +766,14 @@ export class FileDefinitionBody extends DefinitionBody {
       },
     };
   }
-
 }
 
 export class StringDefinitionBody extends DefinitionBody {
-
   constructor(public readonly body: string) {
     super();
   }
 
-  public bind(_scope: Construct, _sfnPrincipal: iam.IPrincipal, _sfnProps: StateMachineProps): DefinitionConfig {
+  public bind(_scope: Construct, _sfnPrincipal: iam.IPrincipal, _sfnProps: StateMachineProps, _graph?: StateGraph): DefinitionConfig {
     return {
       definitionString: this.body,
     };
@@ -699,20 +781,14 @@ export class StringDefinitionBody extends DefinitionBody {
 }
 
 export class ChainDefinitionBody extends DefinitionBody {
-
   constructor(public readonly chainable: IChainable) {
     super();
   }
 
-  public bind(scope: Construct, sfnPrincipal: iam.IPrincipal, sfnProps: StateMachineProps): DefinitionConfig {
-    const graph = new StateGraph(this.chainable.startState, 'State Machine definition');
-    graph.timeout = sfnProps.timeout;
-    for (const statement of graph.policyStatements) {
-      sfnPrincipal.addToPrincipalPolicy(statement);
-    }
+  public bind(scope: Construct, _sfnPrincipal: iam.IPrincipal, sfnProps: StateMachineProps, graph?: StateGraph): DefinitionConfig {
+    const graphJson = graph!.toGraphJson();
     return {
-      definitionString: Stack.of(scope).toJsonString(graph.toGraphJson()),
+      definitionString: Stack.of(scope).toJsonString({ ...graphJson, Comment: sfnProps.comment }),
     };
   }
-
 }

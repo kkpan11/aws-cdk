@@ -7,7 +7,12 @@ import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import { IntegTest } from '@aws-cdk/integ-tests-alpha';
 
-const app = new cdk.App();
+const app = new cdk.App({
+  postCliContext: {
+    '@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature': false,
+    '@aws-cdk/aws-ecs:disableEcsImdsBlocking': false,
+  },
+});
 const stack = new cdk.Stack(app, 'aws-ecs-integ');
 
 // S3 bucket to host envfile without public access
@@ -49,13 +54,13 @@ const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDefinition', {
 // deploy an envfile to S3 and delete when the bucket is deleted
 const envFileDeployment = new s3deployment.BucketDeployment(stack, 'EnvFileDeployment', {
   destinationBucket: bucket,
-  sources: [s3deployment.Source.asset(path.join(__dirname, '../demo-envfiles'))],
+  sources: [s3deployment.Source.asset(path.join(__dirname, '..', 'demo-envfiles'))],
 });
 
 // define container with envfiles - one from local disk and another from S3
 const containerDefinition = new ecs.ContainerDefinition(stack, 'Container', {
   environmentFiles: [
-    ecs.EnvironmentFile.fromAsset(path.join(__dirname, '../demo-envfiles/test-envfile.env')),
+    ecs.EnvironmentFile.fromAsset(path.join(__dirname, '..', 'demo-envfiles', 'test-envfile.env')),
     ecs.EnvironmentFile.fromBucket(bucket, 'test-envfile.env'),
   ],
   image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
@@ -71,6 +76,9 @@ new ecs.Ec2Service(stack, 'Service', {
   taskDefinition,
 });
 
-new IntegTest(app, 'Integ', { testCases: [stack] });
+new IntegTest(app, 'Integ', {
+  testCases: [stack],
+  diffAssets: true,
+});
 
 app.synth();

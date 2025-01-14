@@ -21,9 +21,11 @@ const app = new cdk.App();
 
 const stack = new cdk.Stack(app, 'aws-glue-job');
 
-const script = glue.Code.fromAsset(path.join(__dirname, 'job-script/hello_world.py'));
+const script = glue.Code.fromAsset(path.join(__dirname, 'job-script', 'hello_world.py'));
+const scriptResolveOptions = glue.Code.fromAsset(path.join(__dirname, 'job-script', 'resolve_options.py'));
+const moduleUtils = glue.Code.fromAsset(path.join(__dirname, 'module', 'utils.zip'));
 
-[glue.GlueVersion.V2_0, glue.GlueVersion.V3_0, glue.GlueVersion.V4_0].forEach((glueVersion) => {
+[glue.GlueVersion.V2_0, glue.GlueVersion.V3_0, glue.GlueVersion.V4_0, glue.GlueVersion.V5_0].forEach((glueVersion) => {
   const etlJob = new glue.Job(stack, 'EtlJob' + glueVersion.name, {
     jobName: 'EtlJob' + glueVersion.name,
     executable: glue.JobExecutable.pythonEtl({
@@ -50,12 +52,12 @@ const script = glue.Code.fromAsset(path.join(__dirname, 'job-script/hello_world.
       quiet: true,
       logStreamPrefix: 'EtlJob',
     },
+    executionClass: glue.ExecutionClass.STANDARD,
     tags: {
       key: 'value',
     },
   });
   etlJob.metricSuccess();
-
   new glue.Job(stack, 'StreamingJob' + glueVersion.name, {
     jobName: 'StreamingJob' + glueVersion.name,
     executable: glue.JobExecutable.pythonStreaming({
@@ -63,11 +65,14 @@ const script = glue.Code.fromAsset(path.join(__dirname, 'job-script/hello_world.
       glueVersion,
       script,
     }),
-    workerType: glue.WorkerType.G_025X,
+    workerType: [glue.GlueVersion.V2_0].includes(glueVersion) ? glue.WorkerType.G_1X : glue.WorkerType.G_025X,
     workerCount: 10,
     defaultArguments: {
       arg1: 'value1',
       arg2: 'value2',
+    },
+    sparkUI: {
+      enabled: true,
     },
     tags: {
       key: 'value',
@@ -112,7 +117,9 @@ new glue.Job(stack, 'RayJob', {
   executable: glue.JobExecutable.pythonRay({
     glueVersion: glue.GlueVersion.V4_0,
     pythonVersion: glue.PythonVersion.THREE_NINE,
-    script,
+    runtime: glue.Runtime.RAY_TWO_FOUR,
+    s3PythonModules: [moduleUtils],
+    script: scriptResolveOptions,
   }),
   workerType: glue.WorkerType.Z_2X,
   workerCount: 2,
@@ -123,6 +130,28 @@ new glue.Job(stack, 'RayJob', {
   tags: {
     key: 'value',
   },
+});
+
+new glue.Job(stack, 'EtlJobWithFLEX', {
+  jobName: 'EtlJobWithFLEX',
+  executable: glue.JobExecutable.pythonEtl({
+    glueVersion: glue.GlueVersion.V3_0,
+    pythonVersion: glue.PythonVersion.THREE,
+    script,
+  }),
+  workerType: glue.WorkerType.G_1X,
+  workerCount: 10,
+  executionClass: glue.ExecutionClass.FLEX,
+});
+
+new glue.Job(stack, 'EtlJobWithRunQueuing', {
+  jobName: 'EtlJobWithRunQueuing',
+  executable: glue.JobExecutable.pythonEtl({
+    glueVersion: glue.GlueVersion.V4_0,
+    pythonVersion: glue.PythonVersion.THREE,
+    script,
+  }),
+  jobRunQueuingEnabled: true,
 });
 
 app.synth();

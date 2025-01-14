@@ -75,7 +75,9 @@ export class Rule extends Resource implements IRule {
       public ruleArn = eventRuleArn;
       public ruleName = parts.resourceName || '';
     }
-    return new Import(scope, id);
+    return new Import(scope, id, {
+      environmentFromArn: eventRuleArn,
+    });
   }
 
   public readonly ruleArn: string;
@@ -236,6 +238,8 @@ export class Rule extends Resource implements IRule {
       deadLetterConfig: targetProps.deadLetterConfig,
       retryPolicy: targetProps.retryPolicy,
       sqsParameters: targetProps.sqsParameters,
+      redshiftDataParameters: targetProps.redshiftDataParameters,
+      appSyncParameters: targetProps.appSyncParameters,
       input: inputProps && inputProps.input,
       inputPath: inputProps && inputProps.inputPath,
       inputTransformer: inputProps?.inputTemplate !== undefined ? {
@@ -309,6 +313,10 @@ export class Rule extends Resource implements IRule {
 
     if (Object.keys(this.eventPattern).length === 0 && !this.scheduleExpression) {
       errors.push('Either \'eventPattern\' or \'schedule\' must be defined');
+    }
+
+    if (this.targets.length > 5) {
+      errors.push('Event rule cannot have more than 5 targets.');
     }
 
     return errors;
@@ -448,7 +456,7 @@ export class Rule extends Resource implements IRule {
   private sameEnvDimension(dim1: string, dim2: string) {
     switch (Token.compareStrings(dim1, dim2)) {
       case TokenComparison.ONE_UNRESOLVED:
-        Annotations.of(this).addWarning('Either the Event Rule or target has an unresolved environment. \n \
+        Annotations.of(this).addWarningV2('@aws-cdk/aws-events:ruleUnresolvedEnvironment', 'Either the Event Rule or target has an unresolved environment. \n \
           If they are being used in a cross-environment setup you need to specify the environment for both.');
         return true;
       case TokenComparison.BOTH_UNRESOLVED:

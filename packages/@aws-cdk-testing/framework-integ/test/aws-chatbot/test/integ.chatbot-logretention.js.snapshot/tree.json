@@ -107,9 +107,9 @@
                         "Arn"
                       ]
                     },
+                    "loggingLevel": "NONE",
                     "slackChannelId": "C0187JABUE9",
-                    "slackWorkspaceId": "T49239U4W",
-                    "loggingLevel": "NONE"
+                    "slackWorkspaceId": "T49239U4W"
                   }
                 },
                 "constructInfo": {
@@ -281,12 +281,12 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.1.270"
+              "version": "10.3.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "ChatbotLogRetentionInteg/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "ChatbotLogRetentionInteg/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -319,7 +319,7 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.1.270"
+          "version": "10.3.0"
         }
       }
     },

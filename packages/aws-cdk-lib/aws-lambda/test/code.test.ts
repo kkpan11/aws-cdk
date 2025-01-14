@@ -1,3 +1,4 @@
+import * as child_process from 'child_process';
 import * as path from 'path';
 import { Match, Template } from '../../assertions';
 import * as ecr from '../../aws-ecr';
@@ -15,7 +16,100 @@ describe('code', () => {
     });
   });
 
+  describe('lambda.Code.fromCustomCommand', () => {
+    let spawnSyncMock: jest.SpyInstance;
+    beforeEach(() => {
+      spawnSyncMock = jest.spyOn(child_process, 'spawnSync').mockReturnValue({
+        status: 0,
+        stderr: Buffer.from('stderr'),
+        stdout: Buffer.from('stdout'),
+        pid: 123,
+        output: ['stdout', 'stderr'],
+        signal: null,
+      });
+    });
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    test('fails if command is empty', () => {
+      // GIVEN
+      const command = [];
+
+      // THEN
+      expect(() => lambda.Code.fromCustomCommand('', command)).toThrow('command must contain at least one argument. For example, ["node", "buildFile.js"].');
+    });
+    test('properly splices arguments', () => {
+      // GIVEN
+      const command = 'node is a great command, wow'.split(' ');
+      lambda.Code.fromCustomCommand('', command);
+
+      // THEN
+      expect(spawnSyncMock).toHaveBeenCalledWith(
+        'node',
+        ['is', 'a', 'great', 'command,', 'wow'],
+      );
+    });
+    test('command of length 1 does not cause crash', () => {
+      // WHEN
+      lambda.Code.fromCustomCommand('', ['node']);
+
+      // THEN
+      expect(spawnSyncMock).toHaveBeenCalledWith('node', []);
+    });
+    test('properly splices arguments when commandOptions are included', () => {
+      // GIVEN
+      const command = 'node is a great command, wow'.split(' ');
+      const commandOptions = { commandOptions: { cwd: '/tmp', env: { SOME_KEY: 'SOME_VALUE' } } };
+      lambda.Code.fromCustomCommand('', command, commandOptions);
+
+      // THEN
+      expect(spawnSyncMock).toHaveBeenCalledWith(
+        'node',
+        ['is', 'a', 'great', 'command,', 'wow'],
+        commandOptions.commandOptions,
+      );
+    });
+    test('throws custom error message when spawnSync errors', () => {
+      // GIVEN
+      jest.restoreAllMocks(); // use the real spawnSync, which doesn't work in unit tests.
+      const command = ['whatever'];
+
+      // THEN
+      expect(() => lambda.Code.fromCustomCommand('', command)).toThrow(/Failed to execute custom command: .*/);
+    });
+    test('throws custom error message when spawnSync exits with non-zero status code', () => {
+      // GIVEN
+      const command = ['whatever'];
+      spawnSyncMock = jest.spyOn(child_process, 'spawnSync').mockReturnValue({
+        status: 1,
+        stderr: Buffer.from('stderr'),
+        stdout: Buffer.from('stdout'),
+        pid: 123,
+        output: ['stdout', 'stderr'],
+        signal: null,
+      });
+
+      // THEN
+      expect(() => lambda.Code.fromCustomCommand('', command)).toThrow('whatever exited with status: 1\n\nstdout: stdout\n\nstderr: stderr');
+    });
+  });
+
   describe('lambda.Code.fromAsset', () => {
+    test('fails if path is empty', () => {
+      // GIVEN
+      const fileAsset = lambda.Code.fromAsset('');
+
+      // THEN
+      expect(() => defineFunction(fileAsset)).toThrow(/Asset path cannot be empty/);
+    });
+    test('fails if path does not exist', () => {
+      // GIVEN
+      const fileAsset = lambda.Code.fromAsset('/path/not/found/' + Math.random() * 999999);
+
+      // THEN
+      expect(() => defineFunction(fileAsset)).toThrow(/Cannot find asset/);
+    });
     test('fails if a non-zip asset is used', () => {
       // GIVEN
       const fileAsset = lambda.Code.fromAsset(path.join(__dirname, 'my-lambda-handler', 'index.py'));
@@ -37,13 +131,13 @@ describe('code', () => {
       // WHEN
       new lambda.Function(stack, 'Func1', {
         handler: 'foom',
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
         code: directoryAsset,
       });
 
       new lambda.Function(stack, 'Func2', {
         handler: 'foom',
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
         code: directoryAsset,
       });
 
@@ -65,7 +159,7 @@ describe('code', () => {
       // WHEN
       new lambda.Function(stack, 'Func1', {
         code: lambda.Code.fromAsset(location),
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
         handler: 'foom',
       });
 
@@ -87,14 +181,14 @@ describe('code', () => {
       const stack1 = new cdk.Stack(app, 'Stack1');
       new lambda.Function(stack1, 'Func', {
         code: asset,
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
         handler: 'foom',
       });
 
       const stack2 = new cdk.Stack(app, 'Stack2');
       expect(() => new lambda.Function(stack2, 'Func', {
         code: asset,
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
         handler: 'foom',
       })).toThrow(/already associated/);
     });
@@ -106,7 +200,7 @@ describe('code', () => {
       const code = new lambda.CfnParametersCode();
       new lambda.Function(stack, 'Function', {
         code,
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
         handler: 'index.handler',
       });
 
@@ -152,7 +246,7 @@ describe('code', () => {
 
       new lambda.Function(stack, 'Function', {
         code,
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
         handler: 'index.handler',
       });
 
@@ -334,6 +428,7 @@ describe('code', () => {
       const dockerfilePath = 'Dockerfile';
       const dockerBuildTarget = 'stage';
       const dockerBuildArgs = { arg1: 'val1', arg2: 'val2' };
+      const dockerBuildSsh = 'default';
 
       // when
       new lambda.Function(stack, 'Fn', {
@@ -341,6 +436,7 @@ describe('code', () => {
           file: dockerfilePath,
           target: dockerBuildTarget,
           buildArgs: dockerBuildArgs,
+          buildSsh: dockerBuildSsh,
         }),
         handler: lambda.Handler.FROM_IMAGE,
         runtime: lambda.Runtime.FROM_IMAGE,
@@ -349,9 +445,10 @@ describe('code', () => {
       // then
       Template.fromStack(stack).hasResource('AWS::Lambda::Function', {
         Metadata: {
-          [cxapi.ASSET_RESOURCE_METADATA_PATH_KEY]: 'asset.30b57ded32316be9aa6553a1d81689f1e0cb475a94306c557e05048f9f56bd79',
+          [cxapi.ASSET_RESOURCE_METADATA_PATH_KEY]: 'asset.94589594a9968c9eeb447189c1c5b83b4f8b95f12c392a82749abcd36ecbbfb8',
           [cxapi.ASSET_RESOURCE_METADATA_DOCKERFILE_PATH_KEY]: dockerfilePath,
           [cxapi.ASSET_RESOURCE_METADATA_DOCKER_BUILD_ARGS_KEY]: dockerBuildArgs,
+          [cxapi.ASSET_RESOURCE_METADATA_DOCKER_BUILD_SSH_KEY]: dockerBuildSsh,
           [cxapi.ASSET_RESOURCE_METADATA_DOCKER_BUILD_TARGET_KEY]: dockerBuildTarget,
           [cxapi.ASSET_RESOURCE_METADATA_PROPERTY_KEY]: 'Code.ImageUri',
         },
@@ -373,9 +470,46 @@ describe('code', () => {
       // then
       Template.fromStack(stack).hasResource('AWS::Lambda::Function', {
         Metadata: {
-          [cxapi.ASSET_RESOURCE_METADATA_PATH_KEY]: 'asset.768d7b6c1d41b85135f498fe0cca69fea410be3c3322c69cf08690aaad29a610',
+          [cxapi.ASSET_RESOURCE_METADATA_PATH_KEY]: 'asset.1abd5e50b7a576ba32f8d038dfcd3665b4c34aa82ed17576969830142a99f254',
           [cxapi.ASSET_RESOURCE_METADATA_DOCKERFILE_PATH_KEY]: 'Dockerfile',
           [cxapi.ASSET_RESOURCE_METADATA_PROPERTY_KEY]: 'Code.ImageUri',
+        },
+      });
+    });
+
+    test('cache disabled', () => {
+      // given
+      const stack = new cdk.Stack();
+      stack.node.setContext(cxapi.ASSET_RESOURCE_METADATA_ENABLED_CONTEXT, true);
+
+      const dockerfilePath = 'Dockerfile';
+      const dockerBuildTarget = 'stage';
+      const dockerBuildArgs = { arg1: 'val1', arg2: 'val2' };
+      const dockerBuildSsh = 'default';
+
+      // when
+      new lambda.Function(stack, 'Fn', {
+        code: lambda.Code.fromAssetImage(path.join(__dirname, 'docker-lambda-handler'), {
+          file: dockerfilePath,
+          target: dockerBuildTarget,
+          buildArgs: dockerBuildArgs,
+          buildSsh: dockerBuildSsh,
+          cacheDisabled: true,
+        }),
+        handler: lambda.Handler.FROM_IMAGE,
+        runtime: lambda.Runtime.FROM_IMAGE,
+      });
+
+      // then
+      Template.fromStack(stack).hasResource('AWS::Lambda::Function', {
+        Metadata: {
+          [cxapi.ASSET_RESOURCE_METADATA_PATH_KEY]: 'asset.94589594a9968c9eeb447189c1c5b83b4f8b95f12c392a82749abcd36ecbbfb8',
+          [cxapi.ASSET_RESOURCE_METADATA_DOCKERFILE_PATH_KEY]: dockerfilePath,
+          [cxapi.ASSET_RESOURCE_METADATA_DOCKER_BUILD_ARGS_KEY]: dockerBuildArgs,
+          [cxapi.ASSET_RESOURCE_METADATA_DOCKER_BUILD_SSH_KEY]: dockerBuildSsh,
+          [cxapi.ASSET_RESOURCE_METADATA_DOCKER_BUILD_TARGET_KEY]: dockerBuildTarget,
+          [cxapi.ASSET_RESOURCE_METADATA_PROPERTY_KEY]: 'Code.ImageUri',
+          [cxapi.ASSET_RESOURCE_METADATA_DOCKER_CACHE_DISABLED_KEY]: true,
         },
       });
     });
@@ -431,13 +565,13 @@ describe('code', () => {
       new lambda.Function(stack, 'Fn', {
         code: lambda.Code.fromDockerBuild(path.join(__dirname, 'docker-build-lambda')),
         handler: 'index.handler',
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
       });
 
       // then
       Template.fromStack(stack).hasResource('AWS::Lambda::Function', {
         Metadata: {
-          [cxapi.ASSET_RESOURCE_METADATA_PATH_KEY]: 'asset.fbafdbb9ae8d1bae0def415b791a93c486d18ebc63270c748abecc3ac0ab9533',
+          [cxapi.ASSET_RESOURCE_METADATA_PATH_KEY]: Match.stringLikeRegexp('asset\\.[0-9a-f]+'),
           [cxapi.ASSET_RESOURCE_METADATA_IS_BUNDLED_KEY]: false,
           [cxapi.ASSET_RESOURCE_METADATA_PROPERTY_KEY]: 'Code',
         },
@@ -457,7 +591,7 @@ describe('code', () => {
           imagePath: '/my/image/path',
         }),
         handler: 'index.handler',
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
       });
 
       // then
@@ -474,7 +608,7 @@ describe('code', () => {
           imagePath: '/my/image/path/',
         }),
         handler: 'index.handler',
-        runtime: lambda.Runtime.NODEJS_14_X,
+        runtime: lambda.Runtime.NODEJS_LATEST,
       });
 
       // then
@@ -483,7 +617,7 @@ describe('code', () => {
   });
 });
 
-function defineFunction(code: lambda.Code, runtime: lambda.Runtime = lambda.Runtime.NODEJS_14_X) {
+function defineFunction(code: lambda.Code, runtime: lambda.Runtime = lambda.Runtime.NODEJS_LATEST) {
   const stack = new cdk.Stack();
   return new lambda.Function(stack, 'Func', {
     handler: 'foom',

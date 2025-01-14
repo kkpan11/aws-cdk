@@ -4,6 +4,7 @@ import {
   CfnInstanceProfile,
   Role,
   ServicePrincipal,
+  InstanceProfile,
 } from '../../aws-iam';
 import { Key } from '../../aws-kms';
 import {
@@ -22,6 +23,8 @@ import {
   EbsDeviceVolumeType,
   InstanceInitiatedShutdownBehavior,
   InstanceType,
+  KeyPair,
+  KeyPairType,
   LaunchTemplate,
   LaunchTemplateHttpTokens,
   OperatingSystemType,
@@ -142,6 +145,28 @@ describe('LaunchTemplate', () => {
     Template.fromStack(stack).hasResourceProperties('AWS::EC2::LaunchTemplate', {
       LaunchTemplateName: 'LTName',
     });
+  });
+
+  test('Given versionDescription', () => {
+    // WHEN
+    new LaunchTemplate(stack, 'Template', {
+      versionDescription: 'test template',
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::EC2::LaunchTemplate', {
+      VersionDescription: 'test template',
+    });
+  });
+
+  test('throw error when versionDescription is too long', () => {
+    const tooLongDescription = 'a'.repeat(256);
+    // WHEN / THEN
+    expect(() => {
+      new LaunchTemplate(stack, 'TemplateWithTooLongDescription', {
+        versionDescription: tooLongDescription,
+      });
+    }).toThrow('versionDescription must be less than or equal to 255 characters, got 256');
   });
 
   test('Given instanceType', () => {
@@ -311,6 +336,12 @@ describe('LaunchTemplate', () => {
       }, {
         deviceName: 'ephemeral',
         volume: BlockDeviceVolume.ephemeral(0),
+      }, {
+        deviceName: 'gp3-with-throughput',
+        volume: BlockDeviceVolume.ebs(15, {
+          volumeType: EbsDeviceVolumeType.GP3,
+          throughput: 350,
+        }),
       },
     ];
 
@@ -363,9 +394,111 @@ describe('LaunchTemplate', () => {
             DeviceName: 'ephemeral',
             VirtualName: 'ephemeral0',
           },
+          {
+            DeviceName: 'gp3-with-throughput',
+            Ebs: {
+              VolumeSize: 15,
+              VolumeType: 'gp3',
+              Throughput: 350,
+            },
+          },
         ],
       },
     });
+  });
+  test.each([124, 1001])('throws if throughput is set less than 125 or more than 1000', (throughput) => {
+    expect(() => {
+      new LaunchTemplate(stack, 'LaunchTemplate', {
+        blockDevices: [{
+          deviceName: 'ebs',
+          volume: BlockDeviceVolume.ebs(15, {
+            volumeType: EbsDeviceVolumeType.GP3,
+            throughput,
+          }),
+        }],
+      });
+    }).toThrow(/'throughput' must be between 125 and 1000, got/);
+  });
+  test('throws if throughput is not an integer', () => {
+    expect(() => {
+      new LaunchTemplate(stack, 'LaunchTemplate', {
+        blockDevices: [{
+          deviceName: 'ebs',
+          volume: BlockDeviceVolume.ebs(15, {
+            volumeType: EbsDeviceVolumeType.GP3,
+            throughput: 234.56,
+          }),
+        }],
+      });
+    }).toThrow("'throughput' must be an integer, got: 234.56.");
+  });
+  test.each([
+    ...Object.values(EbsDeviceVolumeType).filter((v) => v !== 'gp3'),
+  ])('throws if throughput is set on any volume type other than GP3', (volumeType) => {
+    expect(() => {
+      new LaunchTemplate(stack, 'LaunchTemplate', {
+        blockDevices: [{
+          deviceName: 'ebs',
+          volume: BlockDeviceVolume.ebs(15, {
+            volumeType: volumeType,
+            throughput: 150,
+          }),
+        }],
+      });
+    }).toThrow(/'throughput' requires 'volumeType': gp3, got/);
+  });
+  test('throws if throughput / iops ratio is greater than 0.25', () => {
+    expect(() => {
+      new LaunchTemplate(stack, 'LaunchTemplate', {
+        blockDevices: [{
+          deviceName: 'ebs',
+          volume: BlockDeviceVolume.ebs(15, {
+            volumeType: EbsDeviceVolumeType.GP3,
+            throughput: 751,
+            iops: 3000,
+          }),
+        }],
+      });
+    }).toThrow('Throughput (MiBps) to iops ratio of 0.25033333333333335 is too high; maximum is 0.25 MiBps per iops');
+  });
+
+  test('Given instance profile', () => {
+    // GIVEN
+    const role = new Role(stack, 'TestRole', {
+      assumedBy: new ServicePrincipal('ec2.amazonaws.com'),
+    });
+    const instanceProfile = new InstanceProfile(stack, 'InstanceProfile', {
+      role,
+    });
+
+    // WHEN
+    const template = new LaunchTemplate(stack, 'Template', {
+      instanceProfile,
+    });
+
+    // THEN
+    Template.fromStack(stack).resourceCountIs('AWS::IAM::Role', 1);
+    Template.fromStack(stack).hasResourceProperties('AWS::IAM::InstanceProfile', {
+      Roles: [
+        {
+          Ref: 'TestRole6C9272DF',
+        },
+      ],
+    });
+    Template.fromStack(stack).hasResourceProperties('AWS::EC2::LaunchTemplate', {
+      LaunchTemplateData: {
+        IamInstanceProfile: {
+          Arn: {
+            'Fn::GetAtt': [
+              'InstanceProfile9F2F41CB',
+              'Arn',
+            ],
+          },
+        },
+      },
+    });
+    expect(template.role).toBeDefined();
+    expect(template.grantPrincipal).toBeDefined();
   });
 
   describe('feature flag @aws-cdk/aws-ec2:launchTemplateDefaultUserData', () => {
@@ -393,6 +526,46 @@ describe('LaunchTemplate', () => {
       const template = new LaunchTemplate(stack, 'Template', {
         machineImage: new WindowsImage(WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE),
       });
+      // THEN
+      Template.fromStack(stack).hasResourceProperties('AWS::EC2::LaunchTemplate', {
+        LaunchTemplateData: {
+          ImageId: {
+            Ref: stringLike('SsmParameterValueawsserviceamiwindowslatestWindowsServer2019EnglishFullBase.*Parameter'),
+          },
+        },
+      });
+      expect(template.osType).toBe(OperatingSystemType.WINDOWS);
+      expect(template.userData).toBeDefined();
+    });
+  });
+
+  describe('feature flag @aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig', () => {
+    test('Given machineImage (Linux)', () => {
+      // WHEN
+      stack.node.setContext(cxapi.AUTOSCALING_GENERATE_LAUNCH_TEMPLATE, true);
+      const template = new LaunchTemplate(stack, 'Template', {
+        machineImage: new AmazonLinuxImage(),
+      });
+
+      // THEN
+      Template.fromStack(stack).hasResourceProperties('AWS::EC2::LaunchTemplate', {
+        LaunchTemplateData: {
+          ImageId: {
+            Ref: stringLike('SsmParameterValueawsserviceamiamazonlinuxlatestamznami.*Parameter'),
+          },
+        },
+      });
+      expect(template.osType).toBe(OperatingSystemType.LINUX);
+      expect(template.userData).toBeDefined();
+    });
+
+    test('Given machineImage (Windows)', () => {
+      // WHEN
+      stack.node.setContext(cxapi.AUTOSCALING_GENERATE_LAUNCH_TEMPLATE, true);
+      const template = new LaunchTemplate(stack, 'Template', {
+        machineImage: new WindowsImage(WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE),
+      });
+
       // THEN
       Template.fromStack(stack).hasResourceProperties('AWS::EC2::LaunchTemplate', {
         LaunchTemplateData: {
@@ -507,6 +680,30 @@ describe('LaunchTemplate', () => {
         KeyName: 'TestKeyname',
       },
     });
+  });
+
+  it('throws an error on incompatible Key Pair for operating system', () => {
+    // GIVEN
+    const keyPair = new KeyPair(stack, 'KeyPair', {
+      type: KeyPairType.ED25519,
+    });
+
+    // THEN
+    expect(() => new LaunchTemplate(stack, 'Instance', {
+      machineImage: new WindowsImage(WindowsVersion.WINDOWS_SERVER_2022_ENGLISH_CORE_BASE),
+      keyPair,
+    })).toThrow('ed25519 keys are not compatible with the chosen AMI');
+  });
+
+  it('throws when keyName and keyPair are provided', () => {
+    // GIVEN
+    const keyPair = new KeyPair(stack, 'KeyPair');
+
+    // THEN
+    expect(() => new LaunchTemplate(stack, 'Instance', {
+      keyName: 'test-key-pair',
+      keyPair,
+    })).toThrow('Cannot specify both of \'keyName\' and \'keyPair\'; prefer \'keyPair\'');
   });
 
   test.each([
@@ -625,6 +822,70 @@ describe('LaunchTemplate', () => {
         MetadataOptions: {
           HttpTokens: 'required',
         },
+      },
+    });
+  });
+
+  test('Associate public IP address', () => {
+    // GIVEN
+    const vpc = new Vpc(stack, 'VPC');
+    const sg = new SecurityGroup(stack, 'SG', { vpc });
+
+    // WHEN
+    new LaunchTemplate(stack, 'Template', {
+      associatePublicIpAddress: true,
+      securityGroup: sg,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::EC2::LaunchTemplate', {
+      LaunchTemplateData: {
+        NetworkInterfaces: [
+          {
+            DeviceIndex: 0,
+            AssociatePublicIpAddress: true,
+            Groups: [
+              {
+                'Fn::GetAtt': [
+                  'SGADB53937',
+                  'GroupId',
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  test('Dissociate public IP address', () => {
+    // GIVEN
+    const vpc = new Vpc(stack, 'VPC');
+    const sg = new SecurityGroup(stack, 'SG', { vpc });
+
+    // WHEN
+    new LaunchTemplate(stack, 'Template', {
+      associatePublicIpAddress: false,
+      securityGroup: sg,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::EC2::LaunchTemplate', {
+      LaunchTemplateData: {
+        NetworkInterfaces: [
+          {
+            DeviceIndex: 0,
+            AssociatePublicIpAddress: false,
+            Groups: [
+              {
+                'Fn::GetAtt': [
+                  'SGADB53937',
+                  'GroupId',
+                ],
+              },
+            ],
+          },
+        ],
       },
     });
   });

@@ -4,7 +4,12 @@ import * as s3_assets from 'aws-cdk-lib/aws-s3-assets';
 import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 
-const app = new cdk.App();
+const app = new cdk.App({
+  postCliContext: {
+    '@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature': false,
+    '@aws-cdk/aws-ecs:disableEcsImdsBlocking': false,
+  },
+});
 const stack = new cdk.Stack(app, 'aws-ecs-integ');
 const vpc = new ec2.Vpc(stack, 'Vpc', { maxAzs: 2, restrictDefaultSecurityGroup: false });
 const cluster = new ecs.Cluster(stack, 'EcsCluster', { vpc });
@@ -31,7 +36,11 @@ taskDefinition.addFirelensLogRouter('log_router', {
       configFileType: ecs.FirelensConfigFileType.S3,
     },
   },
-  logging: new ecs.AwsLogDriver({ streamPrefix: 'firelens' }),
+  logging: new ecs.AwsLogDriver({
+    streamPrefix: 'firelens',
+    mode: ecs.AwsLogDriverMode.NON_BLOCKING,
+    maxBufferSize: cdk.Size.mebibytes(25),
+  }),
   memoryReservationMiB: 50,
 });
 

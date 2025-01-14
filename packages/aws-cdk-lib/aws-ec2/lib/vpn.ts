@@ -41,7 +41,7 @@ export interface IVpnGateway extends IResource {
   /**
    * The virtual private gateway Id
    */
-  readonly gatewayId: string
+  readonly gatewayId: string;
 }
 
 export interface VpnTunnelOption {
@@ -130,7 +130,7 @@ export interface EnableVpnGatewayOptions extends VpnGatewayProps {
    * Provide an array of subnets where the route propagation should be added.
    * @default noPropagation
    */
-  readonly vpnRoutePropagation?: SubnetSelection[]
+  readonly vpnRoutePropagation?: SubnetSelection[];
 }
 
 export interface VpnConnectionProps extends VpnConnectionOptions {
@@ -153,7 +153,7 @@ export enum VpnConnectionType {
    * Dummy member
    * TODO: remove once https://github.com/aws/jsii/issues/231 is fixed
    */
-  DUMMY = 'dummy'
+  DUMMY = 'dummy',
 }
 
 /**
@@ -319,7 +319,9 @@ export class VpnConnection extends VpnConnectionBase {
         throw new Error('Cannot specify more than two `tunnelOptions`');
       }
 
-      if (props.tunnelOptions.length === 2 && props.tunnelOptions[0].tunnelInsideCidr === props.tunnelOptions[1].tunnelInsideCidr) {
+      if (props.tunnelOptions.length === 2 &&
+        props.tunnelOptions[0].tunnelInsideCidr === props.tunnelOptions[1].tunnelInsideCidr &&
+        props.tunnelOptions[0].tunnelInsideCidr !== undefined) {
         throw new Error(`Same ${props.tunnelOptions[0].tunnelInsideCidr} \`tunnelInsideCidr\` cannot be used for both tunnels.`);
       }
 

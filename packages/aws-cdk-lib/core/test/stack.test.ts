@@ -1113,8 +1113,8 @@ describe('stack', () => {
       },
     });
 
-    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual([]);
-    expect(assembly.getStackArtifact(child2.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual(['ParentChild18FAEF419']);
+    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual([]);
+    expect(assembly.getStackArtifact(child2.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual(['ParentChild18FAEF419']);
   });
 
   test('_addAssemblyDependency adds to _stackDependencies', () => {
@@ -1139,8 +1139,8 @@ describe('stack', () => {
 
     const assembly = app.synth();
 
-    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual([]);
-    expect(assembly.getStackArtifact(childA.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual(['ParentChild18FAEF419']);
+    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual([]);
+    expect(assembly.getStackArtifact(childA.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual(['ParentChild18FAEF419']);
   });
 
   test('_addAssemblyDependency adds one StackDependencyReason with defaults', () => {
@@ -1161,8 +1161,8 @@ describe('stack', () => {
 
     const assembly = app.synth();
 
-    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual([]);
-    expect(assembly.getStackArtifact(childA.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual(['ParentChild18FAEF419']);
+    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual([]);
+    expect(assembly.getStackArtifact(childA.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual(['ParentChild18FAEF419']);
   });
 
   test('_addAssemblyDependency raises error on cycle', () => {
@@ -1233,8 +1233,8 @@ describe('stack', () => {
 
     const assembly = app.synth();
 
-    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual([]);
-    expect(assembly.getStackArtifact(childA.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual(['ParentChild18FAEF419']);
+    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual([]);
+    expect(assembly.getStackArtifact(childA.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual(['ParentChild18FAEF419']);
   });
 
   test('_removeAssemblyDependency removes a StackDependency from _stackDependencies with the last reason', () => {
@@ -1260,8 +1260,8 @@ describe('stack', () => {
 
     const assembly = app.synth();
 
-    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual([]);
-    expect(assembly.getStackArtifact(childA.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual([]);
+    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual([]);
+    expect(assembly.getStackArtifact(childA.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual([]);
   });
 
   test('_removeAssemblyDependency removes a StackDependency with default reason', () => {
@@ -1282,8 +1282,8 @@ describe('stack', () => {
 
     const assembly = app.synth();
 
-    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual([]);
-    expect(assembly.getStackArtifact(childA.artifactId).dependencies.map((x: { id: any; }) => x.id)).toEqual([]);
+    expect(assembly.getStackArtifact(child1.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual([]);
+    expect(assembly.getStackArtifact(childA.artifactId).dependencies.map((x: { id: any }) => x.id)).toEqual([]);
   });
 
   test('_removeAssemblyDependency raises an error for nested stacks', () => {
@@ -1484,6 +1484,83 @@ describe('stack', () => {
           Export: {
             Name: 'MyExport',
           },
+        },
+      },
+    });
+  });
+
+  test('exports with name can include description', () => {
+    const app = new App();
+    const stack = new Stack(app, 'Stack');
+
+    stack.exportValue('someValue', {
+      name: 'MyExport',
+      description: 'This is a description',
+    });
+
+    const template = app.synth().getStackByName(stack.stackName).template;
+    expect(template).toMatchObject({
+      Outputs: {
+        ExportMyExport: {
+          Description: 'This is a description',
+        },
+      },
+    });
+  });
+
+  test('list exports with name can include description', () => {
+    const app = new App();
+    const stack = new Stack(app, 'Stack');
+
+    stack.exportStringListValue(['someValue', 'anotherValue'], {
+      name: 'MyExport',
+      description: 'This is a description',
+    });
+
+    const template = app.synth().getStackByName(stack.stackName).template;
+    expect(template).toMatchObject({
+      Outputs: {
+        ExportMyExport: {
+          Description: 'This is a description',
+        },
+      },
+    });
+  });
+
+  test('exports without name can include description', () => {
+    const app = new App();
+    const stack = new Stack(app, 'Stack');
+
+    const resource = new CfnResource(stack, 'Resource', { type: 'AWS::Resource' });
+    stack.exportValue(resource.getAtt('Att'), {
+      description: 'This is a description',
+    });
+
+    const template = app.synth().getStackByName(stack.stackName).template;
+    expect(template).toMatchObject({
+      Outputs: {
+        ExportsOutputFnGetAttResourceAttB5968E71: {
+          Description: 'This is a description',
+        },
+      },
+    });
+  });
+
+  test('list exports without name can include description', () => {
+    const app = new App();
+    const stack = new Stack(app, 'Stack');
+
+    const resource = new CfnResource(stack, 'Resource', { type: 'AWS::Resource' });
+    (resource as any).attrAtt = ['Foo', 'Bar'];
+    stack.exportStringListValue(resource.getAtt('Att', ResolutionTypeHint.STRING_LIST), {
+      description: 'This is a description',
+    });
+
+    const template = app.synth().getStackByName(stack.stackName).template;
+    expect(template).toMatchObject({
+      Outputs: {
+        ExportsOutputFnGetAttResourceAttB5968E71: {
+          Description: 'This is a description',
         },
       },
     });
@@ -1998,6 +2075,69 @@ describe('stack', () => {
     expect(asm.getStackArtifact(stack2.artifactId).tags).toEqual(expected);
   });
 
+  test('warning when stack tags contain tokens', () => {
+    // GIVEN
+    const app = new App({
+      stackTraces: false,
+    });
+
+    const stack = new Stack(app, 'stack1', {
+      tags: {
+        foo: Lazy.string({ produce: () => 'lazy' }),
+      },
+    });
+
+    const asm = app.synth();
+    const stackArtifact = asm.stacks[0];
+    expect(stackArtifact.manifest.metadata?.['/stack1']).toEqual([
+      {
+        type: 'aws:cdk:warning',
+        data: expect.stringContaining('Ignoring stack tags that contain deploy-time values'),
+      },
+    ]);
+  });
+
+  test('stack notification arns defaults to undefined', () => {
+
+    const app = new App({ stackTraces: false });
+    const stack1 = new Stack(app, 'stack1', {});
+
+    const asm = app.synth();
+
+    // It must be undefined and not [] because:
+    //
+    //  - undefined  =>  cdk ignores it entirely, as if it wasn't supported (allows external management).
+    //  - []:        =>  cdk manages it, and the user wants to wipe it out.
+    //  - ['arn-1']  =>  cdk manages it, and the user wants to set it to ['arn-1'].
+    expect(asm.getStackArtifact(stack1.artifactId).notificationArns).toBeUndefined();
+  });
+
+  test('stack notification arns are reflected in the stack artifact properties', () => {
+    // GIVEN
+    const NOTIFICATION_ARNS = ['arn:aws:sns:bermuda-triangle-1337:123456789012:MyTopic'];
+    const app = new App({ stackTraces: false });
+    const stack1 = new Stack(app, 'stack1', {
+      notificationArns: NOTIFICATION_ARNS,
+    });
+
+    // WHEN
+    const asm = app.synth();
+
+    // THEN
+    expect(asm.getStackArtifact(stack1.artifactId).notificationArns).toEqual(NOTIFICATION_ARNS);
+  });
+
+  test('throws if stack notification arns contain tokens', () => {
+    // GIVEN
+    const NOTIFICATION_ARNS = ['arn:aws:sns:bermuda-triangle-1337:123456789012:MyTopic'];
+    const app = new App({ stackTraces: false });
+
+    // THEN
+    expect(() => new Stack(app, 'stack1', {
+      notificationArns: [...NOTIFICATION_ARNS, Aws.URL_SUFFIX],
+    })).toThrow('includes one or more tokens in its notification ARNs');
+  });
+
   test('Termination Protection is reflected in Cloud Assembly artifact', () => {
     // if the root is an app, invoke "synth" to avoid double synthesis
     const app = new App();
@@ -2007,6 +2147,32 @@ describe('stack', () => {
     const artifact = assembly.getStackArtifact(stack.artifactId);
 
     expect(artifact.terminationProtection).toEqual(true);
+  });
+
+  test('Set termination protection to true with setter', () => {
+    // if the root is an app, invoke "synth" to avoid double synthesis
+    const app = new App();
+    const stack = new Stack(app, 'Stack', {});
+
+    stack.terminationProtection = true;
+
+    const assembly = app.synth();
+    const artifact = assembly.getStackArtifact(stack.artifactId);
+
+    expect(artifact.terminationProtection).toEqual(true);
+  });
+
+  test('Set termination protection to false with setter', () => {
+    // if the root is an app, invoke "synth" to avoid double synthesis
+    const app = new App();
+    const stack = new Stack(app, 'Stack', { terminationProtection: true });
+
+    stack.terminationProtection = false;
+
+    const assembly = app.synth();
+    const artifact = assembly.getStackArtifact(stack.artifactId);
+
+    expect(artifact.terminationProtection).toEqual(false);
   });
 
   test('context can be set on a stack using a LegacySynthesizer', () => {
@@ -2086,7 +2252,7 @@ describe('stack', () => {
       new Stack(app, 'Stack', {
         env: envConfig,
       });
-    }).toThrowError('Account id of stack environment must be a \'string\' but received \'number\'');
+    }).toThrow('Account id of stack environment must be a \'string\' but received \'number\'');
   });
 
   test('region passed in stack environment must be a string', () => {
@@ -2103,7 +2269,7 @@ describe('stack', () => {
       new Stack(app, 'Stack', {
         env: envConfig,
       });
-    }).toThrowError('Region of stack environment must be a \'string\' but received \'number\'');
+    }).toThrow('Region of stack environment must be a \'string\' but received \'number\'');
   });
 
   test('indent templates when suppressTemplateIndentation is not set', () => {

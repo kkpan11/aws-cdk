@@ -1,5 +1,4 @@
 import { EOL } from 'os';
-import * as path from 'path';
 import { Construct } from 'constructs';
 import { BucketPolicy } from './bucket-policy';
 import { IBucketNotificationDestination } from './destination';
@@ -13,7 +12,6 @@ import * as iam from '../../aws-iam';
 import * as kms from '../../aws-kms';
 import {
   CustomResource,
-  CustomResourceProvider,
   Duration,
   FeatureFlags,
   Fn,
@@ -27,9 +25,9 @@ import {
   Token,
   Tokenization,
   Annotations,
-  builtInCustomResourceProviderNodeRuntime,
 } from '../../core';
 import { CfnReference } from '../../core/lib/private/cfn-reference';
+import { AutoDeleteObjectsProvider } from '../../custom-resource-handlers/dist/aws-s3/auto-delete-objects-provider.generated';
 import * as cxapi from '../../cx-api';
 import * as regionInformation from '../../region-info';
 
@@ -184,7 +182,7 @@ export interface IBucket extends IResource {
    * of the bucket will also be granted to the same principal.
    *
    * @param identity The principal
-   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*')
+   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*'). Parameter type is `any` but `string` should be passed in.
    */
   grantRead(identity: iam.IGrantable, objectsKeyPattern?: any): iam.Grant;
 
@@ -203,7 +201,7 @@ export interface IBucket extends IResource {
    * use the `grantPutAcl` method.
    *
    * @param identity The principal
-   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*')
+   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*'). Parameter type is `any` but `string` should be passed in.
    * @param allowedActionPatterns Restrict the permissions to certain list of action patterns
    */
   grantWrite(identity: iam.IGrantable, objectsKeyPattern?: any, allowedActionPatterns?: string[]): iam.Grant;
@@ -214,7 +212,7 @@ export interface IBucket extends IResource {
    * If encryption is used, permission to use the key to encrypt the contents
    * of written files will also be granted to the same principal.
    * @param identity The principal
-   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*')
+   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*'). Parameter type is `any` but `string` should be passed in.
    */
   grantPut(identity: iam.IGrantable, objectsKeyPattern?: any): iam.Grant;
 
@@ -235,7 +233,7 @@ export interface IBucket extends IResource {
    * in this bucket.
    *
    * @param identity The principal
-   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*')
+   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*'). Parameter type is `any` but `string` should be passed in.
    */
   grantDelete(identity: iam.IGrantable, objectsKeyPattern?: any): iam.Grant;
 
@@ -255,7 +253,7 @@ export interface IBucket extends IResource {
    * use the `grantPutAcl` method.
    *
    * @param identity The principal
-   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*')
+   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*'). Parameter type is `any` but `string` should be passed in.
    */
   grantReadWrite(identity: iam.IGrantable, objectsKeyPattern?: any): iam.Grant;
 
@@ -359,7 +357,7 @@ export interface IBucket extends IResource {
    * @param dest The notification destination (see onEvent)
    * @param filters Filters (see onEvent)
    */
-  addObjectCreatedNotification(dest: IBucketNotificationDestination, ...filters: NotificationKeyFilter[]): void
+  addObjectCreatedNotification(dest: IBucketNotificationDestination, ...filters: NotificationKeyFilter[]): void;
 
   /**
    * Subscribes a destination to receive notifications when an object is
@@ -538,6 +536,8 @@ export abstract class BucketBase extends Resource implements IBucket {
   private notifications?: BucketNotifications;
 
   protected notificationsHandlerRole?: iam.IRole;
+
+  protected notificationsSkipDestinationValidation?: boolean;
 
   protected objectOwnership?: ObjectOwnership;
 
@@ -765,7 +765,7 @@ export abstract class BucketBase extends Resource implements IBucket {
    * of the bucket will also be granted to the same principal.
    *
    * @param identity The principal
-   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*')
+   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*'). Parameter type is `any` but `string` should be passed in.
    */
   public grantRead(identity: iam.IGrantable, objectsKeyPattern: any = '*') {
     return this.grant(identity, perms.BUCKET_READ_ACTIONS, perms.KEY_READ_ACTIONS,
@@ -786,7 +786,7 @@ export abstract class BucketBase extends Resource implements IBucket {
    * If encryption is used, permission to use the key to encrypt the contents
    * of written files will also be granted to the same principal.
    * @param identity The principal
-   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*')
+   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*'). Parameter type is `any` but `string` should be passed in.
    */
   public grantPut(identity: iam.IGrantable, objectsKeyPattern: any = '*') {
     return this.grant(identity, this.putActions, perms.KEY_WRITE_ACTIONS,
@@ -803,7 +803,7 @@ export abstract class BucketBase extends Resource implements IBucket {
    * in this bucket.
    *
    * @param identity The principal
-   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*')
+   * @param objectsKeyPattern Restrict the permission to a certain key pattern (default '*'). Parameter type is `any` but `string` should be passed in.
    */
   public grantDelete(identity: iam.IGrantable, objectsKeyPattern: any = '*') {
     return this.grant(identity, perms.BUCKET_DELETE_ACTIONS, [],
@@ -892,6 +892,7 @@ export abstract class BucketBase extends Resource implements IBucket {
       this.notifications = new BucketNotifications(this, 'Notifications', {
         bucket: this,
         handlerRole: this.notificationsHandlerRole,
+        skipDestinationValidation: this.notificationsSkipDestinationValidation ?? false,
       });
     }
     cb(this.notifications);
@@ -1179,7 +1180,7 @@ export enum InventoryFrequency {
   /**
    * A report is generated every Sunday (UTC timezone) after the initial report.
    */
-  WEEKLY = 'Weekly'
+  WEEKLY = 'Weekly',
 }
 
 /**
@@ -1250,6 +1251,7 @@ export interface Inventory {
   readonly enabled?: boolean;
   /**
    * The inventory configuration ID.
+   * Should be limited to 64 characters and can only contain letters, numbers, periods, dashes, and underscores.
    *
    * @default - generated ID.
    */
@@ -1288,7 +1290,9 @@ export enum ObjectOwnership {
    */
   BUCKET_OWNER_ENFORCED = 'BucketOwnerEnforced',
   /**
-   * Objects uploaded to the bucket change ownership to the bucket owner .
+   * The bucket owner will own the object if the object is uploaded with
+   * the bucket-owner-full-control canned ACL. Without this setting and
+   * canned ACL, the object is uploaded and remains owned by the uploading account.
    */
   BUCKET_OWNER_PREFERRED = 'BucketOwnerPreferred',
   /**
@@ -1337,6 +1341,86 @@ export interface IntelligentTieringConfiguration {
   readonly deepArchiveAccessTierTime?: Duration;
 }
 
+/**
+ * The date source for the partitioned prefix.
+ */
+export enum PartitionDateSource {
+  /**
+   * The year, month, and day will be based on the timestamp of the S3 event in the file that's been delivered.
+   */
+  EVENT_TIME = 'EventTime',
+
+  /**
+   * The year, month, and day will be based on the time when the log file was delivered to S3.
+   */
+  DELIVERY_TIME = 'DeliveryTime',
+}
+
+/**
+ * The key format for the log object.
+ */
+export abstract class TargetObjectKeyFormat {
+  /**
+   * Use partitioned prefix for log objects.
+   * If you do not specify the dateSource argument, the default is EventTime.
+   *
+   * The partitioned prefix format as follow:
+   * [DestinationPrefix][SourceAccountId]/​[SourceRegion]/​[SourceBucket]/​[YYYY]/​[MM]/​[DD]/​[YYYY]-[MM]-[DD]-[hh]-[mm]-[ss]-[UniqueString]
+   */
+  public static partitionedPrefix(dateSource?: PartitionDateSource): TargetObjectKeyFormat {
+    return new class extends TargetObjectKeyFormat {
+      public _render(): CfnBucket.LoggingConfigurationProperty['targetObjectKeyFormat'] {
+        return {
+          partitionedPrefix: {
+            partitionDateSource: dateSource,
+          },
+        };
+      }
+    }();
+  }
+
+  /**
+   * Use the simple prefix for log objects.
+   *
+   * The simple prefix format as follow:
+   * [DestinationPrefix][YYYY]-[MM]-[DD]-[hh]-[mm]-[ss]-[UniqueString]
+   */
+  public static simplePrefix(): TargetObjectKeyFormat {
+    return new class extends TargetObjectKeyFormat {
+      public _render(): CfnBucket.LoggingConfigurationProperty['targetObjectKeyFormat'] {
+        return {
+          simplePrefix: {},
+        };
+      }
+    }();
+  }
+
+  /**
+   * Render the log object key format.
+   *
+   * @internal
+   */
+  public abstract _render(): CfnBucket.LoggingConfigurationProperty['targetObjectKeyFormat'];
+}
+
+/**
+ * The transition default minimum object size for lifecycle
+ */
+export enum TransitionDefaultMinimumObjectSize {
+  /**
+   * Objects smaller than 128 KB will not transition to any storage class by default.
+   */
+  ALL_STORAGE_CLASSES_128_K = 'all_storage_classes_128K',
+
+  /**
+   * Objects smaller than 128 KB will transition to Glacier Flexible Retrieval or Glacier
+   * Deep Archive storage classes.
+   *
+   * By default, all other storage classes will prevent transitions smaller than 128 KB.
+   */
+  VARIES_BY_STORAGE_CLASS = 'varies_by_storage_class',
+}
+
 export interface BucketProps {
   /**
    * The kind of server-side encryption to apply to this bucket.
@@ -1344,18 +1428,18 @@ export interface BucketProps {
    * If you choose KMS, you can specify a KMS key via `encryptionKey`. If
    * encryption key is not specified, a key will automatically be created.
    *
-   * @default - `Kms` if `encryptionKey` is specified, or `Managed` otherwise.
+   * @default - `KMS` if `encryptionKey` is specified, or `UNENCRYPTED` otherwise.
+   * But if `UNENCRYPTED` is specified, the bucket will be encrypted as `S3_MANAGED` automatically.
    */
   readonly encryption?: BucketEncryption;
 
   /**
    * External KMS key to use for bucket encryption.
    *
-   * The 'encryption' property must be either not specified or set to "Kms".
-   * An error will be emitted if encryption is set to "Unencrypted" or
-   * "Managed".
+   * The `encryption` property must be either not specified or set to `KMS` or `DSSE`.
+   * An error will be emitted if `encryption` is set to `UNENCRYPTED` or `S3_MANAGED`.
    *
-   * @default - If encryption is set to "Kms" and this property is undefined,
+   * @default - If `encryption` is set to `KMS` and this property is undefined,
    * a new KMS key will be created and associated with this bucket.
    */
   readonly encryptionKey?: kms.IKey;
@@ -1377,7 +1461,7 @@ export interface BucketProps {
    *   attendant cost implications of that).
    * - If enabled, S3 will use its own time-limited key instead.
    *
-   * Only relevant, when Encryption is set to `BucketEncryption.KMS` or `BucketEncryption.KMS_MANAGED`.
+   * Only relevant, when Encryption is not set to `BucketEncryption.UNENCRYPTED`.
    *
    * @default - false
    */
@@ -1407,6 +1491,11 @@ export interface BucketProps {
    * switching this to `false` in a CDK version *before* `1.126.0` will lead to
    * all objects in the bucket being deleted. Be sure to update your bucket resources
    * by deploying with CDK version `1.126.0` or later **before** switching this value to `false`.
+   *
+   * Setting `autoDeleteObjects` to true on a bucket will add `s3:PutBucketPolicy` to the
+   * bucket policy. This is because during bucket deletion, the custom resource provider
+   * needs to update the bucket policy by adding a deny policy for `s3:PutObject` to
+   * prevent race conditions with external bucket writers.
    *
    * @default false
    */
@@ -1456,6 +1545,18 @@ export interface BucketProps {
    * @default - No lifecycle rules.
    */
   readonly lifecycleRules?: LifecycleRule[];
+
+  /**
+   * Indicates which default minimum object size behavior is applied to the lifecycle configuration.
+   *
+   * To customize the minimum object size for any transition you can add a filter that specifies a custom
+   * `objectSizeGreaterThan` or `objectSizeLessThan` for `lifecycleRules` property. Custom filters always
+   * take precedence over the default transition behavior.
+   *
+   * @default - TransitionDefaultMinimumObjectSize.VARIES_BY_STORAGE_CLASS before September 2024,
+   * otherwise TransitionDefaultMinimumObjectSize.ALL_STORAGE_CLASSES_128_K.
+   */
+  readonly transitionDefaultMinimumObjectSize?: TransitionDefaultMinimumObjectSize;
 
   /**
    * The name of the index document (e.g. "index.html") for the website. Enables static website
@@ -1546,6 +1647,13 @@ export interface BucketProps {
   readonly serverAccessLogsPrefix?: string;
 
   /**
+   * Optional key format for log objects.
+   *
+   * @default - the default key format is: [DestinationPrefix][YYYY]-[MM]-[DD]-[hh]-[mm]-[ss]-[UniqueString]
+   */
+  readonly targetObjectKeyFormat?: TargetObjectKeyFormat;
+
+  /**
    * The inventory configuration of the bucket.
    *
    * @see https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-inventory.html
@@ -1558,7 +1666,8 @@ export interface BucketProps {
    *
    * @see https://docs.aws.amazon.com/AmazonS3/latest/dev/about-object-ownership.html
    *
-   * @default - No ObjectOwnership configuration, uploading account will own the object.
+   * @default - No ObjectOwnership configuration. By default, Amazon S3 sets Object Ownership to `Bucket owner enforced`.
+   * This means ACLs are disabled and the bucket owner will own every object.
    *
    */
   readonly objectOwnership?: ObjectOwnership;
@@ -1578,13 +1687,31 @@ export interface BucketProps {
   readonly notificationsHandlerRole?: iam.IRole;
 
   /**
-   * Inteligent Tiering Configurations
+   * Skips notification validation of Amazon SQS, Amazon SNS, and Lambda destinations.
+   *
+   * @default false
+   */
+  readonly notificationsSkipDestinationValidation?: boolean;
+
+  /**
+   * Intelligent Tiering Configurations
    *
    * @see https://docs.aws.amazon.com/AmazonS3/latest/userguide/intelligent-tiering.html
    *
    * @default No Intelligent Tiiering Configurations.
    */
   readonly intelligentTieringConfigurations?: IntelligentTieringConfiguration[];
+
+  /**
+  * Enforces minimum TLS version for requests.
+  *
+  * Requires `enforceSSL` to be enabled.
+  *
+  * @see https://docs.aws.amazon.com/AmazonS3/latest/userguide/amazon-s3-policy-keys.html#example-object-tls-version
+  *
+  * @default No minimum TLS version is enforced.
+  */
+  readonly minimumTLSVersion?: number;
 }
 
 /**
@@ -1647,7 +1774,7 @@ export class Bucket extends BucketBase {
     if (!bucketName) {
       throw new Error('Bucket name is required');
     }
-    Bucket.validateBucketName(bucketName);
+    Bucket.validateBucketName(bucketName, true);
 
     const oldEndpoint = `s3-website-${region}.${urlSuffix}`;
     const newEndpoint = `s3-website.${region}.${urlSuffix}`;
@@ -1754,8 +1881,9 @@ export class Bucket extends BucketBase {
    * Thrown an exception if the given bucket name is not valid.
    *
    * @param physicalName name of the bucket.
+   * @param allowLegacyBucketNaming allow legacy bucket naming style, default is false.
    */
-  public static validateBucketName(physicalName: string): void {
+  public static validateBucketName(physicalName: string, allowLegacyBucketNaming: boolean = false): void {
     const bucketName = physicalName;
     if (!bucketName || Token.isUnresolved(bucketName)) {
       // the name is a late-bound value, not a defined string,
@@ -1769,23 +1897,37 @@ export class Bucket extends BucketBase {
     if (bucketName.length < 3 || bucketName.length > 63) {
       errors.push('Bucket name must be at least 3 and no more than 63 characters');
     }
-    const charsetMatch = bucketName.match(/[^a-z0-9.-]/);
-    if (charsetMatch) {
-      errors.push('Bucket name must only contain lowercase characters and the symbols, period (.) and dash (-) '
-        + `(offset: ${charsetMatch.index})`);
+
+    const illegalCharsetRegEx = allowLegacyBucketNaming ? /[^A-Za-z0-9._-]/ : /[^a-z0-9.-]/;
+    const allowedEdgeCharsetRegEx = allowLegacyBucketNaming ? /[A-Za-z0-9]/ : /[a-z0-9]/;
+
+    const illegalCharMatch = bucketName.match(illegalCharsetRegEx);
+    if (illegalCharMatch) {
+      errors.push(allowLegacyBucketNaming
+        ? 'Bucket name must only contain uppercase or lowercase characters and the symbols, period (.), underscore (_), and dash (-)'
+        : 'Bucket name must only contain lowercase characters and the symbols, period (.) and dash (-)'
+        + ` (offset: ${illegalCharMatch.index})`,
+      );
     }
-    if (!/[a-z0-9]/.test(bucketName.charAt(0))) {
-      errors.push('Bucket name must start and end with a lowercase character or number '
-        + '(offset: 0)');
+    if (!allowedEdgeCharsetRegEx.test(bucketName.charAt(0))) {
+      errors.push(allowLegacyBucketNaming
+        ? 'Bucket name must start with an uppercase, lowercase character or number'
+        : 'Bucket name must start with a lowercase character or number'
+        + ' (offset: 0)',
+      );
     }
-    if (!/[a-z0-9]/.test(bucketName.charAt(bucketName.length - 1))) {
-      errors.push('Bucket name must start and end with a lowercase character or number '
-        + `(offset: ${bucketName.length - 1})`);
+    if (!allowedEdgeCharsetRegEx.test(bucketName.charAt(bucketName.length - 1))) {
+      errors.push(allowLegacyBucketNaming
+        ? 'Bucket name must end with an uppercase, lowercase character or number'
+        : 'Bucket name must end with a lowercase character or number'
+        + ` (offset: ${bucketName.length - 1})`,
+      );
     }
+
     const consecSymbolMatch = bucketName.match(/\.-|-\.|\.\./);
     if (consecSymbolMatch) {
-      errors.push('Bucket name must not have dash next to period, or period next to dash, or consecutive periods '
-        + `(offset: ${consecSymbolMatch.index})`);
+      errors.push('Bucket name must not have dash next to period, or period next to dash, or consecutive periods'
+        + ` (offset: ${consecSymbolMatch.index})`);
     }
     if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(bucketName)) {
       errors.push('Bucket name must not resemble an IP address');
@@ -1811,6 +1953,7 @@ export class Bucket extends BucketBase {
   protected disallowPublicAccess?: boolean;
   private accessControl?: BucketAccessControl;
   private readonly lifecycleRules: LifecycleRule[] = [];
+  private readonly transitionDefaultMinimumObjectSize?: TransitionDefaultMinimumObjectSize;
   private readonly eventBridgeEnabled?: boolean;
   private readonly metrics: BucketMetrics[] = [];
   private readonly cors: CorsRule[] = [];
@@ -1823,6 +1966,7 @@ export class Bucket extends BucketBase {
     });
 
     this.notificationsHandlerRole = props.notificationsHandlerRole;
+    this.notificationsSkipDestinationValidation = props.notificationsSkipDestinationValidation;
 
     const { bucketEncryption, encryptionKey } = this.parseEncryption(props);
 
@@ -1834,6 +1978,7 @@ export class Bucket extends BucketBase {
     const objectLockConfiguration = this.parseObjectLockConfig(props);
 
     this.objectOwnership = props.objectOwnership;
+    this.transitionDefaultMinimumObjectSize = props.transitionDefaultMinimumObjectSize;
     const resource = new CfnBucket(this, 'Resource', {
       bucketName: this.physicalName,
       bucketEncryption,
@@ -1879,6 +2024,9 @@ export class Bucket extends BucketBase {
     // Enforce AWS Foundational Security Best Practice
     if (props.enforceSSL) {
       this.enforceSSLStatement();
+      this.minimumTLSVersionStatement(props.minimumTLSVersion);
+    } else if (props.minimumTLSVersion) {
+      throw new Error('\'enforceSSL\' must be enabled for \'minimumTLSVersion\' to be applied');
     }
 
     if (props.serverAccessLogsBucket instanceof Bucket) {
@@ -1893,7 +2041,7 @@ export class Bucket extends BucketBase {
     } else if (props.serverAccessLogsBucket) {
       // A `serverAccessLogsBucket` was provided but it is not a concrete `Bucket` and it
       // may not be possible to configure the ACLs or bucket policy as required.
-      Annotations.of(this).addWarning(
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-s3:accessLogsPolicyNotAdded',
         `Unable to add necessary logging permissions to imported target bucket: ${props.serverAccessLogsBucket}`,
       );
     }
@@ -1911,6 +2059,10 @@ export class Bucket extends BucketBase {
     (props.lifecycleRules || []).forEach(this.addLifecycleRule.bind(this));
 
     if (props.publicReadAccess) {
+      if (props.blockPublicAccess === undefined) {
+        throw new Error('Cannot use \'publicReadAccess\' property on a bucket without allowing bucket-level public access through \'blockPublicAccess\' property.');
+      }
+
       this.grantPublicAccess();
     }
 
@@ -1983,6 +2135,27 @@ export class Bucket extends BucketBase {
   }
 
   /**
+   * Adds an iam statement to allow requests with a minimum TLS
+   * version only.
+   */
+  private minimumTLSVersionStatement(minimumTLSVersion?: number) {
+    if (!minimumTLSVersion) return;
+    const statement = new iam.PolicyStatement({
+      actions: ['s3:*'],
+      conditions: {
+        NumericLessThan: { 's3:TlsVersion': minimumTLSVersion },
+      },
+      effect: iam.Effect.DENY,
+      resources: [
+        this.bucketArn,
+        this.arnForObjects('*'),
+      ],
+      principals: [new iam.AnyPrincipal()],
+    });
+    this.addToResourcePolicy(statement);
+  }
+
+  /**
    * Set up key properties and return the Bucket encryption property from the
    * user's configuration, according to the following table:
    *
@@ -1995,6 +2168,7 @@ export class Bucket extends BucketBase {
    * | KMS              | undefined           | e                      | SSE-KMS, bucketKeyEnabled = e   | new key                      |
    * | KMS_MANAGED      | undefined           | e                      | SSE-KMS, bucketKeyEnabled = e   | undefined                    |
    * | S3_MANAGED       | undefined           | false                  | SSE-S3                          | undefined                    |
+   * | S3_MANAGED       | undefined           | e                      | SSE-S3, bucketKeyEnabled = e    | undefined                    |
    * | UNENCRYPTED      | undefined           | true                   | ERROR!                          | ERROR!                       |
    * | UNENCRYPTED      | k                   | e                      | ERROR!                          | ERROR!                       |
    * | KMS_MANAGED      | k                   | e                      | ERROR!                          | ERROR!                       |
@@ -2002,8 +2176,8 @@ export class Bucket extends BucketBase {
    * | S3_MANAGED       | k                   | e                      | ERROR!                          | ERROR!                       |
    */
   private parseEncryption(props: BucketProps): {
-    bucketEncryption?: CfnBucket.BucketEncryptionProperty,
-    encryptionKey?: kms.IKey
+    bucketEncryption?: CfnBucket.BucketEncryptionProperty;
+    encryptionKey?: kms.IKey;
   } {
 
     // default based on whether encryptionKey is specified
@@ -2017,12 +2191,9 @@ export class Bucket extends BucketBase {
       throw new Error(`encryptionKey is specified, so 'encryption' must be set to KMS or DSSE (value: ${encryptionType})`);
     }
 
-    // if bucketKeyEnabled is set, encryption must be set to KMS or DSSE.
-    if (
-      props.bucketKeyEnabled &&
-      ![BucketEncryption.KMS, BucketEncryption.KMS_MANAGED, BucketEncryption.DSSE, BucketEncryption.DSSE_MANAGED].includes(encryptionType)
-    ) {
-      throw new Error(`bucketKeyEnabled is specified, so 'encryption' must be set to KMS or DSSE (value: ${encryptionType})`);
+    // if bucketKeyEnabled is set, encryption can not be BucketEncryption.UNENCRYPTED
+    if (props.bucketKeyEnabled && encryptionType === BucketEncryption.UNENCRYPTED) {
+      throw new Error(`bucketKeyEnabled is specified, so 'encryption' must be set to KMS, DSSE or S3 (value: ${encryptionType})`);
     }
 
     if (encryptionType === BucketEncryption.UNENCRYPTED) {
@@ -2032,6 +2203,7 @@ export class Bucket extends BucketBase {
     if (encryptionType === BucketEncryption.KMS) {
       const encryptionKey = props.encryptionKey || new kms.Key(this, 'Key', {
         description: `Created by ${this.node.path}`,
+        enableKeyRotation: true,
       });
 
       const bucketEncryption = {
@@ -2051,7 +2223,10 @@ export class Bucket extends BucketBase {
     if (encryptionType === BucketEncryption.S3_MANAGED) {
       const bucketEncryption = {
         serverSideEncryptionConfiguration: [
-          { serverSideEncryptionByDefault: { sseAlgorithm: 'AES256' } },
+          {
+            bucketKeyEnabled: props.bucketKeyEnabled,
+            serverSideEncryptionByDefault: { sseAlgorithm: 'AES256' },
+          },
         ],
       };
 
@@ -2115,7 +2290,10 @@ export class Bucket extends BucketBase {
 
     const self = this;
 
-    return { rules: this.lifecycleRules.map(parseLifecycleRule) };
+    return {
+      rules: this.lifecycleRules.map(parseLifecycleRule),
+      transitionDefaultMinimumObjectSize: this.transitionDefaultMinimumObjectSize,
+    };
 
     function parseLifecycleRule(rule: LifecycleRule): CfnBucket.RuleProperty {
       const enabled = rule.enabled ?? true;
@@ -2123,6 +2301,19 @@ export class Bucket extends BucketBase {
       && (rule.expiration || rule.expirationDate || self.parseTagFilters(rule.tagFilters))) {
         // ExpiredObjectDeleteMarker cannot be specified with ExpirationInDays, ExpirationDate, or TagFilters.
         throw new Error('ExpiredObjectDeleteMarker cannot be specified with expiration, ExpirationDate, or TagFilters.');
+      }
+
+      if (
+        rule.abortIncompleteMultipartUploadAfter === undefined &&
+        rule.expiration === undefined &&
+        rule.expirationDate === undefined &&
+        rule.expiredObjectDeleteMarker === undefined &&
+        rule.noncurrentVersionExpiration === undefined &&
+        rule.noncurrentVersionsToRetain === undefined &&
+        rule.noncurrentVersionTransitions === undefined &&
+        rule.transitions === undefined
+      ) {
+        throw new Error('All rules for `lifecycleRules` must have at least one of the following properties: `abortIncompleteMultipartUploadAfter`, `expiration`, `expirationDate`, `expiredObjectDeleteMarker`, `noncurrentVersionExpiration`, `noncurrentVersionsToRetain`, `noncurrentVersionTransitions`, or `transitions`');
       }
 
       const x: CfnBucket.RuleProperty = {
@@ -2179,6 +2370,7 @@ export class Bucket extends BucketBase {
     return {
       destinationBucketName: props.serverAccessLogsBucket?.bucketName,
       logFilePrefix: props.serverAccessLogsPrefix,
+      targetObjectKeyFormat: props.targetObjectKeyFormat?._render(),
     };
   }
 
@@ -2318,7 +2510,7 @@ export class Bucket extends BucketBase {
     }
 
     const routingRules = props.websiteRoutingRules ? props.websiteRoutingRules.map<CfnBucket.RoutingRuleProperty>((rule) => {
-      if (rule.condition && !rule.condition.httpErrorCodeReturnedEquals && !rule.condition.keyPrefixEquals) {
+      if (rule.condition && rule.condition.httpErrorCodeReturnedEquals == null && rule.condition.keyPrefixEquals == null) {
         throw new Error('The condition property cannot be an empty object');
       }
 
@@ -2385,11 +2577,15 @@ export class Bucket extends BucketBase {
     if (!this.inventories || this.inventories.length === 0) {
       return undefined;
     }
+    const inventoryIdValidationRegex = /[^\w\.\-]/g;
 
     return this.inventories.map((inventory, index) => {
       const format = inventory.format ?? InventoryFormat.CSV;
       const frequency = inventory.frequency ?? InventoryFrequency.WEEKLY;
-      const id = inventory.inventoryId ?? `${this.node.id}Inventory${index}`;
+      if (inventory.inventoryId !== undefined && (inventory.inventoryId.length > 64 || inventoryIdValidationRegex.test(inventory.inventoryId))) {
+        throw new Error(`inventoryId should not exceed 64 characters and should not contain special characters except . and -, got ${inventory.inventoryId}`);
+      }
+      const id = inventory.inventoryId ?? `${this.node.id}Inventory${index}`.replace(inventoryIdValidationRegex, '').slice(-64);
 
       if (inventory.destination.bucket instanceof Bucket) {
         inventory.destination.bucket.addToResourcePolicy(new iam.PolicyStatement({
@@ -2426,10 +2622,8 @@ export class Bucket extends BucketBase {
   }
 
   private enableAutoDeleteObjects() {
-    const provider = CustomResourceProvider.getOrCreateProvider(this, AUTO_DELETE_OBJECTS_RESOURCE_TYPE, {
-      codeDirectory: path.join(__dirname, '..', '..', 'custom-resource-handlers', 'lib', 'aws-s3', 'auto-delete-objects-handler'),
+    const provider = AutoDeleteObjectsProvider.getOrCreateProvider(this, AUTO_DELETE_OBJECTS_RESOURCE_TYPE, {
       useCfnResponseWrapper: false,
-      runtime: builtInCustomResourceProviderNodeRuntime(this),
       description: `Lambda function for auto-deleting objects in ${this.bucketName} S3 bucket.`,
     });
 
@@ -2437,6 +2631,8 @@ export class Bucket extends BucketBase {
     // objects in the bucket
     this.addToResourcePolicy(new iam.PolicyStatement({
       actions: [
+        // prevent further PutObject calls
+        ...perms.BUCKET_PUT_POLICY_ACTIONS,
         // list objects
         ...perms.BUCKET_READ_METADATA_ACTIONS,
         ...perms.BUCKET_DELETE_ACTIONS, // and then delete them

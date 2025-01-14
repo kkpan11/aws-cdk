@@ -1,12 +1,6 @@
 {
-  "version": "21.0.0",
+  "version": "36.0.0",
   "artifacts": {
-    "Tree": {
-      "type": "cdk:tree",
-      "properties": {
-        "file": "tree.json"
-      }
-    },
     "lambda-event-source-filter-criteria-dynamodb.assets": {
       "type": "cdk:asset-manifest",
       "properties": {
@@ -20,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "lambda-event-source-filter-criteria-dynamodb.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/8ddecd300b64f1e8196cec45f3e0f752e4a04060a8cd32fbcd88c192b14499fc.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/635e0224ecca17d5512ed1bef8cfa79b63a3d53803e96c4382c47fe9408eb0c7.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -69,6 +64,36 @@
             "data": "TD925BC7E"
           }
         ],
+        "/lambda-event-source-filter-criteria-dynamodb/fc-test-key-name/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "fctestkeyname524AF060"
+          }
+        ],
+        "/lambda-event-source-filter-criteria-dynamodb/F5/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "F5ServiceRole2E897519"
+          }
+        ],
+        "/lambda-event-source-filter-criteria-dynamodb/F5/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "F5ServiceRoleDefaultPolicyF3745DE6"
+          }
+        ],
+        "/lambda-event-source-filter-criteria-dynamodb/F5/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "F5B560B5F9"
+          }
+        ],
+        "/lambda-event-source-filter-criteria-dynamodb/F5/DynamoDBEventSource:lambdaeventsourcefiltercriteriadynamodbT9CFE7D06/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "F5DynamoDBEventSourcelambdaeventsourcefiltercriteriadynamodbT9CFE7D0688700B50"
+          }
+        ],
         "/lambda-event-source-filter-criteria-dynamodb/BootstrapVersion": [
           {
             "type": "aws:cdk:logicalId",
@@ -97,6 +122,7 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "DynamoDBFilterCriteriaDefaultTestDeployAssert448231D5.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
@@ -130,6 +156,12 @@
         ]
       },
       "displayName": "DynamoDBFilterCriteria/DefaultTest/DeployAssert"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
     }
   }
 }

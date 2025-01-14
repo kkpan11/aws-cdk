@@ -298,7 +298,7 @@ export interface PortfolioProps {
    *
    * @default - No tagOptions provided
    */
-  readonly tagOptions?: TagOptions
+  readonly tagOptions?: TagOptions;
 }
 
 /**
@@ -366,7 +366,7 @@ export class Portfolio extends PortfolioBase {
           (c as Portfolio).addBucketPermissionsToSharedAccounts();
         };
       },
-    });
+    }, { priority: cdk.AspectPriority.MUTATING });
   }
 
   protected generateUniqueHash(value: string): string {

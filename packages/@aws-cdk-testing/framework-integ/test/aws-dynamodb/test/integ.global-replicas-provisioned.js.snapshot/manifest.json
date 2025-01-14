@@ -1,5 +1,5 @@
 {
-  "version": "32.0.0",
+  "version": "38.0.1",
   "artifacts": {
     "aws-cdk-dynamodb-global-replicas-provisioned.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "aws-cdk-dynamodb-global-replicas-provisioned.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/54661d7c3cb2405f956829f3220983b5d0c7d894830b5be5aa9b603adfcc03aa.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/8c34b5e4bfceb1e31705f04e201d5f99ab9c67ba3315c0cec2779a3d12d0c093.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -87,10 +88,16 @@
             "data": "TableWriteScalingTargetTrackingD78DCCD8"
           }
         ],
-        "/aws-cdk-dynamodb-global-replicas-provisioned/@aws-cdk--aws-dynamodb.ReplicaProvider/DefaultCrNodeVersionMap": [
+        "/aws-cdk-dynamodb-global-replicas-provisioned/@aws-cdk--aws-dynamodb.ReplicaProvider/LatestNodeRuntimeMap": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "DefaultCrNodeVersionMap"
+            "data": "LatestNodeRuntimeMap"
+          }
+        ],
+        "/aws-cdk-dynamodb-global-replicas-provisioned/@aws-cdk--aws-dynamodb.ReplicaProvider/OnEventHandler": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-runtime-family",
+            "data": 0
           }
         ],
         "/aws-cdk-dynamodb-global-replicas-provisioned/@aws-cdk--aws-dynamodb.ReplicaProvider/OnEventHandler/ServiceRole/Resource": [
@@ -109,6 +116,12 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "OnEventHandler42BEBAE0"
+          }
+        ],
+        "/aws-cdk-dynamodb-global-replicas-provisioned/@aws-cdk--aws-dynamodb.ReplicaProvider/IsCompleteHandler": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-runtime-family",
+            "data": 0
           }
         ],
         "/aws-cdk-dynamodb-global-replicas-provisioned/@aws-cdk--aws-dynamodb.ReplicaProvider/IsCompleteHandler/ServiceRole/Resource": [
@@ -189,6 +202,12 @@
             "data": "ProviderwaiterstatemachineRoleDefaultPolicyD3C3DA1A"
           }
         ],
+        "/aws-cdk-dynamodb-global-replicas-provisioned/@aws-cdk--aws-dynamodb.ReplicaProvider/Provider/waiter-state-machine/LogGroup/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ProviderwaiterstatemachineLogGroupDD693A98"
+          }
+        ],
         "/aws-cdk-dynamodb-global-replicas-provisioned/@aws-cdk--aws-dynamodb.ReplicaProvider/Provider/waiter-state-machine/Resource": [
           {
             "type": "aws:cdk:logicalId",
@@ -253,6 +272,7 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "awscdkdynamodbglobalreplicasprovisionedtestDefaultTestDeployAssertE7F91F54.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",

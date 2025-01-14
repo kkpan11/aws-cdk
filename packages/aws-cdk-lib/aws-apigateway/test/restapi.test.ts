@@ -1,7 +1,7 @@
 import { testDeprecated } from '@aws-cdk/cdk-build-tools';
 import { Template } from '../../assertions';
 import { GatewayVpcEndpoint } from '../../aws-ec2';
-import { App, CfnElement, CfnResource, Lazy, Size, Stack } from '../../core';
+import { App, CfnElement, CfnResource, Lazy, RemovalPolicy, Size, Stack } from '../../core';
 import * as apigw from '../lib';
 
 describe('restapi', () => {
@@ -14,6 +14,8 @@ describe('restapi', () => {
     api.root.addMethod('GET'); // must have at least one method or an API definition
 
     // THEN
+    expect(apigw.RestApi.isRestApi(api)).toBe(true);
+
     Template.fromStack(stack).templateMatches({
       Resources: {
         myapi4C7BF186: {
@@ -324,6 +326,25 @@ describe('restapi', () => {
     })).toThrow(/Cannot set 'deployOptions' if 'deploy' is disabled/);
   });
 
+  test('uses correct description for Deployment from "deployOptions"', () => {
+    // GIVEN
+    const stack = new Stack();
+    const api = new apigw.RestApi(stack, 'restapi', {
+      description: 'Api description',
+      deployOptions: { description: 'Deployment description' },
+    });
+    api.root.addMethod('GET');
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::ApiGateway::Deployment', {
+      Description: 'Deployment description',
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::ApiGateway::RestApi', {
+      Description: 'Api description',
+    });
+  });
+
   test('CloudWatch role is created for API Gateway', () => {
     // GIVEN
     const stack = new Stack();
@@ -360,29 +381,29 @@ describe('restapi', () => {
     // THEN
     expect(stack.resolve(api.url)).toEqual({
       'Fn::Join':
-    ['',
-      ['https://',
-        { Ref: 'apiC8550315' },
-        '.execute-api.',
-        { Ref: 'AWS::Region' },
-        '.',
-        { Ref: 'AWS::URLSuffix' },
-        '/',
-        { Ref: 'apiDeploymentStageprod896C8101' },
-        '/']],
+        ['',
+          ['https://',
+            { Ref: 'apiC8550315' },
+            '.execute-api.',
+            { Ref: 'AWS::Region' },
+            '.',
+            { Ref: 'AWS::URLSuffix' },
+            '/',
+            { Ref: 'apiDeploymentStageprod896C8101' },
+            '/']],
     });
     expect(stack.resolve(api.urlForPath('/foo/bar'))).toEqual({
       'Fn::Join':
-    ['',
-      ['https://',
-        { Ref: 'apiC8550315' },
-        '.execute-api.',
-        { Ref: 'AWS::Region' },
-        '.',
-        { Ref: 'AWS::URLSuffix' },
-        '/',
-        { Ref: 'apiDeploymentStageprod896C8101' },
-        '/foo/bar']],
+        ['',
+          ['https://',
+            { Ref: 'apiC8550315' },
+            '.execute-api.',
+            { Ref: 'AWS::Region' },
+            '.',
+            { Ref: 'AWS::URLSuffix' },
+            '/',
+            { Ref: 'apiDeploymentStageprod896C8101' },
+            '/foo/bar']],
     });
   });
 
@@ -419,16 +440,16 @@ describe('restapi', () => {
     // THEN
     expect(stack.resolve(arn)).toEqual({
       'Fn::Join':
-    ['',
-      ['arn:',
-        { Ref: 'AWS::Partition' },
-        ':execute-api:',
-        { Ref: 'AWS::Region' },
-        ':',
-        { Ref: 'AWS::AccountId' },
-        ':',
-        { Ref: 'apiC8550315' },
-        '/stage/method/path']],
+        ['',
+          ['arn:',
+            { Ref: 'AWS::Partition' },
+            ':execute-api:',
+            { Ref: 'AWS::Region' },
+            ':',
+            { Ref: 'AWS::AccountId' },
+            ':',
+            { Ref: 'apiC8550315' },
+            '/stage/method/path']],
     });
   });
 
@@ -462,18 +483,18 @@ describe('restapi', () => {
     // THEN
     expect(stack.resolve(method.methodArn)).toEqual({
       'Fn::Join':
-    ['',
-      ['arn:',
-        { Ref: 'AWS::Partition' },
-        ':execute-api:',
-        { Ref: 'AWS::Region' },
-        ':',
-        { Ref: 'AWS::AccountId' },
-        ':',
-        { Ref: 'apiC8550315' },
-        '/',
-        { Ref: 'apiDeploymentStageprod896C8101' },
-        '/*/']],
+        ['',
+          ['arn:',
+            { Ref: 'AWS::Partition' },
+            ':execute-api:',
+            { Ref: 'AWS::Region' },
+            ':',
+            { Ref: 'AWS::AccountId' },
+            ':',
+            { Ref: 'apiC8550315' },
+            '/',
+            { Ref: 'apiDeploymentStageprod896C8101' },
+            '/*/']],
     });
   });
 
@@ -931,6 +952,42 @@ describe('restapi', () => {
       minimumCompressionSize: 1024,
     })).toThrow(/both properties minCompressionSize and minimumCompressionSize cannot be set at once./);
   });
+
+  test('can specify CloudWatch Role and Account removal policy', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    // WHEN
+    const api = new apigw.RestApi(stack, 'myapi', {
+      cloudWatchRole: true,
+      cloudWatchRoleRemovalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    api.root.addMethod('GET');
+
+    // THEN
+    Template.fromStack(stack).templateMatches({
+      Resources: {
+        myapiCloudWatchRoleEB425128: {
+          Type: 'AWS::IAM::Role',
+          DeletionPolicy: 'Delete',
+        },
+        myapiAccountC3A4750C: {
+          Type: 'AWS::ApiGateway::Account',
+          DeletionPolicy: 'Delete',
+        },
+      },
+    });
+  });
+
+  test('cloudWatchRole must be enabled for specifying specify CloudWatch Role and Account removal policy', () => {
+    expect(() => {
+      new apigw.RestApi(new Stack(), 'myapi', {
+        cloudWatchRole: false,
+        cloudWatchRoleRemovalPolicy: RemovalPolicy.DESTROY,
+      });
+    }).toThrow(/'cloudWatchRole' must be enabled for 'cloudWatchRoleRemovalPolicy' to be applied./);
+  });
 });
 
 describe('Import', () => {
@@ -1009,6 +1066,8 @@ describe('SpecRestApi', () => {
     resource.addMethod('GET');
 
     // THEN
+    expect(apigw.RestApi.isRestApi(api)).toBe(false);
+
     Template.fromStack(stack).hasResourceProperties('AWS::ApiGateway::Resource', {
       PathPart: 'pets',
       ParentId: stack.resolve(api.restApiRootResourceId),
@@ -1329,6 +1388,63 @@ describe('SpecRestApi', () => {
       Template.fromStack(stack).hasResourceProperties(
         'AWS::ApiGateway::RestApi', {});
     });
+  });
+
+  test('check if url property exists for a SpecRestApi', () => {
+    // GIVEN
+    const stack = new Stack();
+    const restApiSwaggerDefinition = {
+      openapi: '3.0.2',
+      info: {
+        version: '1.0.0',
+        title: 'Test API for CDK',
+      },
+      paths: {
+        '/pets': {
+          get: {
+            'summary': 'Test Method',
+            'operationId': 'testMethod',
+            'responses': {
+              200: {
+                description: 'A paged array of pets',
+                content: {
+                  'application/json': {
+                    schema: {
+                      $ref: '#/components/schemas/Empty',
+                    },
+                  },
+                },
+              },
+            },
+            'x-amazon-apigateway-integration': {
+              responses: {
+                default: {
+                  statusCode: '200',
+                },
+              },
+              requestTemplates: {
+                'application/json': '{"statusCode": 200}',
+              },
+              passthroughBehavior: 'when_no_match',
+              type: 'mock',
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Empty: {
+            title: 'Empty Schema',
+            type: 'object',
+          },
+        },
+      },
+    };
+    const api = new apigw.SpecRestApi(stack, 'my-api', {
+      apiDefinition: apigw.ApiDefinition.fromInline(restApiSwaggerDefinition),
+    });
+    // THEN
+    expect(api.url).toBeTruthy();
   });
 
   test('can override "apiKeyRequired" set in "defaultMethodOptions" at the resource level', () => {

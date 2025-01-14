@@ -1,8 +1,18 @@
 import * as path from 'path';
-import { Duration, CfnResource, AssetStaging, Stack, FileAssetPackaging, Token, Lazy, Reference } from 'aws-cdk-lib/core';
+import {
+  Duration,
+  CfnResource,
+  AssetStaging,
+  Stack,
+  FileAssetPackaging,
+  Token,
+  Lazy,
+  Reference,
+  determineLatestNodeRuntimeName,
+} from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
-
-let SDK_METADATA: any = undefined;
+import { awsSdkToIamAction } from 'aws-cdk-lib/custom-resources/lib/helpers-internal';
+import { RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 /**
  * Properties for a lambda function provider
@@ -14,6 +24,13 @@ export interface LambdaFunctionProviderProps {
    * @default index.handler
    */
   readonly handler?: string;
+
+  /**
+   * How long, in days, the log contents will be retained.
+   *
+   * @default - no retention days specified
+   */
+  readonly logRetention?: RetentionDays;
 }
 
 /**
@@ -76,18 +93,34 @@ class LambdaFunctionProvider extends Construct {
       },
     });
 
+    const functionProperties: any = {
+      Runtime: determineLatestNodeRuntimeName(this),
+      Code: {
+        S3Bucket: asset.bucketName,
+        S3Key: asset.objectKey,
+      },
+      Timeout: Duration.minutes(2).toSeconds(),
+      Handler: props?.handler ?? 'index.handler',
+      Role: role.getAtt('Arn'),
+    };
+
+    if (props?.logRetention) {
+      const logGroup = new CfnResource(this, 'LogGroup', {
+        type: 'AWS::Logs::LogGroup',
+        properties: {
+          LogGroupName: `/aws/lambda/${id}`,
+          RetentionInDays: props.logRetention,
+        },
+      });
+
+      functionProperties.LoggingConfig = {
+        LogGroup: logGroup.ref,
+      };
+    }
+
     const handler = new CfnResource(this, 'Handler', {
       type: 'AWS::Lambda::Function',
-      properties: {
-        Runtime: 'nodejs14.x',
-        Code: {
-          S3Bucket: asset.bucketName,
-          S3Key: asset.objectKey,
-        },
-        Timeout: Duration.minutes(2).toSeconds(),
-        Handler: props?.handler ?? 'index.handler',
-        Role: role.getAtt('Arn'),
-      },
+      properties: functionProperties,
     });
 
     this.serviceToken = Token.asString(handler.getAtt('Arn'));
@@ -132,6 +165,7 @@ class SingletonFunction extends Construct {
 
     return new LambdaFunctionProvider(Stack.of(this), constructName, {
       handler: props.handler,
+      logRetention: props.logRetention,
     });
   }
 
@@ -157,15 +191,8 @@ class SingletonFunction extends Construct {
    * Create a policy statement from a specific api call
    */
   public addPolicyStatementFromSdkCall(service: string, api: string, resources?: string[]): void {
-    if (SDK_METADATA === undefined) {
-      // eslint-disable-next-line
-      SDK_METADATA = require('./sdk-api-metadata.json');
-    }
-    const srv = service.toLowerCase();
-    const iamService = (SDK_METADATA[srv] && SDK_METADATA[srv].prefix) || srv;
-    const iamAction = api.charAt(0).toUpperCase() + api.slice(1);
     this.lambdaFunction.addPolicies([{
-      Action: [`${iamService}:${iamAction}`],
+      Action: [awsSdkToIamAction(service, api)],
       Effect: 'Allow',
       Resource: resources || ['*'],
     }]);
@@ -212,6 +239,7 @@ export class AssertionsProvider extends Construct {
     this.handler = new SingletonFunction(this, 'AssertionsProvider', {
       handler: props?.handler,
       uuid: props?.uuid ?? '1488541a-7b23-4664-81b6-9b4408076b81',
+      logRetention: props?.logRetention,
     });
 
     this.handlerRoleArn = this.handler.lambdaFunction.roleArn;
@@ -229,16 +257,18 @@ export class AssertionsProvider extends Construct {
     if (!obj) {
       return obj;
     }
-    return JSON.parse(JSON.stringify(obj), (_k, v) => {
-      switch (v) {
-        case true:
-          return 'TRUE:BOOLEAN';
-        case false:
-          return 'FALSE:BOOLEAN';
-        default:
-          return v;
+    return Object.fromEntries(Object.entries(obj).map(([key, value]) => [key, encodeValue(value)]));
+
+    function encodeValue(value: any): any {
+      if (ArrayBuffer.isView(value)) {
+        return {
+          $type: 'ArrayBufferView',
+          string: new TextDecoder().decode(value as Uint8Array),
+        };
       }
-    });
+
+      return JSON.stringify(value);
+    }
   }
 
   /**

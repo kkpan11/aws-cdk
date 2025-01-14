@@ -2,23 +2,24 @@ import { Construct } from 'constructs';
 import { IAuroraClusterInstance, IClusterInstance, InstanceType } from './aurora-cluster-instance';
 import { IClusterEngine } from './cluster-engine';
 import { DatabaseClusterAttributes, IDatabaseCluster } from './cluster-ref';
-import { DatabaseSecret } from './database-secret';
 import { Endpoint } from './endpoint';
 import { NetworkType } from './instance';
 import { IParameterGroup, ParameterGroup } from './parameter-group';
-import { applyDefaultRotationOptions, defaultDeletionProtection, renderCredentials, setupS3ImportExport, helperRemovalPolicy, renderUnless } from './private/util';
+import { DATA_API_ACTIONS } from './perms';
+import { applyDefaultRotationOptions, defaultDeletionProtection, renderCredentials, setupS3ImportExport, helperRemovalPolicy, renderUnless, renderSnapshotCredentials } from './private/util';
 import { BackupProps, Credentials, InstanceProps, PerformanceInsightRetention, RotationSingleUserOptions, RotationMultiUserOptions, SnapshotCredentials } from './props';
 import { DatabaseProxy, DatabaseProxyOptions, ProxyTarget } from './proxy';
 import { CfnDBCluster, CfnDBClusterProps, CfnDBInstance } from './rds.generated';
 import { ISubnetGroup, SubnetGroup } from './subnet-group';
 import * as cloudwatch from '../../aws-cloudwatch';
 import * as ec2 from '../../aws-ec2';
+import * as iam from '../../aws-iam';
 import { IRole, ManagedPolicy, Role, ServicePrincipal } from '../../aws-iam';
 import * as kms from '../../aws-kms';
 import * as logs from '../../aws-logs';
 import * as s3 from '../../aws-s3';
 import * as secretsmanager from '../../aws-secretsmanager';
-import { Annotations, Duration, FeatureFlags, Lazy, RemovalPolicy, Resource, Token } from '../../core';
+import { Annotations, ArnFormat, Duration, FeatureFlags, Lazy, RemovalPolicy, Resource, Stack, Token, TokenComparison } from '../../core';
 import * as cxapi from '../../cx-api';
 
 /**
@@ -50,7 +51,7 @@ interface DatabaseClusterBaseProps {
   /**
    * The instance to use for the cluster writer
    *
-   * @default required if instanceProps is not provided
+   * @default - required if instanceProps is not provided
    */
   readonly writer?: IClusterInstance;
 
@@ -64,21 +65,24 @@ interface DatabaseClusterBaseProps {
   /**
    * The maximum number of Aurora capacity units (ACUs) for a DB instance in an Aurora Serverless v2 cluster.
    * You can specify ACU values in half-step increments, such as 40, 40.5, 41, and so on.
-   * The largest value that you can use is 128 (256GB).
+   * The largest value that you can use is 256.
    *
    * The maximum capacity must be higher than 0.5 ACUs.
    * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-serverless-v2.setting-capacity.html#aurora-serverless-v2.max_capacity_considerations
    *
    * @default 2
    */
-  readonly serverlessV2MaxCapacity?: number,
+  readonly serverlessV2MaxCapacity?: number;
 
   /**
    * The minimum number of Aurora capacity units (ACUs) for a DB instance in an Aurora Serverless v2 cluster.
    * You can specify ACU values in half-step increments, such as 8, 8.5, 9, and so on.
-   * The smallest value that you can use is 0.5.
+   * The smallest value that you can use is 0.
    *
-   * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-serverless-v2.setting-capacity.html#aurora-serverless-v2.max_capacity_considerations
+   * For Aurora versions that support the Aurora Serverless v2 auto-pause feature, the smallest value that you can use is 0.
+   * For versions that don't support Aurora Serverless v2 auto-pause, the smallest value that you can use is 0.5.
+   *
+   * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-serverless-v2.setting-capacity.html#aurora-serverless-v2.min_capacity_considerations
    *
    * @default 0.5
    */
@@ -101,7 +105,7 @@ interface DatabaseClusterBaseProps {
   /**
    * Security group.
    *
-   * @default a new security group is created.
+   * @default - a new security group is created.
    */
   readonly securityGroups?: ec2.ISecurityGroup[];
 
@@ -120,7 +124,7 @@ interface DatabaseClusterBaseProps {
    * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraMySQL.Managing.Backtrack.html
    * @default 0 seconds (no backtrack)
    */
-  readonly backtrackWindow?: Duration
+  readonly backtrackWindow?: Duration;
 
   /**
    * Backup settings
@@ -233,26 +237,41 @@ interface DatabaseClusterBaseProps {
   readonly cloudwatchLogsRetentionRole?: IRole;
 
   /**
-   * The interval, in seconds, between points when Amazon RDS collects enhanced
-   * monitoring metrics for the DB instances.
+   * The interval between points when Amazon RDS collects enhanced monitoring metrics.
    *
-   * @default no enhanced monitoring
+   * If you enable `enableClusterLevelEnhancedMonitoring`, this property is applied to the cluster,
+   * otherwise it is applied to the instances.
+   *
+   * @default - no enhanced monitoring
    */
   readonly monitoringInterval?: Duration;
 
   /**
-   * Role that will be used to manage DB instances monitoring.
+   * Role that will be used to manage DB monitoring.
+   *
+   * If you enable `enableClusterLevelEnhancedMonitoring`, this property is applied to the cluster,
+   * otherwise it is applied to the instances.
    *
    * @default - A role is automatically created for you
    */
   readonly monitoringRole?: IRole;
 
   /**
+   * Whether to enable enhanced monitoring at the cluster level.
+   *
+   * If set to true, `monitoringInterval` and `monitoringRole` are applied to not the instances, but the cluster.
+   * `monitoringInterval` is required to be set if `enableClusterLevelEnhancedMonitoring` is set to true.
+   *
+   * @default - When the `monitoringInterval` is set, enhanced monitoring is enabled for each instance.
+   */
+  readonly enableClusterLevelEnhancedMonitoring?: boolean;
+
+  /**
    * Role that will be associated with this DB cluster to enable S3 import.
    * This feature is only supported by the Aurora database engine.
    *
    * This property must not be used if `s3ImportBuckets` is used.
-   *
+   * To use this property with Aurora PostgreSQL, it must be configured with the S3 import feature enabled when creating the DatabaseClusterEngine
    * For MySQL:
    * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraMySQL.Integrating.LoadFromS3.html
    *
@@ -283,7 +302,7 @@ interface DatabaseClusterBaseProps {
    * This feature is only supported by the Aurora database engine.
    *
    * This property must not be used if `s3ExportBuckets` is used.
-   *
+   * To use this property with Aurora PostgreSQL, it must be configured with the S3 export feature enabled when creating the DatabaseClusterEngine
    * For MySQL:
    * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraMySQL.Integrating.SaveIntoS3.html
    *
@@ -329,7 +348,7 @@ interface DatabaseClusterBaseProps {
    *
    * @default - true if storageEncryptionKey is provided, false otherwise
    */
-  readonly storageEncrypted?: boolean
+  readonly storageEncrypted?: boolean;
 
   /**
    * The KMS key for storage encryption.
@@ -359,6 +378,91 @@ interface DatabaseClusterBaseProps {
    * @default - IPV4
    */
   readonly networkType?: NetworkType;
+
+  /**
+  * Directory ID for associating the DB cluster with a specific Active Directory.
+  *
+  * Necessary for enabling Kerberos authentication. If specified, the DB cluster joins the given Active Directory, enabling Kerberos authentication.
+  * If not specified, the DB cluster will not be associated with any Active Directory, and Kerberos authentication will not be enabled.
+  *
+  * @default - DB cluster is not associated with an Active Directory; Kerberos authentication is not enabled.
+  */
+  readonly domain?: string;
+
+  /**
+   * The IAM role to be used when making API calls to the Directory Service. The role needs the AWS-managed policy
+   * `AmazonRDSDirectoryServiceAccess` or equivalent.
+   *
+   * @default - If `DatabaseClusterBaseProps.domain` is specified, a role with the `AmazonRDSDirectoryServiceAccess` policy is automatically created.
+   */
+  readonly domainRole?: iam.IRole;
+
+  /**
+   * Whether to enable the Data API for the cluster.
+   *
+   * @default - false
+   */
+  readonly enableDataApi?: boolean;
+
+  /**
+   * Whether read replicas can forward write operations to the writer DB instance in the DB cluster.
+   *
+   * This setting can only be enabled for Aurora MySQL 3.04 or higher, and for Aurora PostgreSQL 16.4
+   * or higher (for version 16), 15.8 or higher (for version 15), and 14.13 or higher (for version 14).
+   *
+   * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-mysql-write-forwarding.html
+   * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-postgresql-write-forwarding.html
+   *
+   * @default false
+   */
+  readonly enableLocalWriteForwarding?: boolean;
+
+  /**
+   * Whether to enable Performance Insights for the DB cluster.
+   *
+   * @default - false, unless `performanceInsightRetention` or `performanceInsightEncryptionKey` is set.
+   */
+  readonly enablePerformanceInsights?: boolean;
+
+  /**
+   * The amount of time, in days, to retain Performance Insights data.
+   *
+   * @default 7
+   */
+  readonly performanceInsightRetention?: PerformanceInsightRetention;
+
+  /**
+   * The AWS KMS key for encryption of Performance Insights data.
+   *
+   * @default - default master key
+   */
+  readonly performanceInsightEncryptionKey?: kms.IKey;
+
+  /**
+   * Specifies whether minor engine upgrades are applied automatically to the DB cluster during the maintenance window.
+   *
+   * @default true
+   */
+  readonly autoMinorVersionUpgrade?: boolean;
+
+  /**
+   * Specifies the scalability mode of the Aurora DB cluster.
+   *
+   * Set LIMITLESS if you want to use a limitless database; otherwise, set it to STANDARD.
+   *
+   * @default ClusterScalabilityType.STANDARD
+   */
+  readonly clusterScalabilityType?: ClusterScalabilityType;
+
+  /**
+   * [Misspelled] Specifies the scalability mode of the Aurora DB cluster.
+   *
+   * Set LIMITLESS if you want to use a limitless database; otherwise, set it to STANDARD.
+   *
+   * @default ClusterScailabilityType.STANDARD
+   * @deprecated Use clusterScalabilityType instead. This will be removed in the next major version.
+   */
+  readonly clusterScailabilityType?: ClusterScailabilityType;
 }
 
 /**
@@ -392,7 +496,44 @@ export enum InstanceUpdateBehaviour {
    * This results in at most one instance being unavailable during the update.
    * If your cluster consists of more than 1 instance, the downtime periods are limited to the time a primary switch needs.
    */
-  ROLLING = 'ROLLING'
+  ROLLING = 'ROLLING',
+}
+
+/**
+ * The scalability mode of the Aurora DB cluster.
+ */
+export enum ClusterScalabilityType {
+  /**
+   * The cluster uses normal DB instance creation.
+   */
+  STANDARD = 'standard',
+
+  /**
+   * The cluster operates as an Aurora Limitless Database,
+   * allowing you to create a DB shard group for horizontal scaling (sharding) capabilities.
+   *
+   * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/limitless.html
+   */
+  LIMITLESS = 'limitless',
+}
+
+/**
+ * The scalability mode of the Aurora DB cluster.
+ * @deprecated Use ClusterScalabilityType instead. This will be removed in the next major version.
+ */
+export enum ClusterScailabilityType {
+  /**
+   * The cluster uses normal DB instance creation.
+   */
+  STANDARD = 'standard',
+
+  /**
+   * The cluster operates as an Aurora Limitless Database,
+   * allowing you to create a DB shard group for horizontal scaling (sharding) capabilities.
+   *
+   * @see https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/limitless.html
+   */
+  LIMITLESS = 'limitless',
 }
 
 /**
@@ -440,6 +581,25 @@ export abstract class DatabaseClusterBase extends Resource implements IDatabaseC
   public abstract readonly connections: ec2.Connections;
 
   /**
+   * The secret attached to this cluster
+   */
+  public abstract readonly secret?: secretsmanager.ISecret
+
+  protected abstract enableDataApi?: boolean;
+
+  /**
+   * The ARN of the cluster
+   */
+  public get clusterArn(): string {
+    return Stack.of(this).formatArn({
+      service: 'rds',
+      resource: 'cluster',
+      arnFormat: ArnFormat.COLON_RESOURCE_NAME,
+      resourceName: this.clusterIdentifier,
+    });
+  }
+
+  /**
    * Add a new db proxy to this cluster.
    */
   public addProxy(id: string, options: DatabaseProxyOptions): DatabaseProxy {
@@ -458,6 +618,38 @@ export abstract class DatabaseClusterBase extends Resource implements IDatabaseC
       targetType: secretsmanager.AttachmentTargetType.RDS_DB_CLUSTER,
     };
   }
+
+  public grantConnect(grantee: iam.IGrantable, dbUser: string): iam.Grant {
+    return iam.Grant.addToPrincipal({
+      actions: ['rds-db:connect'],
+      grantee,
+      resourceArns: [Stack.of(this).formatArn({
+        service: 'rds-db',
+        resource: 'dbuser',
+        resourceName: `${this.clusterResourceIdentifier}/${dbUser}`,
+        arnFormat: ArnFormat.COLON_RESOURCE_NAME,
+      })],
+    });
+  }
+
+  /**
+   * Grant the given identity to access the Data API.
+   */
+  public grantDataApiAccess(grantee: iam.IGrantable): iam.Grant {
+    if (this.enableDataApi === false) {
+      throw new Error('Cannot grant Data API access when the Data API is disabled');
+    }
+
+    this.enableDataApi = true;
+    const ret = iam.Grant.addToPrincipal({
+      grantee,
+      actions: DATA_API_ACTIONS,
+      resourceArns: [this.clusterArn],
+      scope: this,
+    });
+    this.secret?.grantRead(grantee);
+    return ret;
+  }
 }
 
 /**
@@ -473,6 +665,9 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
   protected readonly newCfnProps: CfnDBClusterProps;
   protected readonly securityGroups: ec2.ISecurityGroup[];
   protected readonly subnetGroup: ISubnetGroup;
+
+  private readonly domainId?: string;
+  private readonly domainRole?: iam.IRole;
 
   /**
    * Secret in SecretsManager to store the database cluster user credentials.
@@ -490,6 +685,13 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
   public readonly vpcSubnets?: ec2.SubnetSelection;
 
   /**
+   * The log group is created when `cloudwatchLogsExports` is set.
+   *
+   * Each export value will create a separate log group.
+   */
+  public readonly cloudwatchLogGroups: {[engine: string]: logs.ILogGroup};
+
+  /**
    * Application for single user rotation of the master password to this cluster.
    */
   public readonly singleUserRotationApplication: secretsmanager.SecretRotationApplication;
@@ -499,18 +701,41 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
    */
   public readonly multiUserRotationApplication: secretsmanager.SecretRotationApplication;
 
+  /**
+   * Whether Performance Insights is enabled at cluster level.
+   */
+  public readonly performanceInsightsEnabled: boolean;
+
+  /**
+   * The amount of time, in days, to retain Performance Insights data.
+   */
+  public readonly performanceInsightRetention?: PerformanceInsightRetention;
+
+  /**
+   * The AWS KMS key for encryption of Performance Insights data.
+   */
+  public readonly performanceInsightEncryptionKey?: kms.IKey;
+
+  /**
+   * The IAM role for the enhanced monitoring.
+   */
+  public readonly monitoringRole?: iam.IRole;
+
   protected readonly serverlessV2MinCapacity: number;
   protected readonly serverlessV2MaxCapacity: number;
 
   protected hasServerlessInstance?: boolean;
+  protected enableDataApi?: boolean;
 
   constructor(scope: Construct, id: string, props: DatabaseClusterBaseProps) {
     super(scope, id);
 
-    if ((props.vpc && props.instanceProps?.vpc)) {
+    if (props.clusterScalabilityType !== undefined && props.clusterScailabilityType !== undefined) {
+      throw new Error('You cannot specify both clusterScalabilityType and clusterScailabilityType (deprecated). Use clusterScalabilityType.');
+    }
+
+    if ((props.vpc && props.instanceProps?.vpc) || (!props.vpc && !props.instanceProps?.vpc)) {
       throw new Error('Provide either vpc or instanceProps.vpc, but not both');
-    } else if (!props.vpc && !props.instanceProps?.vpc) {
-      throw new Error('If instanceProps is not provided then `vpc` must be provided.');
     }
     if ((props.vpcSubnets && props.instanceProps?.vpcSubnets)) {
       throw new Error('Provide either vpcSubnets or instanceProps.vpcSubnets, but not both');
@@ -518,12 +743,16 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
     this.vpc = props.instanceProps?.vpc ?? props.vpc!;
     this.vpcSubnets = props.instanceProps?.vpcSubnets ?? props.vpcSubnets;
 
+    this.cloudwatchLogGroups = {};
+
     this.singleUserRotationApplication = props.engine.singleUserRotationApplication;
     this.multiUserRotationApplication = props.engine.multiUserRotationApplication;
 
     this.serverlessV2MaxCapacity = props.serverlessV2MaxCapacity ?? 2;
     this.serverlessV2MinCapacity = props.serverlessV2MinCapacity ?? 0.5;
     this.validateServerlessScalingConfig();
+
+    this.enableDataApi = props.enableDataApi;
 
     const { subnetIds } = this.vpc.selectSubnets(this.vpcSubnets);
 
@@ -587,6 +816,73 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
       ? props.clusterIdentifier?.toLowerCase()
       : props.clusterIdentifier;
 
+    if (props.domain) {
+      this.domainId = props.domain;
+      this.domainRole = props.domainRole ?? new iam.Role(this, 'RDSClusterDirectoryServiceRole', {
+        assumedBy: new iam.CompositePrincipal(
+          new iam.ServicePrincipal('rds.amazonaws.com'),
+          new iam.ServicePrincipal('directoryservice.rds.amazonaws.com'),
+        ),
+        managedPolicies: [
+          iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonRDSDirectoryServiceAccess'),
+        ],
+      });
+    }
+
+    const enablePerformanceInsights = props.enablePerformanceInsights
+      || props.performanceInsightRetention !== undefined || props.performanceInsightEncryptionKey !== undefined;
+    if (enablePerformanceInsights && props.enablePerformanceInsights === false) {
+      throw new Error('`enablePerformanceInsights` disabled, but `performanceInsightRetention` or `performanceInsightEncryptionKey` was set');
+    }
+
+    if (props.clusterScalabilityType === ClusterScalabilityType.LIMITLESS || props.clusterScailabilityType === ClusterScailabilityType.LIMITLESS) {
+      if (!props.enablePerformanceInsights) {
+        throw new Error('Performance Insights must be enabled for Aurora Limitless Database.');
+      }
+      if (!props.performanceInsightRetention || props.performanceInsightRetention < PerformanceInsightRetention.MONTHS_1) {
+        throw new Error('Performance Insights retention period must be set at least 31 days for Aurora Limitless Database.');
+      }
+      if (!props.monitoringInterval || !props.enableClusterLevelEnhancedMonitoring) {
+        throw new Error('Cluster level enhanced monitoring must be set for Aurora Limitless Database. Please set \'monitoringInterval\' and enable \'enableClusterLevelEnhancedMonitoring\'.');
+      }
+      if (props.writer || props.readers) {
+        throw new Error('Aurora Limitless Database does not support readers or writer instances.');
+      }
+      if (!props.engine.engineVersion?.fullVersion?.endsWith('limitless')) {
+        throw new Error(`Aurora Limitless Database requires an engine version that supports it, got ${props.engine.engineVersion?.fullVersion}`);
+      }
+      if (props.storageType !== DBClusterStorageType.AURORA_IOPT1) {
+        throw new Error(`Aurora Limitless Database requires I/O optimized storage type, got: ${props.storageType}`);
+      }
+      if (props.cloudwatchLogsExports === undefined || props.cloudwatchLogsExports.length === 0) {
+        throw new Error('Aurora Limitless Database requires CloudWatch Logs exports to be set.');
+      }
+    }
+
+    this.performanceInsightsEnabled = enablePerformanceInsights;
+    this.performanceInsightRetention = enablePerformanceInsights
+      ? (props.performanceInsightRetention || PerformanceInsightRetention.DEFAULT)
+      : undefined;
+    this.performanceInsightEncryptionKey = props.performanceInsightEncryptionKey;
+
+    // configure enhanced monitoring role for the cluster or instance
+    this.monitoringRole = props.monitoringRole;
+    if (!props.monitoringRole && props.monitoringInterval && props.monitoringInterval.toSeconds()) {
+      this.monitoringRole = new Role(this, 'MonitoringRole', {
+        assumedBy: new ServicePrincipal('monitoring.rds.amazonaws.com'),
+        managedPolicies: [
+          ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonRDSEnhancedMonitoringRole'),
+        ],
+      });
+    }
+
+    if (props.enableClusterLevelEnhancedMonitoring && !props.monitoringInterval) {
+      throw new Error('`monitoringInterval` must be set when `enableClusterLevelEnhancedMonitoring` is true.');
+    }
+    if (props.monitoringInterval && [0, 1, 5, 10, 15, 30, 60].indexOf(props.monitoringInterval.toSeconds()) === -1) {
+      throw new Error(`'monitoringInterval' must be one of 0, 1, 5, 10, 15, 30, or 60 seconds, got: ${props.monitoringInterval.toSeconds()} seconds.`);
+    }
+
     this.newCfnProps = {
       // Basic
       engine: props.engine.engineType,
@@ -599,6 +895,7 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
       associatedRoles: clusterAssociatedRoles.length > 0 ? clusterAssociatedRoles : undefined,
       deletionProtection: defaultDeletionProtection(props.deletionProtection, props.removalPolicy),
       enableIamDatabaseAuthentication: props.iamAuthentication,
+      enableHttpEndpoint: Lazy.any({ produce: () => this.enableDataApi }),
       networkType: props.networkType,
       serverlessV2ScalingConfiguration: Lazy.any({
         produce: () => {
@@ -612,6 +909,8 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
         },
       }),
       storageType: props.storageType?.toString(),
+      enableLocalWriteForwarding: props.enableLocalWriteForwarding,
+      clusterScalabilityType: props.clusterScalabilityType ?? props.clusterScailabilityType,
       // Admin
       backtrackWindow: props.backtrackWindow?.toSeconds(),
       backupRetentionPeriod: props.backup?.retention?.toDays(),
@@ -624,6 +923,14 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
       storageEncrypted: props.storageEncryptionKey ? true : props.storageEncrypted,
       // Tags
       copyTagsToSnapshot: props.copyTagsToSnapshot ?? true,
+      domain: this.domainId,
+      domainIamRoleName: this.domainRole?.roleName,
+      performanceInsightsEnabled: this.performanceInsightsEnabled || props.enablePerformanceInsights, // fall back to undefined if not set
+      performanceInsightsKmsKeyId: this.performanceInsightEncryptionKey?.keyArn,
+      performanceInsightsRetentionPeriod: this.performanceInsightRetention,
+      autoMinorVersionUpgrade: props.autoMinorVersionUpgrade,
+      monitoringInterval: props.enableClusterLevelEnhancedMonitoring ? props.monitoringInterval?.toSeconds() : undefined,
+      monitoringRoleArn: props.enableClusterLevelEnhancedMonitoring ? this.monitoringRole?.roleArn : undefined,
     };
   }
 
@@ -636,22 +943,32 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
     const instanceEndpoints: Endpoint[] = [];
     const instanceIdentifiers: string[] = [];
     const readers: IAuroraClusterInstance[] = [];
+
     // need to create the writer first since writer is determined by what instance is first
     const writer = props.writer!.bind(this, this, {
-      monitoringInterval: props.monitoringInterval,
-      monitoringRole: props.monitoringRole,
+      // When `enableClusterLevelEnhancedMonitoring` is enabled,
+      // both `monitoringInterval` and `monitoringRole` are set at cluster level so no need to re-set it in instance level.
+      monitoringInterval: props.enableClusterLevelEnhancedMonitoring ? undefined : props.monitoringInterval,
+      monitoringRole: props.enableClusterLevelEnhancedMonitoring ? undefined : this.monitoringRole,
       removalPolicy: props.removalPolicy ?? RemovalPolicy.SNAPSHOT,
       subnetGroup: this.subnetGroup,
       promotionTier: 0, // override the promotion tier so that writers are always 0
     });
+    instanceIdentifiers.push(writer.instanceIdentifier);
+    instanceEndpoints.push(new Endpoint(writer.dbInstanceEndpointAddress, this.clusterEndpoint.port));
+
     (props.readers ?? []).forEach(instance => {
       const clusterInstance = instance.bind(this, this, {
-        monitoringInterval: props.monitoringInterval,
-        monitoringRole: props.monitoringRole,
+      // When `enableClusterLevelEnhancedMonitoring` is enabled,
+      // both `monitoringInterval` and `monitoringRole` are set at cluster level so no need to re-set it in instance level.
+        monitoringInterval: props.enableClusterLevelEnhancedMonitoring ? undefined : props.monitoringInterval,
+        monitoringRole: props.enableClusterLevelEnhancedMonitoring ? undefined : this.monitoringRole,
         removalPolicy: props.removalPolicy ?? RemovalPolicy.SNAPSHOT,
         subnetGroup: this.subnetGroup,
       });
       readers.push(clusterInstance);
+      // this makes sure the readers would always be created after the writer
+      clusterInstance.node.addDependency(writer);
 
       if (clusterInstance.tier < 2) {
         this.validateReaderInstance(writer, clusterInstance);
@@ -674,6 +991,13 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
     if (writer.type === InstanceType.SERVERLESS_V2) {
       this.hasServerlessInstance = true;
     }
+    validatePerformanceInsightsSettings(this, {
+      nodeId: writer.node.id,
+      performanceInsightsEnabled: writer.performanceInsightsEnabled,
+      performanceInsightRetention: writer.performanceInsightRetention,
+      performanceInsightEncryptionKey: writer.performanceInsightEncryptionKey,
+    });
+
     if (readers.length > 0) {
       const sortedReaders = readers.sort((a, b) => a.tier - b.tier);
       const highestTierReaders: IAuroraClusterInstance[] = [];
@@ -702,27 +1026,38 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
         if (reader.tier <= 1) {
           noFailoverTierInstances = false;
         }
+        validatePerformanceInsightsSettings(this, {
+          nodeId: reader.node.id,
+          performanceInsightsEnabled: reader.performanceInsightsEnabled,
+          performanceInsightRetention: reader.performanceInsightRetention,
+          performanceInsightEncryptionKey: reader.performanceInsightEncryptionKey,
+        });
       }
+
       const hasOnlyServerlessReaders = hasServerlessReader && !hasProvisionedReader;
       if (hasOnlyServerlessReaders) {
         if (noFailoverTierInstances) {
-          Annotations.of(this).addWarning(
+          Annotations.of(this).addWarningV2(
+            '@aws-cdk/aws-rds:noFailoverServerlessReaders',
             `Cluster ${this.node.id} only has serverless readers and no reader is in promotion tier 0-1.`+
             'Serverless readers in promotion tiers >= 2 will NOT scale with the writer, which can lead to '+
             'availability issues if a failover event occurs. It is recommended that at least one reader '+
             'has `scaleWithWriter` set to true',
           );
+
         }
       } else {
         if (serverlessInHighestTier && highestTier > 1) {
-          Annotations.of(this).addWarning(
+          Annotations.of(this).addWarningV2(
+            '@aws-cdk/aws-rds:serverlessInHighestTier2-15',
             `There are serverlessV2 readers in tier ${highestTier}. Since there are no instances in a higher tier, `+
             'any instance in this tier is a failover target. Since this tier is > 1 the serverless reader will not scale '+
             'with the writer which could lead to availability issues during failover.',
           );
         }
         if (someProvisionedReadersDontMatchWriter.length > 0 && writer.type === InstanceType.PROVISIONED) {
-          Annotations.of(this).addWarning(
+          Annotations.of(this).addWarningV2(
+            '@aws-cdk/aws-rds:provisionedReadersDontMatchWriter',
             `There are provisioned readers in the highest promotion tier ${highestTier} that do not have the same `+
             'InstanceSize as the writer. Any of these instances could be chosen as the new writer in the event '+
             'of a failover.\n'+
@@ -741,7 +1076,7 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
     if (writer.type === InstanceType.PROVISIONED) {
       if (reader.type === InstanceType.SERVERLESS_V2) {
         if (!instanceSizeSupportedByServerlessV2(writer.instanceSize!, this.serverlessV2MaxCapacity)) {
-          Annotations.of(this).addWarning(
+          Annotations.of(this).addWarningV2('@aws-cdk/aws-rds:serverlessInstanceCantScaleWithWriter',
             'For high availability any serverless instances in promotion tiers 0-1 '+
             'should be able to scale to match the provisioned instance capacity.\n'+
             `Serverless instance ${reader.node.id} is in promotion tier ${reader.tier},\n`+
@@ -772,21 +1107,18 @@ abstract class DatabaseClusterNew extends DatabaseClusterBase {
   }
 
   private validateServerlessScalingConfig(): void {
-    if (this.serverlessV2MaxCapacity > 128 || this.serverlessV2MaxCapacity < 0.5) {
-      throw new Error('serverlessV2MaxCapacity must be >= 0.5 & <= 128');
+    if (this.serverlessV2MaxCapacity > 256 || this.serverlessV2MaxCapacity < 1) {
+      throw new Error('serverlessV2MaxCapacity must be >= 1 & <= 256');
     }
 
-    if (this.serverlessV2MinCapacity > 128 || this.serverlessV2MinCapacity < 0.5) {
-      throw new Error('serverlessV2MinCapacity must be >= 0.5 & <= 128');
+    if (this.serverlessV2MinCapacity > 256 || this.serverlessV2MinCapacity < 0) {
+      throw new Error('serverlessV2MinCapacity must be >= 0 & <= 256');
     }
 
     if (this.serverlessV2MaxCapacity < this.serverlessV2MinCapacity) {
       throw new Error('serverlessV2MaxCapacity must be greater than serverlessV2MinCapacity');
     }
 
-    if (this.serverlessV2MaxCapacity === 0.5 && this.serverlessV2MinCapacity === 0.5) {
-      throw new Error('If serverlessV2MinCapacity === 0.5 then serverlessV2MaxCapacity must be >=1');
-    }
     const regexp = new RegExp(/^[0-9]+\.?5?$/);
     if (!regexp.test(this.serverlessV2MaxCapacity.toString()) || !regexp.test(this.serverlessV2MinCapacity.toString())) {
       throw new Error('serverlessV2MinCapacity & serverlessV2MaxCapacity must be in 0.5 step increments, received '+
@@ -846,12 +1178,15 @@ class ImportedDatabaseCluster extends DatabaseClusterBase implements IDatabaseCl
   public readonly clusterIdentifier: string;
   public readonly connections: ec2.Connections;
   public readonly engine?: IClusterEngine;
+  public readonly secret?: secretsmanager.ISecret;
 
   private readonly _clusterResourceIdentifier?: string;
   private readonly _clusterEndpoint?: Endpoint;
   private readonly _clusterReadEndpoint?: Endpoint;
   private readonly _instanceIdentifiers?: string[];
   private readonly _instanceEndpoints?: Endpoint[];
+
+  protected readonly enableDataApi: boolean;
 
   constructor(scope: Construct, id: string, attrs: DatabaseClusterAttributes) {
     super(scope, id);
@@ -865,6 +1200,9 @@ class ImportedDatabaseCluster extends DatabaseClusterBase implements IDatabaseCl
       defaultPort,
     });
     this.engine = attrs.engine;
+    this.secret = attrs.secret;
+
+    this.enableDataApi = attrs.dataApiEnabled ?? false;
 
     this._clusterEndpoint = (attrs.clusterEndpointAddress && attrs.port) ? new Endpoint(attrs.clusterEndpointAddress, attrs.port) : undefined;
     this._clusterReadEndpoint = (attrs.readerEndpointAddress && attrs.port) ? new Endpoint(attrs.readerEndpointAddress, attrs.port) : undefined;
@@ -980,19 +1318,27 @@ export class DatabaseCluster extends DatabaseClusterNew {
     cluster.applyRemovalPolicy(props.removalPolicy ?? RemovalPolicy.SNAPSHOT);
 
     setLogRetention(this, props);
-    if ((props.writer || props.readers) && (props.instances || props.instanceProps)) {
-      throw new Error('Cannot provide writer or readers if instances or instanceProps are provided');
-    }
 
-    if (!props.instanceProps && !props.writer) {
-      throw new Error('writer must be provided');
-    }
+    // create the instances for only standard aurora clusters
+    if (props.clusterScalabilityType !== ClusterScalabilityType.LIMITLESS && props.clusterScailabilityType !== ClusterScailabilityType.LIMITLESS) {
+      if ((props.writer || props.readers) && (props.instances || props.instanceProps)) {
+        throw new Error('Cannot provide writer or readers if instances or instanceProps are provided');
+      }
 
-    const createdInstances = props.writer ? this._createInstances(props) : legacyCreateInstances(this, props, this.subnetGroup);
-    this.instanceIdentifiers = createdInstances.instanceIdentifiers;
-    this.instanceEndpoints = createdInstances.instanceEndpoints;
+      if (!props.instanceProps && !props.writer) {
+        throw new Error('writer must be provided');
+      }
+
+      const createdInstances = props.writer ? this._createInstances(props) : legacyCreateInstances(this, props, this.subnetGroup);
+      this.instanceIdentifiers = createdInstances.instanceIdentifiers;
+      this.instanceEndpoints = createdInstances.instanceEndpoints;
+    } else {
+      // Limitless database does not have instances,
+      // but an empty array will be assigned to avoid destructive changes.
+      this.instanceIdentifiers = [];
+      this.instanceEndpoints = [];
+    }
   }
-
 }
 
 /**
@@ -1107,7 +1453,7 @@ export interface DatabaseClusterFromSnapshotProps extends DatabaseClusterBasePro
 /**
  * A database cluster restored from a snapshot.
  *
- * @resource AWS::RDS::DBInstance
+ * @resource AWS::RDS::DBCluster
  */
 export class DatabaseClusterFromSnapshot extends DatabaseClusterNew {
   public readonly clusterIdentifier: string;
@@ -1127,43 +1473,32 @@ export class DatabaseClusterFromSnapshot extends DatabaseClusterNew {
     super(scope, id, props);
 
     if (props.credentials && !props.credentials.password && !props.credentials.secret) {
-      Annotations.of(this).addWarning('Use `snapshotCredentials` to modify password of a cluster created from a snapshot.');
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-rds:useSnapshotCredentials', 'Use `snapshotCredentials` to modify password of a cluster created from a snapshot.');
     }
     if (!props.credentials && !props.snapshotCredentials) {
-      Annotations.of(this).addWarning('Generated credentials will not be applied to cluster. Use `snapshotCredentials` instead. `addRotationSingleUser()` and `addRotationMultiUser()` cannot be used on this cluster.');
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-rds:generatedCredsNotApplied', 'Generated credentials will not be applied to cluster. Use `snapshotCredentials` instead. `addRotationSingleUser()` and `addRotationMultiUser()` cannot be used on this cluster.');
     }
-    const deprecatedCredentials = renderCredentials(this, props.engine, props.credentials);
 
-    let credentials = props.snapshotCredentials;
-    let secret = credentials?.secret;
-    if (!secret && credentials?.generatePassword) {
-      if (!credentials.username) {
-        throw new Error('`snapshotCredentials` `username` must be specified when `generatePassword` is set to true');
-      }
+    const deprecatedCredentials = !FeatureFlags.of(this).isEnabled(cxapi.RDS_PREVENT_RENDERING_DEPRECATED_CREDENTIALS)
+      ? renderCredentials(this, props.engine, props.credentials)
+      : undefined;
 
-      secret = new DatabaseSecret(this, 'SnapshotSecret', {
-        username: credentials.username,
-        encryptionKey: credentials.encryptionKey,
-        excludeCharacters: credentials.excludeCharacters,
-        replaceOnPasswordCriteriaChanges: credentials.replaceOnPasswordCriteriaChanges,
-        replicaRegions: credentials.replicaRegions,
-      });
-    }
+    const credentials = renderSnapshotCredentials(this, props.snapshotCredentials);
 
     const cluster = new CfnDBCluster(this, 'Resource', {
       ...this.newCfnProps,
       snapshotIdentifier: props.snapshotIdentifier,
-      masterUserPassword: secret?.secretValueFromJson('password')?.unsafeUnwrap() ?? credentials?.password?.unsafeUnwrap(), // Safe usage
+      masterUserPassword: credentials?.secret?.secretValueFromJson('password')?.unsafeUnwrap() ?? credentials?.password?.unsafeUnwrap(), // Safe usage
     });
 
     this.clusterIdentifier = cluster.ref;
     this.clusterResourceIdentifier = cluster.attrDbClusterResourceId;
 
-    if (secret) {
-      this.secret = secret.attach(this);
+    if (credentials?.secret) {
+      this.secret = credentials.secret.attach(this);
     }
 
-    if (deprecatedCredentials.secret) {
+    if (deprecatedCredentials?.secret) {
       const deprecatedSecret = deprecatedCredentials.secret.attach(this);
       if (!this.secret) {
         this.secret = deprecatedSecret;
@@ -1204,11 +1539,13 @@ function setLogRetention(cluster: DatabaseClusterNew, props: DatabaseClusterBase
 
     if (props.cloudwatchLogsRetention) {
       for (const log of props.cloudwatchLogsExports) {
+        const logGroupName = `/aws/rds/cluster/${cluster.clusterIdentifier}/${log}`;
         new logs.LogRetention(cluster, `LogRetention${log}`, {
-          logGroupName: `/aws/rds/cluster/${cluster.clusterIdentifier}/${log}`,
+          logGroupName,
           retention: props.cloudwatchLogsRetention,
           role: props.cloudwatchLogsRetentionRole,
         });
+        cluster.cloudwatchLogGroups[log] = logs.LogGroup.fromLogGroupName(cluster, `LogGroup${cluster.clusterIdentifier}${log}`, logGroupName);
       }
     }
   }
@@ -1243,21 +1580,22 @@ function legacyCreateInstances(cluster: DatabaseClusterNew, props: DatabaseClust
   // Get the actual subnet objects so we can depend on internet connectivity.
   const internetConnected = instanceProps.vpc.selectSubnets(instanceProps.vpcSubnets).internetConnectivityEstablished;
 
-  let monitoringRole;
-  if (props.monitoringInterval && props.monitoringInterval.toSeconds()) {
-    monitoringRole = props.monitoringRole || new Role(cluster, 'MonitoringRole', {
-      assumedBy: new ServicePrincipal('monitoring.rds.amazonaws.com'),
-      managedPolicies: [
-        ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonRDSEnhancedMonitoringRole'),
-      ],
-    });
-  }
-
   const enablePerformanceInsights = instanceProps.enablePerformanceInsights
     || instanceProps.performanceInsightRetention !== undefined || instanceProps.performanceInsightEncryptionKey !== undefined;
   if (enablePerformanceInsights && instanceProps.enablePerformanceInsights === false) {
     throw new Error('`enablePerformanceInsights` disabled, but `performanceInsightRetention` or `performanceInsightEncryptionKey` was set');
   }
+  const performanceInsightRetention = enablePerformanceInsights
+    ? (instanceProps.performanceInsightRetention || PerformanceInsightRetention.DEFAULT)
+    : undefined;
+  validatePerformanceInsightsSettings(
+    cluster,
+    {
+      performanceInsightsEnabled: enablePerformanceInsights,
+      performanceInsightRetention,
+      performanceInsightEncryptionKey: instanceProps.performanceInsightEncryptionKey,
+    },
+  );
 
   const instanceType = instanceProps.instanceType ?? ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM);
 
@@ -1294,17 +1632,18 @@ function legacyCreateInstances(cluster: DatabaseClusterNew, props: DatabaseClust
         (instanceProps.vpcSubnets && instanceProps.vpcSubnets.subnetType === ec2.SubnetType.PUBLIC),
       enablePerformanceInsights: enablePerformanceInsights || instanceProps.enablePerformanceInsights, // fall back to undefined if not set
       performanceInsightsKmsKeyId: instanceProps.performanceInsightEncryptionKey?.keyArn,
-      performanceInsightsRetentionPeriod: enablePerformanceInsights
-        ? (instanceProps.performanceInsightRetention || PerformanceInsightRetention.DEFAULT)
-        : undefined,
+      performanceInsightsRetentionPeriod: performanceInsightRetention,
       // This is already set on the Cluster. Unclear to me whether it should be repeated or not. Better yes.
       dbSubnetGroupName: subnetGroup.subnetGroupName,
       dbParameterGroupName: instanceParameterGroupConfig?.parameterGroupName,
-      monitoringInterval: props.monitoringInterval && props.monitoringInterval.toSeconds(),
-      monitoringRoleArn: monitoringRole && monitoringRole.roleArn,
+      // When `enableClusterLevelEnhancedMonitoring` is enabled,
+      // both `monitoringInterval` and `monitoringRole` are set at cluster level so no need to re-set it in instance level.
+      monitoringInterval: props.enableClusterLevelEnhancedMonitoring ? undefined : props.monitoringInterval?.toSeconds(),
+      monitoringRoleArn: props.enableClusterLevelEnhancedMonitoring ? undefined : cluster.monitoringRole?.roleArn,
       autoMinorVersionUpgrade: instanceProps.autoMinorVersionUpgrade,
       allowMajorVersionUpgrade: instanceProps.allowMajorVersionUpgrade,
       deleteAutomatedBackups: instanceProps.deleteAutomatedBackups,
+      preferredMaintenanceWindow: instanceProps.preferredMaintenanceWindow,
     });
 
     // For instances that are part of a cluster:
@@ -1337,4 +1676,54 @@ function legacyCreateInstances(cluster: DatabaseClusterNew, props: DatabaseClust
  */
 function databaseInstanceType(instanceType: ec2.InstanceType) {
   return 'db.' + instanceType.toString();
+}
+
+/**
+ * Validate Performance Insights settings
+ */
+function validatePerformanceInsightsSettings(
+  cluster: DatabaseClusterNew,
+  instance: {
+    nodeId?: string;
+    performanceInsightsEnabled?: boolean;
+    performanceInsightRetention?: PerformanceInsightRetention;
+    performanceInsightEncryptionKey?: kms.IKey;
+  },
+): void {
+  const target = instance.nodeId ? `instance \'${instance.nodeId}\'` : '`instanceProps`';
+
+  // If Performance Insights is enabled on the cluster, the one for each instance will be enabled as well.
+  if (cluster.performanceInsightsEnabled && instance.performanceInsightsEnabled === false) {
+    Annotations.of(cluster).addWarningV2(
+      '@aws-cdk/aws-rds:instancePerformanceInsightsOverridden',
+      `Performance Insights is enabled on cluster '${cluster.node.id}' at cluster level, but disabled for ${target}. `+
+      'However, Performance Insights for this instance will also be automatically enabled if enabled at cluster level.',
+    );
+  }
+
+  // If `performanceInsightRetention` is enabled on the cluster, the same parameter for each instance must be
+  // undefined or the same as the value at cluster level.
+  if (
+    cluster.performanceInsightRetention &&
+    instance.performanceInsightRetention &&
+    instance.performanceInsightRetention !== cluster.performanceInsightRetention
+  ) {
+    throw new Error(`\`performanceInsightRetention\` for each instance must be the same as the one at cluster level, got ${target}: ${instance.performanceInsightRetention}, cluster: ${cluster.performanceInsightRetention}`);
+  }
+
+  // If `performanceInsightEncryptionKey` is enabled on the cluster, the same parameter for each instance must be
+  // undefined or the same as the value at cluster level.
+  if (cluster.performanceInsightEncryptionKey && instance.performanceInsightEncryptionKey) {
+    const clusterKeyArn = cluster.performanceInsightEncryptionKey.keyArn;
+    const instanceKeyArn = instance.performanceInsightEncryptionKey.keyArn;
+    const compared = Token.compareStrings(clusterKeyArn, instanceKeyArn);
+
+    if (compared === TokenComparison.DIFFERENT) {
+      throw new Error(`\`performanceInsightEncryptionKey\` for each instance must be the same as the one at cluster level, got ${target}: '${instance.performanceInsightEncryptionKey.keyArn}', cluster: '${cluster.performanceInsightEncryptionKey.keyArn}'`);
+    }
+    // Even if both of cluster and instance keys are unresolved, check if they are the same token.
+    if (compared === TokenComparison.BOTH_UNRESOLVED && clusterKeyArn !== instanceKeyArn) {
+      throw new Error('`performanceInsightEncryptionKey` for each instance must be the same as the one at cluster level');
+    }
+  }
 }

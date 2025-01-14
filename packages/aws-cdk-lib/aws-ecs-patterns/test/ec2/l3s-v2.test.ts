@@ -13,6 +13,7 @@ import {
   Protocol,
   PlacementStrategy,
   PlacementConstraint,
+  ContainerDefinition,
 } from '../../../aws-ecs';
 import { ApplicationProtocol, SslPolicy } from '../../../aws-elasticloadbalancingv2';
 import { CompositePrincipal, Role, ServicePrincipal } from '../../../aws-iam';
@@ -21,7 +22,7 @@ import { NamespaceType } from '../../../aws-servicediscovery';
 import { Duration, Stack } from '../../../core';
 import { ApplicationMultipleTargetGroupsEc2Service, NetworkMultipleTargetGroupsEc2Service } from '../../lib';
 
-describe('When Application Load Balancer', () => {
+describe('ApplicationMultipleTargetGroupsEc2Service', () => {
   test('test ECS ALB construct with default settings', () => {
     // GIVEN
     const stack = new Stack();
@@ -273,6 +274,10 @@ describe('When Application Load Balancer', () => {
         CertificateArn: 'helloworld',
       }],
       SslPolicy: SslPolicy.TLS12_EXT,
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::ElasticLoadBalancingV2::LoadBalancer', {
+      Name: 'lb',
     });
   });
 
@@ -888,7 +893,7 @@ describe('When Application Load Balancer', () => {
   });
 });
 
-describe('When Network Load Balancer', () => {
+describe('NetworkMultipleTargetGroupsEc2Service', () => {
   test('test ECS NLB construct with default settings', () => {
     // GIVEN
     const stack = new Stack();
@@ -1790,5 +1795,29 @@ describe('When Network Load Balancer', () => {
         },
         desiredCount: 0,
       })).toThrow(/You must specify a desiredCount greater than 0/);
+  });
+
+  test('errors when container port range is set for essential container', () => {
+    // GIVEN
+    const stack = new Stack();
+    const vpc = new Vpc(stack, 'VPC');
+    const cluster = new Cluster(stack, 'Cluster', { vpc });
+    const taskDefinition = new Ec2TaskDefinition(stack, 'FargateTaskDef');
+
+    taskDefinition.addContainer('MainContainer', {
+      image: ContainerImage.fromRegistry('test'),
+      portMappings: [{
+        containerPort: ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+        containerPortRange: '8080-8081',
+      }],
+    });
+
+    // THEN
+    expect(() => {
+      new NetworkMultipleTargetGroupsEc2Service(stack, 'Service', {
+        cluster,
+        taskDefinition,
+      });
+    }).toThrow('The first port mapping added to the default container must expose a single port');
   });
 });

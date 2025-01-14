@@ -1,17 +1,16 @@
-import { CLOUDWATCH_LAMBDA_INSIGHTS_ARNS } from '../build-tools/fact-tables';
+import { APPCONFIG_LAMBDA_LAYER_ARNS, CLOUDWATCH_LAMBDA_INSIGHTS_ARNS } from '../build-tools/fact-tables';
 import { FactName, RegionInfo } from '../lib';
-import { AWS_REGIONS, AWS_SERVICES } from '../lib/aws-entities';
+import { AWS_REGIONS } from '../lib/aws-entities';
 
 test('built-in data is correct', () => {
   const snapshot: any = {};
   for (const name of AWS_REGIONS) {
     const region = RegionInfo.get(name);
 
-    const servicePrincipals: { [service: string]: string | undefined } = {};
     const lambdaInsightsVersions: { [service: string]: string | undefined } = {};
     const lambdaInsightsArmVersions: { [service: string]: string | undefined } = {};
-
-    AWS_SERVICES.forEach(service => servicePrincipals[service] = region.servicePrincipal(service));
+    const appConfigLayerVersions: { [service: string]: string | undefined } = {};
+    const appConfigLayerArmVersions: { [service: string]: string | undefined } = {};
 
     for (const version in CLOUDWATCH_LAMBDA_INSIGHTS_ARNS) {
       lambdaInsightsVersions[version] = region.cloudwatchLambdaInsightsArn(version);
@@ -19,17 +18,25 @@ test('built-in data is correct', () => {
       if ('arm64' in CLOUDWATCH_LAMBDA_INSIGHTS_ARNS[version]) {
         lambdaInsightsArmVersions[version] = region.cloudwatchLambdaInsightsArn(version, 'arm64');
       }
-    };
+    }
+
+    for (const version in APPCONFIG_LAMBDA_LAYER_ARNS) {
+      appConfigLayerVersions[version] = region.appConfigLambdaArn(version);
+
+      if ('arm64' in APPCONFIG_LAMBDA_LAYER_ARNS[version]) {
+        appConfigLayerArmVersions[version] = region.appConfigLambdaArn(version, 'arm64');
+      }
+    }
 
     snapshot[name] = {
-      cdkMetadataResourceAvailable: region.cdkMetadataResourceAvailable,
       domainSuffix: region.domainSuffix,
       partition: region.partition,
       s3StaticWebsiteEndpoint: region.s3StaticWebsiteEndpoint,
       vpcEndPointServiceNamePrefix: region.vpcEndpointServiceNamePrefix,
-      servicePrincipals,
       lambdaInsightsVersions,
       lambdaInsightsArmVersions,
+      appConfigLayerVersions,
+      appConfigLayerArmVersions,
     };
   }
   expect(snapshot).toMatchSnapshot();

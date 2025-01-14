@@ -1,6 +1,7 @@
 import { Template } from 'aws-cdk-lib/assertions';
 import { Stack } from 'aws-cdk-lib';
 import { AssertionsProvider } from '../../../lib/assertions';
+import { RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 let stack: Stack;
 beforeEach(() => {
@@ -17,6 +18,25 @@ describe('AssertionProvider', () => {
     Template.fromStack(stack).hasResourceProperties('AWS::Lambda::Function', {
       Handler: 'index.handler',
       Timeout: 120,
+    });
+  });
+
+  test('default', () => {
+    // WHEN
+    const provider = new AssertionsProvider(stack, 'AssertionProvider', {
+      logRetention: RetentionDays.ONE_WEEK,
+    });
+
+    // THEN
+    const template = Template.fromStack(stack);
+    template.resourceCountIs('AWS::Logs::LogGroup', 1);
+    expect(stack.resolve(provider.serviceToken)).toEqual({ 'Fn::GetAtt': ['SingletonFunction1488541a7b23466481b69b4408076b81HandlerCD40AE9F', 'Arn'] });
+    Template.fromStack(stack).hasResourceProperties('AWS::Lambda::Function', {
+      Handler: 'index.handler',
+      Timeout: 120,
+    });
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      RetentionInDays: 7,
     });
   });
 
@@ -143,25 +163,38 @@ describe('AssertionProvider', () => {
 
       // THEN
       expect(encoded).toEqual({
-        Key1: 'TRUE:BOOLEAN',
-        Key2: 'FALSE:BOOLEAN',
+        Key1: 'true',
+        Key2: 'false',
       });
     });
 
-    test('all other values return as usual', () => {
+    test('numbers', () => {
+      // WHEN
+      const provider = new AssertionsProvider(stack, 'AssertionsProvider');
+      const encoded = provider.encode({
+        Key1: 1,
+        Key2: 2,
+      });
+      // THEN
+      expect(encoded).toEqual({
+        Key1: '1',
+        Key2: '2',
+      });
+    });
+
+    test('strings are double encoded', () => {
       // WHEN
       const provider = new AssertionsProvider(stack, 'AssertionsProvider');
       const encoded = provider.encode({
         Key1: 'foo',
-        Key2: 30,
+        Key2: 'bar',
         Key3: ['hello', 'world'],
       });
-
       // THEN
       expect(encoded).toEqual({
-        Key1: 'foo',
-        Key2: 30,
-        Key3: ['hello', 'world'],
+        Key1: '"foo"',
+        Key2: '"bar"',
+        Key3: '["hello","world"]',
       });
     });
 

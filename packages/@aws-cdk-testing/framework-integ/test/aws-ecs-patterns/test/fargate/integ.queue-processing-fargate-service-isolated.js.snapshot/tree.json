@@ -4,14 +4,6 @@
     "id": "App",
     "path": "",
     "children": {
-      "Tree": {
-        "id": "Tree",
-        "path": "Tree",
-        "constructInfo": {
-          "fqn": "constructs.Construct",
-          "version": "10.1.85"
-        }
-      },
       "aws-ecs-patterns-queue-isolated": {
         "id": "aws-ecs-patterns-queue-isolated",
         "path": "aws-ecs-patterns-queue-isolated",
@@ -39,7 +31,7 @@
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.CfnVPC",
+                  "fqn": "aws-cdk-lib.aws_ec2.CfnVPC",
                   "version": "0.0.0"
                 }
               },
@@ -53,9 +45,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             0,
@@ -79,11 +68,14 @@
                             "key": "Name",
                             "value": "aws-ecs-patterns-queue-isolated/VPC/PublicSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnSubnet",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnSubnet",
                       "version": "0.0.0"
                     }
                   },
@@ -91,8 +83,8 @@
                     "id": "Acl",
                     "path": "aws-ecs-patterns-queue-isolated/VPC/PublicSubnet1/Acl",
                     "constructInfo": {
-                      "fqn": "constructs.Construct",
-                      "version": "10.1.85"
+                      "fqn": "aws-cdk-lib.Resource",
+                      "version": "0.0.0"
                     }
                   },
                   "RouteTable": {
@@ -101,19 +93,19 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "aws-ecs-patterns-queue-isolated/VPC/PublicSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnRouteTable",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnRouteTable",
                       "version": "0.0.0"
                     }
                   },
@@ -132,7 +124,7 @@
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnSubnetRouteTableAssociation",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnSubnetRouteTableAssociation",
                       "version": "0.0.0"
                     }
                   },
@@ -142,23 +134,23 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Route",
                       "aws:cdk:cloudformation:props": {
-                        "routeTableId": {
-                          "Ref": "VPCPublicSubnet1RouteTableFEE4B781"
-                        },
                         "destinationCidrBlock": "0.0.0.0/0",
                         "gatewayId": {
                           "Ref": "VPCIGWB7E252D3"
+                        },
+                        "routeTableId": {
+                          "Ref": "VPCPublicSubnet1RouteTableFEE4B781"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnRoute",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnRoute",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.PublicSubnet",
+                  "fqn": "aws-cdk-lib.aws_ec2.PublicSubnet",
                   "version": "0.0.0"
                 }
               },
@@ -172,9 +164,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             1,
@@ -198,11 +187,14 @@
                             "key": "Name",
                             "value": "aws-ecs-patterns-queue-isolated/VPC/PublicSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnSubnet",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnSubnet",
                       "version": "0.0.0"
                     }
                   },
@@ -210,8 +202,8 @@
                     "id": "Acl",
                     "path": "aws-ecs-patterns-queue-isolated/VPC/PublicSubnet2/Acl",
                     "constructInfo": {
-                      "fqn": "constructs.Construct",
-                      "version": "10.1.85"
+                      "fqn": "aws-cdk-lib.Resource",
+                      "version": "0.0.0"
                     }
                   },
                   "RouteTable": {
@@ -220,19 +212,19 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "aws-ecs-patterns-queue-isolated/VPC/PublicSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnRouteTable",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnRouteTable",
                       "version": "0.0.0"
                     }
                   },
@@ -251,7 +243,7 @@
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnSubnetRouteTableAssociation",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnSubnetRouteTableAssociation",
                       "version": "0.0.0"
                     }
                   },
@@ -261,23 +253,23 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Route",
                       "aws:cdk:cloudformation:props": {
-                        "routeTableId": {
-                          "Ref": "VPCPublicSubnet2RouteTable6F1A15F1"
-                        },
                         "destinationCidrBlock": "0.0.0.0/0",
                         "gatewayId": {
                           "Ref": "VPCIGWB7E252D3"
+                        },
+                        "routeTableId": {
+                          "Ref": "VPCPublicSubnet2RouteTable6F1A15F1"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnRoute",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnRoute",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.PublicSubnet",
+                  "fqn": "aws-cdk-lib.aws_ec2.PublicSubnet",
                   "version": "0.0.0"
                 }
               },
@@ -291,9 +283,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             0,
@@ -317,11 +306,14 @@
                             "key": "Name",
                             "value": "aws-ecs-patterns-queue-isolated/VPC/IsolatedSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnSubnet",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnSubnet",
                       "version": "0.0.0"
                     }
                   },
@@ -329,8 +321,8 @@
                     "id": "Acl",
                     "path": "aws-ecs-patterns-queue-isolated/VPC/IsolatedSubnet1/Acl",
                     "constructInfo": {
-                      "fqn": "constructs.Construct",
-                      "version": "10.1.85"
+                      "fqn": "aws-cdk-lib.Resource",
+                      "version": "0.0.0"
                     }
                   },
                   "RouteTable": {
@@ -339,19 +331,19 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "aws-ecs-patterns-queue-isolated/VPC/IsolatedSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnRouteTable",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnRouteTable",
                       "version": "0.0.0"
                     }
                   },
@@ -370,13 +362,13 @@
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnSubnetRouteTableAssociation",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnSubnetRouteTableAssociation",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.PrivateSubnet",
+                  "fqn": "aws-cdk-lib.aws_ec2.PrivateSubnet",
                   "version": "0.0.0"
                 }
               },
@@ -390,9 +382,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             1,
@@ -416,11 +405,14 @@
                             "key": "Name",
                             "value": "aws-ecs-patterns-queue-isolated/VPC/IsolatedSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnSubnet",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnSubnet",
                       "version": "0.0.0"
                     }
                   },
@@ -428,8 +420,8 @@
                     "id": "Acl",
                     "path": "aws-ecs-patterns-queue-isolated/VPC/IsolatedSubnet2/Acl",
                     "constructInfo": {
-                      "fqn": "constructs.Construct",
-                      "version": "10.1.85"
+                      "fqn": "aws-cdk-lib.Resource",
+                      "version": "0.0.0"
                     }
                   },
                   "RouteTable": {
@@ -438,19 +430,19 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "aws-ecs-patterns-queue-isolated/VPC/IsolatedSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnRouteTable",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnRouteTable",
                       "version": "0.0.0"
                     }
                   },
@@ -469,13 +461,13 @@
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnSubnetRouteTableAssociation",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnSubnetRouteTableAssociation",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.PrivateSubnet",
+                  "fqn": "aws-cdk-lib.aws_ec2.PrivateSubnet",
                   "version": "0.0.0"
                 }
               },
@@ -494,7 +486,7 @@
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.CfnInternetGateway",
+                  "fqn": "aws-cdk-lib.aws_ec2.CfnInternetGateway",
                   "version": "0.0.0"
                 }
               },
@@ -504,16 +496,16 @@
                 "attributes": {
                   "aws:cdk:cloudformation:type": "AWS::EC2::VPCGatewayAttachment",
                   "aws:cdk:cloudformation:props": {
-                    "vpcId": {
-                      "Ref": "VPCB9E5F0B4"
-                    },
                     "internetGatewayId": {
                       "Ref": "VPCIGWB7E252D3"
+                    },
+                    "vpcId": {
+                      "Ref": "VPCB9E5F0B4"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.CfnVPCGatewayAttachment",
+                  "fqn": "aws-cdk-lib.aws_ec2.CfnVPCGatewayAttachment",
                   "version": "0.0.0"
                 }
               },
@@ -527,6 +519,20 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::VPCEndpoint",
                       "aws:cdk:cloudformation:props": {
+                        "tags": [
+                          {
+                            "key": "Name",
+                            "value": "aws-ecs-patterns-queue-isolated/VPC"
+                          }
+                        ],
+                        "routeTableIds": [
+                          {
+                            "Ref": "VPCIsolatedSubnet1RouteTableEB156210"
+                          },
+                          {
+                            "Ref": "VPCIsolatedSubnet2RouteTable9B4F78DC"
+                          }
+                        ],
                         "serviceName": {
                           "Fn::Join": [
                             "",
@@ -539,28 +545,20 @@
                             ]
                           ]
                         },
+                        "vpcEndpointType": "Gateway",
                         "vpcId": {
                           "Ref": "VPCB9E5F0B4"
-                        },
-                        "routeTableIds": [
-                          {
-                            "Ref": "VPCIsolatedSubnet1RouteTableEB156210"
-                          },
-                          {
-                            "Ref": "VPCIsolatedSubnet2RouteTable9B4F78DC"
-                          }
-                        ],
-                        "vpcEndpointType": "Gateway"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnVPCEndpoint",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnVPCEndpoint",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.GatewayVpcEndpoint",
+                  "fqn": "aws-cdk-lib.aws_ec2.GatewayVpcEndpoint",
                   "version": "0.0.0"
                 }
               },
@@ -626,13 +624,13 @@
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-ec2.CfnSecurityGroup",
+                          "fqn": "aws-cdk-lib.aws_ec2.CfnSecurityGroup",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.SecurityGroup",
+                      "fqn": "aws-cdk-lib.aws_ec2.SecurityGroup",
                       "version": "0.0.0"
                     }
                   },
@@ -642,6 +640,21 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::VPCEndpoint",
                       "aws:cdk:cloudformation:props": {
+                        "tags": [
+                          {
+                            "key": "Name",
+                            "value": "aws-ecs-patterns-queue-isolated/VPC"
+                          }
+                        ],
+                        "privateDnsEnabled": true,
+                        "securityGroupIds": [
+                          {
+                            "Fn::GetAtt": [
+                              "VPCSqsEndpointSecurityGroupAE06A78D",
+                              "GroupId"
+                            ]
+                          }
+                        ],
                         "serviceName": {
                           "Fn::Join": [
                             "",
@@ -654,18 +667,6 @@
                             ]
                           ]
                         },
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
-                        "privateDnsEnabled": true,
-                        "securityGroupIds": [
-                          {
-                            "Fn::GetAtt": [
-                              "VPCSqsEndpointSecurityGroupAE06A78D",
-                              "GroupId"
-                            ]
-                          }
-                        ],
                         "subnetIds": [
                           {
                             "Ref": "VPCIsolatedSubnet1SubnetEBD00FC6"
@@ -674,17 +675,20 @@
                             "Ref": "VPCIsolatedSubnet2Subnet4B1C8CAA"
                           }
                         ],
-                        "vpcEndpointType": "Interface"
+                        "vpcEndpointType": "Interface",
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnVPCEndpoint",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnVPCEndpoint",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.InterfaceVpcEndpoint",
+                  "fqn": "aws-cdk-lib.aws_ec2.InterfaceVpcEndpoint",
                   "version": "0.0.0"
                 }
               },
@@ -750,13 +754,13 @@
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-ec2.CfnSecurityGroup",
+                          "fqn": "aws-cdk-lib.aws_ec2.CfnSecurityGroup",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.SecurityGroup",
+                      "fqn": "aws-cdk-lib.aws_ec2.SecurityGroup",
                       "version": "0.0.0"
                     }
                   },
@@ -766,6 +770,21 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::VPCEndpoint",
                       "aws:cdk:cloudformation:props": {
+                        "tags": [
+                          {
+                            "key": "Name",
+                            "value": "aws-ecs-patterns-queue-isolated/VPC"
+                          }
+                        ],
+                        "privateDnsEnabled": true,
+                        "securityGroupIds": [
+                          {
+                            "Fn::GetAtt": [
+                              "VPCEcrEndpointSecurityGroup50ED8BA4",
+                              "GroupId"
+                            ]
+                          }
+                        ],
                         "serviceName": {
                           "Fn::Join": [
                             "",
@@ -778,18 +797,6 @@
                             ]
                           ]
                         },
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
-                        "privateDnsEnabled": true,
-                        "securityGroupIds": [
-                          {
-                            "Fn::GetAtt": [
-                              "VPCEcrEndpointSecurityGroup50ED8BA4",
-                              "GroupId"
-                            ]
-                          }
-                        ],
                         "subnetIds": [
                           {
                             "Ref": "VPCIsolatedSubnet1SubnetEBD00FC6"
@@ -798,17 +805,20 @@
                             "Ref": "VPCIsolatedSubnet2Subnet4B1C8CAA"
                           }
                         ],
-                        "vpcEndpointType": "Interface"
+                        "vpcEndpointType": "Interface",
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnVPCEndpoint",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnVPCEndpoint",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.InterfaceVpcEndpoint",
+                  "fqn": "aws-cdk-lib.aws_ec2.InterfaceVpcEndpoint",
                   "version": "0.0.0"
                 }
               },
@@ -874,13 +884,13 @@
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-ec2.CfnSecurityGroup",
+                          "fqn": "aws-cdk-lib.aws_ec2.CfnSecurityGroup",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.SecurityGroup",
+                      "fqn": "aws-cdk-lib.aws_ec2.SecurityGroup",
                       "version": "0.0.0"
                     }
                   },
@@ -890,6 +900,21 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::VPCEndpoint",
                       "aws:cdk:cloudformation:props": {
+                        "tags": [
+                          {
+                            "key": "Name",
+                            "value": "aws-ecs-patterns-queue-isolated/VPC"
+                          }
+                        ],
+                        "privateDnsEnabled": true,
+                        "securityGroupIds": [
+                          {
+                            "Fn::GetAtt": [
+                              "VPCEcrImageEndpointSecurityGroup83621638",
+                              "GroupId"
+                            ]
+                          }
+                        ],
                         "serviceName": {
                           "Fn::Join": [
                             "",
@@ -902,18 +927,6 @@
                             ]
                           ]
                         },
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
-                        "privateDnsEnabled": true,
-                        "securityGroupIds": [
-                          {
-                            "Fn::GetAtt": [
-                              "VPCEcrImageEndpointSecurityGroup83621638",
-                              "GroupId"
-                            ]
-                          }
-                        ],
                         "subnetIds": [
                           {
                             "Ref": "VPCIsolatedSubnet1SubnetEBD00FC6"
@@ -922,17 +935,20 @@
                             "Ref": "VPCIsolatedSubnet2Subnet4B1C8CAA"
                           }
                         ],
-                        "vpcEndpointType": "Interface"
+                        "vpcEndpointType": "Interface",
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnVPCEndpoint",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnVPCEndpoint",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.InterfaceVpcEndpoint",
+                  "fqn": "aws-cdk-lib.aws_ec2.InterfaceVpcEndpoint",
                   "version": "0.0.0"
                 }
               },
@@ -998,13 +1014,13 @@
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-ec2.CfnSecurityGroup",
+                          "fqn": "aws-cdk-lib.aws_ec2.CfnSecurityGroup",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.SecurityGroup",
+                      "fqn": "aws-cdk-lib.aws_ec2.SecurityGroup",
                       "version": "0.0.0"
                     }
                   },
@@ -1014,6 +1030,21 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::VPCEndpoint",
                       "aws:cdk:cloudformation:props": {
+                        "tags": [
+                          {
+                            "key": "Name",
+                            "value": "aws-ecs-patterns-queue-isolated/VPC"
+                          }
+                        ],
+                        "privateDnsEnabled": true,
+                        "securityGroupIds": [
+                          {
+                            "Fn::GetAtt": [
+                              "VPCCloudWatchLogsEndpointSecurityGroup967DBC94",
+                              "GroupId"
+                            ]
+                          }
+                        ],
                         "serviceName": {
                           "Fn::Join": [
                             "",
@@ -1026,18 +1057,6 @@
                             ]
                           ]
                         },
-                        "vpcId": {
-                          "Ref": "VPCB9E5F0B4"
-                        },
-                        "privateDnsEnabled": true,
-                        "securityGroupIds": [
-                          {
-                            "Fn::GetAtt": [
-                              "VPCCloudWatchLogsEndpointSecurityGroup967DBC94",
-                              "GroupId"
-                            ]
-                          }
-                        ],
                         "subnetIds": [
                           {
                             "Ref": "VPCIsolatedSubnet1SubnetEBD00FC6"
@@ -1046,23 +1065,26 @@
                             "Ref": "VPCIsolatedSubnet2Subnet4B1C8CAA"
                           }
                         ],
-                        "vpcEndpointType": "Interface"
+                        "vpcEndpointType": "Interface",
+                        "vpcId": {
+                          "Ref": "VPCB9E5F0B4"
+                        }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ec2.CfnVPCEndpoint",
+                      "fqn": "aws-cdk-lib.aws_ec2.CfnVPCEndpoint",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.InterfaceVpcEndpoint",
+                  "fqn": "aws-cdk-lib.aws_ec2.InterfaceVpcEndpoint",
                   "version": "0.0.0"
                 }
               }
             },
             "constructInfo": {
-              "fqn": "@aws-cdk/aws-ec2.Vpc",
+              "fqn": "aws-cdk-lib.aws_ec2.Vpc",
               "version": "0.0.0"
             }
           },
@@ -1090,13 +1112,13 @@
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ec2.CfnSecurityGroup",
+                  "fqn": "aws-cdk-lib.aws_ec2.CfnSecurityGroup",
                   "version": "0.0.0"
                 }
               }
             },
             "constructInfo": {
-              "fqn": "@aws-cdk/aws-ec2.SecurityGroup",
+              "fqn": "aws-cdk-lib.aws_ec2.SecurityGroup",
               "version": "0.0.0"
             }
           },
@@ -1118,13 +1140,13 @@
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-sqs.CfnQueue",
+                      "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-sqs.Queue",
+                  "fqn": "aws-cdk-lib.aws_sqs.Queue",
                   "version": "0.0.0"
                 }
               },
@@ -1150,13 +1172,13 @@
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-sqs.CfnQueue",
+                      "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-sqs.Queue",
+                  "fqn": "aws-cdk-lib.aws_sqs.Queue",
                   "version": "0.0.0"
                 }
               },
@@ -1164,32 +1186,32 @@
                 "id": "SQSDeadLetterQueue",
                 "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/SQSDeadLetterQueue",
                 "constructInfo": {
-                  "fqn": "constructs.Construct",
-                  "version": "10.1.85"
+                  "fqn": "aws-cdk-lib.CfnOutput",
+                  "version": "0.0.0"
                 }
               },
               "SQSDeadLetterQueueArn": {
                 "id": "SQSDeadLetterQueueArn",
                 "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/SQSDeadLetterQueueArn",
                 "constructInfo": {
-                  "fqn": "constructs.Construct",
-                  "version": "10.1.85"
+                  "fqn": "aws-cdk-lib.CfnOutput",
+                  "version": "0.0.0"
                 }
               },
               "SQSQueue": {
                 "id": "SQSQueue",
                 "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/SQSQueue",
                 "constructInfo": {
-                  "fqn": "constructs.Construct",
-                  "version": "10.1.85"
+                  "fqn": "aws-cdk-lib.CfnOutput",
+                  "version": "0.0.0"
                 }
               },
               "SQSQueueArn": {
                 "id": "SQSQueueArn",
                 "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/SQSQueueArn",
                 "constructInfo": {
-                  "fqn": "constructs.Construct",
-                  "version": "10.1.85"
+                  "fqn": "aws-cdk-lib.CfnOutput",
+                  "version": "0.0.0"
                 }
               },
               "QueueProcessingTaskDef": {
@@ -1200,6 +1222,14 @@
                     "id": "TaskRole",
                     "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/QueueProcessingTaskDef/TaskRole",
                     "children": {
+                      "ImportTaskRole": {
+                        "id": "ImportTaskRole",
+                        "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/QueueProcessingTaskDef/TaskRole/ImportTaskRole",
+                        "constructInfo": {
+                          "fqn": "aws-cdk-lib.Resource",
+                          "version": "0.0.0"
+                        }
+                      },
                       "Resource": {
                         "id": "Resource",
                         "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/QueueProcessingTaskDef/TaskRole/Resource",
@@ -1221,7 +1251,7 @@
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-iam.CfnRole",
+                          "fqn": "aws-cdk-lib.aws_iam.CfnRole",
                           "version": "0.0.0"
                         }
                       },
@@ -1265,19 +1295,19 @@
                               }
                             },
                             "constructInfo": {
-                              "fqn": "@aws-cdk/aws-iam.CfnPolicy",
+                              "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
                               "version": "0.0.0"
                             }
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-iam.Policy",
+                          "fqn": "aws-cdk-lib.aws_iam.Policy",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-iam.Role",
+                      "fqn": "aws-cdk-lib.aws_iam.Role",
                       "version": "0.0.0"
                     }
                   },
@@ -1291,7 +1321,7 @@
                           {
                             "essential": true,
                             "image": {
-                              "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}:95cefedd43575452a70cdeeeceb0f1c5728fd58c9ff8e81e760c3dac33c46417"
+                              "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.${AWS::URLSuffix}/cdk-hnb659fds-container-assets-${AWS::AccountId}-${AWS::Region}:205c5d917605ee59cc93dc29526bc4f73b315ae613cdfbc52b8179f388041a03"
                             },
                             "name": "QueueProcessingContainer",
                             "logConfiguration": {
@@ -1341,7 +1371,7 @@
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ecs.CfnTaskDefinition",
+                      "fqn": "aws-cdk-lib.aws_ecs.CfnTaskDefinition",
                       "version": "0.0.0"
                     }
                   },
@@ -1357,21 +1387,21 @@
                             "id": "Staging",
                             "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/QueueProcessingTaskDef/QueueProcessingContainer/AssetImage/Staging",
                             "constructInfo": {
-                              "fqn": "constructs.Construct",
-                              "version": "10.1.85"
+                              "fqn": "aws-cdk-lib.AssetStaging",
+                              "version": "0.0.0"
                             }
                           },
                           "Repository": {
                             "id": "Repository",
                             "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/QueueProcessingTaskDef/QueueProcessingContainer/AssetImage/Repository",
                             "constructInfo": {
-                              "fqn": "@aws-cdk/aws-ecr.RepositoryBase",
+                              "fqn": "aws-cdk-lib.aws_ecr.RepositoryBase",
                               "version": "0.0.0"
                             }
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-ecr-assets.DockerImageAsset",
+                          "fqn": "aws-cdk-lib.aws_ecr_assets.DockerImageAsset",
                           "version": "0.0.0"
                         }
                       },
@@ -1387,19 +1417,19 @@
                               "aws:cdk:cloudformation:props": {}
                             },
                             "constructInfo": {
-                              "fqn": "@aws-cdk/aws-logs.CfnLogGroup",
+                              "fqn": "aws-cdk-lib.aws_logs.CfnLogGroup",
                               "version": "0.0.0"
                             }
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-logs.LogGroup",
+                          "fqn": "aws-cdk-lib.aws_logs.LogGroup",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ecs.ContainerDefinition",
+                      "fqn": "aws-cdk-lib.aws_ecs.ContainerDefinition",
                       "version": "0.0.0"
                     }
                   },
@@ -1407,6 +1437,14 @@
                     "id": "ExecutionRole",
                     "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/QueueProcessingTaskDef/ExecutionRole",
                     "children": {
+                      "ImportExecutionRole": {
+                        "id": "ImportExecutionRole",
+                        "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/QueueProcessingTaskDef/ExecutionRole/ImportExecutionRole",
+                        "constructInfo": {
+                          "fqn": "aws-cdk-lib.Resource",
+                          "version": "0.0.0"
+                        }
+                      },
                       "Resource": {
                         "id": "Resource",
                         "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/QueueProcessingTaskDef/ExecutionRole/Resource",
@@ -1428,7 +1466,7 @@
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-iam.CfnRole",
+                          "fqn": "aws-cdk-lib.aws_iam.CfnRole",
                           "version": "0.0.0"
                         }
                       },
@@ -1505,25 +1543,25 @@
                               }
                             },
                             "constructInfo": {
-                              "fqn": "@aws-cdk/aws-iam.CfnPolicy",
+                              "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
                               "version": "0.0.0"
                             }
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-iam.Policy",
+                          "fqn": "aws-cdk-lib.aws_iam.Policy",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-iam.Role",
+                      "fqn": "aws-cdk-lib.aws_iam.Role",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ecs.FargateTaskDefinition",
+                  "fqn": "aws-cdk-lib.aws_ecs.FargateTaskDefinition",
                   "version": "0.0.0"
                 }
               },
@@ -1573,7 +1611,7 @@
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ecs.CfnService",
+                      "fqn": "aws-cdk-lib.aws_ecs.CfnService",
                       "version": "0.0.0"
                     }
                   },
@@ -1581,8 +1619,8 @@
                     "id": "ScalingRole",
                     "path": "aws-ecs-patterns-queue-isolated/IsolatedQueueService/QueueProcessingFargateService/ScalingRole",
                     "constructInfo": {
-                      "fqn": "constructs.Construct",
-                      "version": "10.1.85"
+                      "fqn": "aws-cdk-lib.Resource",
+                      "version": "0.0.0"
                     }
                   },
                   "TaskCount": {
@@ -1640,7 +1678,7 @@
                               }
                             },
                             "constructInfo": {
-                              "fqn": "@aws-cdk/aws-applicationautoscaling.CfnScalableTarget",
+                              "fqn": "aws-cdk-lib.aws_applicationautoscaling.CfnScalableTarget",
                               "version": "0.0.0"
                             }
                           },
@@ -1668,13 +1706,13 @@
                                   }
                                 },
                                 "constructInfo": {
-                                  "fqn": "@aws-cdk/aws-applicationautoscaling.CfnScalingPolicy",
+                                  "fqn": "aws-cdk-lib.aws_applicationautoscaling.CfnScalingPolicy",
                                   "version": "0.0.0"
                                 }
                               }
                             },
                             "constructInfo": {
-                              "fqn": "@aws-cdk/aws-applicationautoscaling.TargetTrackingScalingPolicy",
+                              "fqn": "aws-cdk-lib.aws_applicationautoscaling.TargetTrackingScalingPolicy",
                               "version": "0.0.0"
                             }
                           },
@@ -1710,13 +1748,13 @@
                                       }
                                     },
                                     "constructInfo": {
-                                      "fqn": "@aws-cdk/aws-applicationautoscaling.CfnScalingPolicy",
+                                      "fqn": "aws-cdk-lib.aws_applicationautoscaling.CfnScalingPolicy",
                                       "version": "0.0.0"
                                     }
                                   }
                                 },
                                 "constructInfo": {
-                                  "fqn": "@aws-cdk/aws-applicationautoscaling.StepScalingAction",
+                                  "fqn": "aws-cdk-lib.aws_applicationautoscaling.StepScalingAction",
                                   "version": "0.0.0"
                                 }
                               },
@@ -1730,14 +1768,13 @@
                                     "attributes": {
                                       "aws:cdk:cloudformation:type": "AWS::CloudWatch::Alarm",
                                       "aws:cdk:cloudformation:props": {
-                                        "comparisonOperator": "LessThanOrEqualToThreshold",
-                                        "evaluationPeriods": 1,
                                         "alarmActions": [
                                           {
                                             "Ref": "IsolatedQueueServiceQueueProcessingFargateServiceTaskCountTargetQueueMessagesVisibleScalingLowerPolicy960D4BA1"
                                           }
                                         ],
                                         "alarmDescription": "Lower threshold scaling alarm",
+                                        "comparisonOperator": "LessThanOrEqualToThreshold",
                                         "dimensions": [
                                           {
                                             "name": "QueueName",
@@ -1749,6 +1786,7 @@
                                             }
                                           }
                                         ],
+                                        "evaluationPeriods": 1,
                                         "metricName": "ApproximateNumberOfMessagesVisible",
                                         "namespace": "AWS/SQS",
                                         "period": 300,
@@ -1757,13 +1795,13 @@
                                       }
                                     },
                                     "constructInfo": {
-                                      "fqn": "@aws-cdk/aws-cloudwatch.CfnAlarm",
+                                      "fqn": "aws-cdk-lib.aws_cloudwatch.CfnAlarm",
                                       "version": "0.0.0"
                                     }
                                   }
                                 },
                                 "constructInfo": {
-                                  "fqn": "@aws-cdk/aws-cloudwatch.Alarm",
+                                  "fqn": "aws-cdk-lib.aws_cloudwatch.Alarm",
                                   "version": "0.0.0"
                                 }
                               },
@@ -1800,13 +1838,13 @@
                                       }
                                     },
                                     "constructInfo": {
-                                      "fqn": "@aws-cdk/aws-applicationautoscaling.CfnScalingPolicy",
+                                      "fqn": "aws-cdk-lib.aws_applicationautoscaling.CfnScalingPolicy",
                                       "version": "0.0.0"
                                     }
                                   }
                                 },
                                 "constructInfo": {
-                                  "fqn": "@aws-cdk/aws-applicationautoscaling.StepScalingAction",
+                                  "fqn": "aws-cdk-lib.aws_applicationautoscaling.StepScalingAction",
                                   "version": "0.0.0"
                                 }
                               },
@@ -1820,14 +1858,13 @@
                                     "attributes": {
                                       "aws:cdk:cloudformation:type": "AWS::CloudWatch::Alarm",
                                       "aws:cdk:cloudformation:props": {
-                                        "comparisonOperator": "GreaterThanOrEqualToThreshold",
-                                        "evaluationPeriods": 1,
                                         "alarmActions": [
                                           {
                                             "Ref": "IsolatedQueueServiceQueueProcessingFargateServiceTaskCountTargetQueueMessagesVisibleScalingUpperPolicyFAB35025"
                                           }
                                         ],
                                         "alarmDescription": "Upper threshold scaling alarm",
+                                        "comparisonOperator": "GreaterThanOrEqualToThreshold",
                                         "dimensions": [
                                           {
                                             "name": "QueueName",
@@ -1839,6 +1876,7 @@
                                             }
                                           }
                                         ],
+                                        "evaluationPeriods": 1,
                                         "metricName": "ApproximateNumberOfMessagesVisible",
                                         "namespace": "AWS/SQS",
                                         "period": 300,
@@ -1847,43 +1885,43 @@
                                       }
                                     },
                                     "constructInfo": {
-                                      "fqn": "@aws-cdk/aws-cloudwatch.CfnAlarm",
+                                      "fqn": "aws-cdk-lib.aws_cloudwatch.CfnAlarm",
                                       "version": "0.0.0"
                                     }
                                   }
                                 },
                                 "constructInfo": {
-                                  "fqn": "@aws-cdk/aws-cloudwatch.Alarm",
+                                  "fqn": "aws-cdk-lib.aws_cloudwatch.Alarm",
                                   "version": "0.0.0"
                                 }
                               }
                             },
                             "constructInfo": {
-                              "fqn": "@aws-cdk/aws-applicationautoscaling.StepScalingPolicy",
+                              "fqn": "aws-cdk-lib.aws_applicationautoscaling.StepScalingPolicy",
                               "version": "0.0.0"
                             }
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-applicationautoscaling.ScalableTarget",
+                          "fqn": "aws-cdk-lib.aws_applicationautoscaling.ScalableTarget",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-ecs.ScalableTaskCount",
+                      "fqn": "aws-cdk-lib.aws_ecs.ScalableTaskCount",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ecs.FargateService",
+                  "fqn": "aws-cdk-lib.aws_ecs.FargateService",
                   "version": "0.0.0"
                 }
               }
             },
             "constructInfo": {
-              "fqn": "@aws-cdk/aws-ecs-patterns.QueueProcessingFargateService",
+              "fqn": "aws-cdk-lib.aws_ecs_patterns.QueueProcessingFargateService",
               "version": "0.0.0"
             }
           },
@@ -1899,20 +1937,36 @@
                   "aws:cdk:cloudformation:props": {}
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-ecs.CfnCluster",
+                  "fqn": "aws-cdk-lib.aws_ecs.CfnCluster",
                   "version": "0.0.0"
                 }
               }
             },
             "constructInfo": {
-              "fqn": "@aws-cdk/aws-ecs.Cluster",
+              "fqn": "aws-cdk-lib.aws_ecs.Cluster",
+              "version": "0.0.0"
+            }
+          },
+          "BootstrapVersion": {
+            "id": "BootstrapVersion",
+            "path": "aws-ecs-patterns-queue-isolated/BootstrapVersion",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnParameter",
+              "version": "0.0.0"
+            }
+          },
+          "CheckBootstrapVersion": {
+            "id": "CheckBootstrapVersion",
+            "path": "aws-ecs-patterns-queue-isolated/CheckBootstrapVersion",
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.CfnRule",
               "version": "0.0.0"
             }
           }
         },
         "constructInfo": {
-          "fqn": "constructs.Construct",
-          "version": "10.1.85"
+          "fqn": "aws-cdk-lib.Stack",
+          "version": "0.0.0"
         }
       },
       "isolatedQueueProcessingFargateServiceTest": {
@@ -1928,33 +1982,59 @@
                 "path": "isolatedQueueProcessingFargateServiceTest/DefaultTest/Default",
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.1.85"
+                  "version": "10.4.2"
                 }
               },
               "DeployAssert": {
                 "id": "DeployAssert",
                 "path": "isolatedQueueProcessingFargateServiceTest/DefaultTest/DeployAssert",
+                "children": {
+                  "BootstrapVersion": {
+                    "id": "BootstrapVersion",
+                    "path": "isolatedQueueProcessingFargateServiceTest/DefaultTest/DeployAssert/BootstrapVersion",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnParameter",
+                      "version": "0.0.0"
+                    }
+                  },
+                  "CheckBootstrapVersion": {
+                    "id": "CheckBootstrapVersion",
+                    "path": "isolatedQueueProcessingFargateServiceTest/DefaultTest/DeployAssert/CheckBootstrapVersion",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnRule",
+                      "version": "0.0.0"
+                    }
+                  }
+                },
                 "constructInfo": {
-                  "fqn": "constructs.Construct",
-                  "version": "10.1.85"
+                  "fqn": "aws-cdk-lib.Stack",
+                  "version": "0.0.0"
                 }
               }
             },
             "constructInfo": {
-              "fqn": "@aws-cdk/integ-tests.IntegTestCase",
+              "fqn": "@aws-cdk/integ-tests-alpha.IntegTestCase",
               "version": "0.0.0"
             }
           }
         },
         "constructInfo": {
-          "fqn": "@aws-cdk/integ-tests.IntegTest",
+          "fqn": "@aws-cdk/integ-tests-alpha.IntegTest",
           "version": "0.0.0"
+        }
+      },
+      "Tree": {
+        "id": "Tree",
+        "path": "Tree",
+        "constructInfo": {
+          "fqn": "constructs.Construct",
+          "version": "10.4.2"
         }
       }
     },
     "constructInfo": {
-      "fqn": "constructs.Construct",
-      "version": "10.1.85"
+      "fqn": "aws-cdk-lib.App",
+      "version": "0.0.0"
     }
   }
 }

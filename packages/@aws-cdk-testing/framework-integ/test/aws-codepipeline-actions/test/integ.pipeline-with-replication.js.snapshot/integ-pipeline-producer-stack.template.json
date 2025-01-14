@@ -71,7 +71,8 @@
        "Action": [
         "s3:DeleteObject*",
         "s3:GetBucket*",
-        "s3:List*"
+        "s3:List*",
+        "s3:PutBucketPolicy"
        ],
        "Effect": "Allow",
        "Principal": {
@@ -158,7 +159,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-us-east-1"
      },
-     "S3Key": "2575608c9455922c199396dd056f7479bb172f5c6068cd093f6d061160f48cee.zip"
+     "S3Key": "96ea260348625427bb7f28ab3b379f62da6f428bcd155cb13f9261aa6a404b0d.zip"
     },
     "Timeout": 900,
     "MemorySize": 128,
@@ -169,7 +170,7 @@
       "Arn"
      ]
     },
-    "Runtime": "nodejs16.x",
+    "Runtime": "nodejs20.x",
     "Description": {
      "Fn::Join": [
       "",
@@ -276,7 +277,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-us-east-1"
      },
-     "S3Key": "27f8287125ebe89b1cb7f97768a61c84b3f3221450e0a22c152addc630ab2430.zip"
+     "S3Key": "3ea02d32123ecd935a42a15cebb9022338000fbc3eaa4f1700001dce79df9b8c.zip"
     },
     "Timeout": 900,
     "MemorySize": 128,
@@ -287,7 +288,7 @@
       "Arn"
      ]
     },
-    "Runtime": "nodejs16.x"
+    "Runtime": "nodejs20.x"
    },
    "DependsOn": [
     "CustomCrossRegionExportWriterCustomResourceProviderRoleC951B1E1"

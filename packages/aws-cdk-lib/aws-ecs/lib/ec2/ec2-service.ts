@@ -1,6 +1,6 @@
 import { Construct } from 'constructs';
 import * as ec2 from '../../../aws-ec2';
-import { Lazy, Resource, Stack } from '../../../core';
+import { Lazy, Resource, Stack, Annotations } from '../../../core';
 import { BaseService, BaseServiceOptions, DeploymentControllerType, IBaseService, IService, LaunchType } from '../base/base-service';
 import { fromServiceAttributes, extractServiceNameFromArn } from '../base/from-service-attributes';
 import { NetworkMode, TaskDefinition } from '../base/task-definition';
@@ -77,7 +77,7 @@ export interface Ec2ServiceProps extends BaseServiceOptions {
    * Specifies whether the service will use the daemon scheduling strategy.
    * If true, the service scheduler deploys exactly one task on each container instance in your cluster.
    *
-   * When you are using this strategy, do not specify a desired number of tasks orany task placement strategies.
+   * When you are using this strategy, do not specify a desired number of tasks or any task placement strategies.
    *
    * @default false
    */
@@ -140,7 +140,7 @@ export class Ec2Service extends BaseService implements IEc2Service {
     return fromServiceAttributes(scope, id, attrs);
   }
 
-  private readonly constraints: CfnService.PlacementConstraintProperty[];
+  private constraints?: CfnService.PlacementConstraintProperty[];
   private readonly strategies: CfnService.PlacementStrategyProperty[];
   private readonly daemon: boolean;
 
@@ -179,12 +179,12 @@ export class Ec2Service extends BaseService implements IEc2Service {
     {
       cluster: props.cluster.clusterName,
       taskDefinition: props.deploymentController?.type === DeploymentControllerType.EXTERNAL ? undefined : props.taskDefinition.taskDefinitionArn,
-      placementConstraints: Lazy.any({ produce: () => this.constraints }, { omitEmptyArray: true }),
+      placementConstraints: Lazy.any({ produce: () => this.constraints }),
       placementStrategies: Lazy.any({ produce: () => this.strategies }, { omitEmptyArray: true }),
       schedulingStrategy: props.daemon ? 'DAEMON' : 'REPLICA',
     }, props.taskDefinition);
 
-    this.constraints = [];
+    this.constraints = undefined;
     this.strategies = [];
     this.daemon = props.daemon || false;
 
@@ -210,7 +210,9 @@ export class Ec2Service extends BaseService implements IEc2Service {
       this.connections.addSecurityGroup(...securityGroupsInThisStack(this, props.cluster.connections.securityGroups));
     }
 
-    this.addPlacementConstraints(...props.placementConstraints || []);
+    if (props.placementConstraints) {
+      this.addPlacementConstraints(...props.placementConstraints);
+    }
     this.addPlacementStrategies(...props.placementStrategies || []);
 
     this.node.addValidation({
@@ -218,6 +220,10 @@ export class Ec2Service extends BaseService implements IEc2Service {
     });
 
     this.node.addValidation({ validate: this.validateEc2Service.bind(this) });
+
+    if (props.minHealthyPercent === undefined && props.daemon) {
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-ecs:minHealthyPercentDaemon', 'minHealthyPercent has not been configured so the default value of 0% for a daemon service is used. See https://github.com/aws/aws-cdk/issues/31705');
+    }
   }
 
   /**
@@ -239,6 +245,7 @@ export class Ec2Service extends BaseService implements IEc2Service {
    * [Amazon ECS Task Placement Constraints](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-placement-constraints.html).
    */
   public addPlacementConstraints(...constraints: PlacementConstraint[]) {
+    this.constraints = [];
     for (const constraint of constraints) {
       this.constraints.push(...constraint.toJson());
     }

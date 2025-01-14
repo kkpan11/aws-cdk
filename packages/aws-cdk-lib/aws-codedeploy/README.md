@@ -90,12 +90,18 @@ const deploymentGroup = new codedeploy.ServerDeploymentGroup(this, 'CodeDeployDe
   // whether to ignore failure to fetch the status of alarms from CloudWatch
   // default: false
   ignorePollAlarmsFailure: false,
+  // whether to skip the step of checking CloudWatch alarms during the deployment process
+  // default: false
+  ignoreAlarmConfiguration: false,
   // auto-rollback configuration
   autoRollback: {
     failedDeployment: true, // default: true
     stoppedDeployment: true, // default: false
     deploymentInAlarm: true, // default: true if you provided any alarms, false otherwise
   },
+  // whether the deployment group was configured to have CodeDeploy install a termination hook into an Auto Scaling group
+  // default: false
+  terminationHook: true,
 });
 ```
 
@@ -150,6 +156,31 @@ const deploymentGroup = new codedeploy.ServerDeploymentGroup(this, 'DeploymentGr
 });
 ```
 
+The `loadBalancer` property has been deprecated. To provide multiple Elastic Load Balancers as target groups use the `loadBalancers` parameter:
+
+```ts
+import * as elb from 'aws-cdk-lib/aws-elasticloadbalancing';
+import * as elb2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+
+declare const clb: elb.LoadBalancer;
+declare const alb: elb2.ApplicationLoadBalancer;
+declare const nlb: elb2.NetworkLoadBalancer;
+
+const albListener = alb.addListener('ALBListener', { port: 80 });
+const albTargetGroup = albListener.addTargets('ALBFleet', { port: 80 });
+
+const nlbListener = nlb.addListener('NLBListener', { port: 80 });
+const nlbTargetGroup = nlbListener.addTargets('NLBFleet', { port: 80 });
+
+const deploymentGroup = new codedeploy.ServerDeploymentGroup(this, 'DeploymentGroup', {
+  loadBalancers: [
+    codedeploy.LoadBalancer.classic(clb),
+    codedeploy.LoadBalancer.application(albTargetGroup),
+    codedeploy.LoadBalancer.network(nlbTargetGroup),
+  ]
+});
+```
+
 ## EC2/on-premise Deployment Configurations
 
 You can also pass a Deployment Configuration when creating the Deployment Group:
@@ -182,6 +213,25 @@ const deploymentConfig = codedeploy.ServerDeploymentConfig.fromServerDeploymentC
   'MyExistingDeploymentConfiguration',
 );
 ```
+
+### Zonal Configuration
+
+CodeDeploy can deploy your application to one Availability Zone at a time, within an AWS Region by configuring [zonal configuration](https://docs.aws.amazon.com/codedeploy/latest/userguide/deployment-configurations-create.html#zonal-config).
+
+To create a new deployment configuration with zonal configuration:
+
+```ts
+const deploymentConfig = new codedeploy.ServerDeploymentConfig(this, 'DeploymentConfiguration', {
+  minimumHealthyHosts: codedeploy.MinimumHealthyHosts.count(2),
+  zonalConfig: {
+    monitorDuration: Duration.minutes(30),
+    firstZoneMonitorDuration: Duration.minutes(60),
+    minimumHealthyHostsPerZone: codedeploy.MinimumHealthyHostsPerZone.count(1),
+  },
+});
+```
+
+**Note**: Zonal configuration is only configurable for EC2/on-premise deployments.
 
 ## Lambda Applications
 

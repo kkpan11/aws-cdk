@@ -65,8 +65,9 @@ class PipelineStack extends Stack {
 }
 
 const app = new App({
-  context: {
+  postCliContext: {
     '@aws-cdk/core:newStyleStackSynthesis': '1',
+    '@aws-cdk/aws-codepipeline:defaultPipelineTypeToV2': false,
   },
 });
 
@@ -74,6 +75,7 @@ const stack = new PipelineStack(app, 'PreparelessPipelineStack');
 
 new integ.IntegTest(app, 'PreparelessPipelineTest', {
   testCases: [stack],
+  diffAssets: true,
 });
 
 app.synth();

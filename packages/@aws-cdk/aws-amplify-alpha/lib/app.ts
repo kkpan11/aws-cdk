@@ -158,6 +158,22 @@ export interface AppProps {
    * @default - a new role is created
    */
   readonly role?: iam.IRole;
+
+  /**
+   * Indicates the hosting platform to use. Set to WEB for static site
+   * generated (SSG) apps (i.e. a Create React App or Gatsby) and WEB_COMPUTE
+   * for server side rendered (SSR) apps (i.e. NextJS).
+   *
+   * @default Platform.WEB
+   */
+  readonly platform?: Platform;
+
+  /**
+   * The type of cache configuration to use for an Amplify app.
+   *
+   * @default CacheConfigType.AMPLIFY_MANAGED
+   */
+  readonly cacheConfigType?: CacheConfigType;
 }
 
 /**
@@ -230,7 +246,7 @@ export class App extends Resource implements IApp, iam.IGrantable {
         buildSpec: props.autoBranchCreation.buildSpec && props.autoBranchCreation.buildSpec.toBuildSpec(),
         enableAutoBranchCreation: true,
         enableAutoBuild: props.autoBranchCreation.autoBuild ?? true,
-        environmentVariables: Lazy.any({ produce: () => renderEnvironmentVariables(this.autoBranchEnvironmentVariables ) }, { omitEmptyArray: true }), // eslint-disable-line max-len
+        environmentVariables: Lazy.any({ produce: () => renderEnvironmentVariables(this.autoBranchEnvironmentVariables) }, { omitEmptyArray: true }), // eslint-disable-line max-len
         enablePullRequestPreview: props.autoBranchCreation.pullRequestPreview ?? true,
         pullRequestEnvironmentName: props.autoBranchCreation.pullRequestEnvironmentName,
         stage: props.autoBranchCreation.stage,
@@ -240,6 +256,7 @@ export class App extends Resource implements IApp, iam.IGrantable {
         ? props.basicAuth.bind(this, 'AppBasicAuth')
         : { enableBasicAuth: false },
       buildSpec: props.buildSpec && props.buildSpec.toBuildSpec(),
+      cacheConfig: props.cacheConfigType ? { type: props.cacheConfigType } : undefined,
       customRules: Lazy.any({ produce: () => this.customRules }, { omitEmptyArray: true }),
       description: props.description,
       environmentVariables: Lazy.any({ produce: () => renderEnvironmentVariables(this.environmentVariables) }, { omitEmptyArray: true }),
@@ -248,6 +265,7 @@ export class App extends Resource implements IApp, iam.IGrantable {
       oauthToken: sourceCodeProviderOptions?.oauthToken?.unsafeUnwrap(), // Safe usage
       repository: sourceCodeProviderOptions?.repository,
       customHeaders: props.customResponseHeaders ? renderCustomResponseHeaders(props.customResponseHeaders) : undefined,
+      platform: props.platform || Platform.WEB,
     });
 
     this.appId = app.attrAppId;
@@ -332,7 +350,7 @@ export interface AutoBranchCreation {
    *
    * @default - application build spec
    */
-  readonly buildSpec?: codebuild.BuildSpec
+  readonly buildSpec?: codebuild.BuildSpec;
 
   /**
    * Whether to enable auto building for the auto created branch
@@ -420,7 +438,7 @@ export interface CustomRuleOptions {
    *
    * @see https://docs.aws.amazon.com/amplify/latest/userguide/redirects.html
    */
-  readonly target: string
+  readonly target: string;
 
   /**
    * The status code for a URL rewrite or redirect rule.
@@ -527,4 +545,37 @@ function renderCustomResponseHeaders(customHeaders: CustomResponseHeader[]): str
   }
 
   return `${yaml.join('\n')}\n`;
+}
+
+/**
+ * Available hosting platforms to use on the App.
+ */
+export enum Platform {
+  /**
+   * WEB - Used to indicate that the app is hosted using only static assets.
+   */
+  WEB = 'WEB',
+
+  /**
+   * WEB_COMPUTE - Used to indicate the app is hosted using a combination of
+   * server side rendered and static assets.
+   */
+  WEB_COMPUTE = 'WEB_COMPUTE',
+}
+
+/**
+ * The type of cache configuration to use for an Amplify app.
+ */
+export enum CacheConfigType {
+  /**
+   * AMPLIFY_MANAGED - Automatically applies an optimized cache configuration
+   * for your app based on its platform, routing rules, and rewrite rules.
+   */
+  AMPLIFY_MANAGED = 'AMPLIFY_MANAGED',
+
+  /**
+   * AMPLIFY_MANAGED_NO_COOKIES - The same as AMPLIFY_MANAGED,
+   * except that it excludes all cookies from the cache key.
+   */
+  AMPLIFY_MANAGED_NO_COOKIES = 'AMPLIFY_MANAGED_NO_COOKIES',
 }

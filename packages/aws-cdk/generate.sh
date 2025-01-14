@@ -15,30 +15,11 @@ cat > build-info.json <<HERE
 }
 HERE
 
-# Build noctilucent package
-(
-  # Check out the submodule if it's not there already
-  if [ ! -f "vendor/noctilucent/Cargo.toml" ]; then
-    git -C ./vendor clone https://github.com/iph/noctilucent.git
-  fi
+# Copy the current 'aws-cdk-lib' version out from the monorepo.
+cdk_version=$(node -p 'require("aws-cdk-lib/package.json").version')
+constructs_range=$(node -p 'require("aws-cdk-lib/package.json").peerDependencies.constructs')
+echo '{"aws-cdk-lib": "'"$cdk_version"'", "constructs": "'"$constructs_range"'"}' > lib/init-templates/.init-version.json
 
-  # update the package to the pinned commit hash
-  git -C vendor/noctilucent reset --hard HEAD
-  git -C vendor/noctilucent fetch && git -C vendor/noctilucent checkout 6da7c9fade55f8443bba7b8fdfcd4ebfe5208fb1
-
-  # Install wasm-pack if it's not there already
-  if ! command -v wasm-pack >/dev/null 2>/dev/null; then
-    echo "installing wasm-pack, this may take a while..."
-    cargo install wasm-pack
-  fi
-
-  pkgroot=$(cd $(dirname -- "$0") && pwd)
-
-  cd vendor/noctilucent
-  wasm-pack build --target nodejs                                               \
-    --out-dir="${pkgroot}/lib/vendor/noctilucent"                               \
-    --out-name=index                                                            
-
-  cd ../../lib/vendor/noctilucent
-  rm package.json
-)
+# Copy the recommended-feature-flags.json file out from aws-cdk-lib.
+path=$(node -p 'require.resolve("aws-cdk-lib/recommended-feature-flags.json")')
+cp $path lib/init-templates/.recommended-feature-flags.json

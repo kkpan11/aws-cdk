@@ -3,7 +3,7 @@ import { IAutoScalingGroup } from './auto-scaling-group';
 import { AdjustmentType, MetricAggregationType, StepScalingAction } from './step-scaling-action';
 import { findAlarmThresholds, normalizeIntervals } from '../../aws-autoscaling-common';
 import * as cloudwatch from '../../aws-cloudwatch';
-import { Duration } from '../../core';
+import { Duration, Token } from '../../core';
 
 export interface BasicStepScalingPolicyProps {
   /**
@@ -15,6 +15,8 @@ export interface BasicStepScalingPolicyProps {
    * The intervals for scaling.
    *
    * Maps a range of metric values to a particular scaling behavior.
+   *
+   * Must be between 2 and 40 steps.
    */
   readonly scalingSteps: ScalingInterval[];
 
@@ -55,9 +57,26 @@ export interface BasicStepScalingPolicyProps {
    * Raising this value can be used to smooth out the metric, at the expense
    * of slower response times.
    *
+   * If `datapointsToAlarm` is not set, then all data points in the evaluation period
+   * must meet the criteria to trigger a scaling action.
+   *
    * @default 1
    */
   readonly evaluationPeriods?: number;
+
+  /**
+   * The number of data points out of the evaluation periods that must be breaching to
+   * trigger a scaling action
+   *
+   * Creates an "M out of N" alarm, where this property is the M and the value set for
+   * `evaluationPeriods` is the N value.
+   *
+   * Only has meaning if `evaluationPeriods != 1`. Must be less than or equal to
+   * `evaluationPeriods`.
+   *
+   * @default - Same as `evaluationPeriods`
+   */
+  readonly datapointsToAlarm?: number;
 
   /**
    * Aggregation to apply to all data points over the evaluation periods
@@ -96,6 +115,28 @@ export class StepScalingPolicy extends Construct {
       throw new Error('You must supply at least 2 intervals for autoscaling');
     }
 
+    if (props.scalingSteps.length > 40) {
+      throw new Error(`'scalingSteps' can have at most 40 steps, got ${props.scalingSteps.length}`);
+    }
+
+    if (props.evaluationPeriods !== undefined && !Token.isUnresolved(props.evaluationPeriods) && props.evaluationPeriods < 1) {
+      throw new Error(`evaluationPeriods cannot be less than 1, got: ${props.evaluationPeriods}`);
+    }
+    if (props.datapointsToAlarm !== undefined) {
+      if (props.evaluationPeriods === undefined) {
+        throw new Error('evaluationPeriods must be set if datapointsToAlarm is set');
+      }
+      if (!Token.isUnresolved(props.datapointsToAlarm) && props.datapointsToAlarm < 1) {
+        throw new Error(`datapointsToAlarm cannot be less than 1, got: ${props.datapointsToAlarm}`);
+      }
+      if (!Token.isUnresolved(props.datapointsToAlarm)
+        && !Token.isUnresolved(props.evaluationPeriods)
+        && props.evaluationPeriods < props.datapointsToAlarm
+      ) {
+        throw new Error(`datapointsToAlarm must be less than or equal to evaluationPeriods, got datapointsToAlarm: ${props.datapointsToAlarm}, evaluationPeriods: ${props.evaluationPeriods}`);
+      }
+    }
+
     const adjustmentType = props.adjustmentType || AdjustmentType.CHANGE_IN_CAPACITY;
     const changesAreAbsolute = adjustmentType === AdjustmentType.EXACT_CAPACITY;
 
@@ -106,7 +147,7 @@ export class StepScalingPolicy extends Construct {
       const threshold = intervals[alarms.lowerAlarmIntervalIndex].upper;
 
       this.lowerAction = new StepScalingAction(this, 'LowerPolicy', {
-        adjustmentType: props.adjustmentType,
+        adjustmentType,
         cooldown: props.cooldown,
         estimatedInstanceWarmup: props.estimatedInstanceWarmup,
         metricAggregationType: props.metricAggregationType ?? aggregationTypeFromMetric(props.metric),
@@ -128,6 +169,7 @@ export class StepScalingPolicy extends Construct {
         alarmDescription: 'Lower threshold scaling alarm',
         comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_OR_EQUAL_TO_THRESHOLD,
         evaluationPeriods: props.evaluationPeriods ?? 1,
+        datapointsToAlarm: props.datapointsToAlarm,
         threshold,
       });
       this.lowerAlarm.addAlarmAction(new StepScalingAlarmAction(this.lowerAction));
@@ -137,7 +179,7 @@ export class StepScalingPolicy extends Construct {
       const threshold = intervals[alarms.upperAlarmIntervalIndex].lower;
 
       this.upperAction = new StepScalingAction(this, 'UpperPolicy', {
-        adjustmentType: props.adjustmentType,
+        adjustmentType,
         cooldown: props.cooldown,
         estimatedInstanceWarmup: props.estimatedInstanceWarmup,
         metricAggregationType: props.metricAggregationType ?? aggregationTypeFromMetric(props.metric),
@@ -159,6 +201,7 @@ export class StepScalingPolicy extends Construct {
         alarmDescription: 'Upper threshold scaling alarm',
         comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
         evaluationPeriods: props.evaluationPeriods ?? 1,
+        datapointsToAlarm: props.datapointsToAlarm,
         threshold,
       });
       this.upperAlarm.addAlarmAction(new StepScalingAlarmAction(this.upperAction));

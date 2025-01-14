@@ -5,6 +5,7 @@ import { Construct } from 'constructs';
 import { ProductStackSynthesizer } from './private/product-stack-synthesizer';
 import { ProductStackHistory } from './product-stack-history';
 import { IBucket } from '../../aws-s3';
+import { ServerSideEncryption } from '../../aws-s3-deployment';
 import * as cdk from '../../core';
 
 /**
@@ -13,9 +14,50 @@ import * as cdk from '../../core';
 export interface ProductStackProps {
   /**
    * A Bucket can be passed to store assets, enabling ProductStack Asset support
-   * @default No Bucket provided and Assets will not be supported.
+   *
+   * @default - No Bucket provided and Assets will not be supported.
    */
   readonly assetBucket?: IBucket;
+
+  /**
+   * A ServerSideEncryption can be enabled to encrypt assets that are put into assetBucket
+   *
+   * @default - No encryption is used
+   */
+  readonly serverSideEncryption? : ServerSideEncryption;
+
+  /**
+   * For AWS_KMS ServerSideEncryption a KMS KeyId must be provided which will be used to encrypt assets
+   *
+   * @default - No KMS KeyId and SSE_KMS encryption cannot be used
+   */
+  readonly serverSideEncryptionAwsKmsKeyId? : string;
+
+  /**
+   * The amount of memory (in MiB) to allocate to the AWS Lambda function which
+   * replicates the files from the CDK bucket to the destination bucket.
+   *
+   * If you are deploying large files, you will need to increase this number
+   * accordingly.
+   *
+   * @default 128
+   */
+  readonly memoryLimit?: number;
+
+  /**
+   * A description of the stack.
+   *
+   * @default - No description.
+   */
+  readonly description?: string;
+
+  /**
+   * Include runtime versioning information in this Stack
+   *
+   * @default - `analyticsReporting` setting of containing `App`, or value of
+   * 'aws:cdk:version-reporting' context key
+   */
+  readonly analyticsReporting?: boolean;
 }
 
 /**
@@ -32,15 +74,23 @@ export class ProductStack extends cdk.Stack {
   private _parentProductStackHistory?: ProductStackHistory;
   private _templateUrl?: string;
   private _parentStack: cdk.Stack;
-
   private assetBucket?: IBucket;
 
   constructor(scope: Construct, id: string, props: ProductStackProps = {}) {
+    const parentStack = findParentStack(scope);
     super(scope, id, {
-      synthesizer: new ProductStackSynthesizer(props.assetBucket),
+      analyticsReporting: props.analyticsReporting,
+      description: props.description,
+      synthesizer: new ProductStackSynthesizer({
+        parentStack,
+        assetBucket: props.assetBucket,
+        serverSideEncryption: props.serverSideEncryption,
+        serverSideEncryptionAwsKmsKeyId: props.serverSideEncryptionAwsKmsKeyId,
+        memoryLimit: props.memoryLimit,
+      }),
     });
 
-    this._parentStack = findParentStack(scope);
+    this._parentStack = parentStack;
 
     // this is the file name of the synthesized template file within the cloud assembly
     this.templateFile = `${cdk.Names.uniqueId(this)}.product.template.json`;

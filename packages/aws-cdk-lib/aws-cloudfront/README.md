@@ -1,6 +1,5 @@
 # Amazon CloudFront Construct Library
 
-
 Amazon CloudFront is a web service that speeds up distribution of your static and dynamic web content, such as .html, .css, .js, and image files, to
 your users. CloudFront delivers your content through a worldwide network of data centers called edge locations. When a user requests content that
 you're serving with CloudFront, the user is routed to the edge location that provides the lowest latency, so that content is delivered with the best
@@ -8,7 +7,7 @@ possible performance.
 
 ## Distribution API
 
-The `Distribution` API is currently being built to replace the existing `CloudFrontWebDistribution` API. The `Distribution` API is optimized for the
+The `Distribution` API replaces the `CloudFrontWebDistribution` API which is now deprecated. The `Distribution` API is optimized for the
 most common use cases of CloudFront distributions (e.g., single origin and behavior, few customizations) while still providing the ability for more
 advanced use cases. The API focuses on simplicity for the common use cases, and convenience methods for creating the behaviors and origins necessary
 for more complex use cases.
@@ -16,7 +15,7 @@ for more complex use cases.
 ### Creating a distribution
 
 CloudFront distributions deliver your content from one or more origins; an origin is the location where you store the original version of your
-content. Origins can be created from S3 buckets or a custom origin (HTTP server). Constructs to define origins are in the `@aws-cdk/aws-cloudfront-origins` module.
+content. Origins can be created from S3 buckets or a custom origin (HTTP server). Constructs to define origins are in the `aws-cdk-lib/aws-cloudfront-origins` module.
 
 Each distribution has a default behavior which applies to all requests to that distribution, and routes requests to a primary origin.
 Additional behaviors may be specified for an origin with a given URL path pattern. Behaviors allow routing with multiple origins,
@@ -25,22 +24,19 @@ among other settings.
 
 #### From an S3 Bucket
 
-An S3 bucket can be added as an origin. If the bucket is configured as a website endpoint, the distribution can use S3 redirects and S3 custom error
-documents.
+An S3 bucket can be added as an origin. An S3 bucket origin can either be configured as a standard bucket or as a website endpoint (see AWS docs for [Using an S3 Bucket](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/DownloadDistS3AndCustomOrigins.html#using-s3-as-origin)).
 
 ```ts
-// Creates a distribution from an S3 bucket.
+// Creates a distribution from an S3 bucket with origin access control
 const myBucket = new s3.Bucket(this, 'myBucket');
 new cloudfront.Distribution(this, 'myDist', {
-  defaultBehavior: { origin: new origins.S3Origin(myBucket) },
+  defaultBehavior: {
+    origin: origins.S3BucketOrigin.withOriginAccessControl(myBucket) // Automatically creates a S3OriginAccessControl construct
+  },
 });
 ```
 
-The above will treat the bucket differently based on if `IBucket.isWebsite` is set or not. If the bucket is configured as a website, the bucket is
-treated as an HTTP origin, and the built-in S3 redirects and error pages can be used. Otherwise, the bucket is handled as a bucket origin and
-CloudFront's redirect and error handling will be used. In the latter case, the Origin will create an origin access identity and grant it access to the
-underlying bucket. This can be used in conjunction with a bucket that is not public to require that your users access your content using CloudFront
-URLs and not S3 URLs directly.
+See the README of the [`aws-cdk-lib/aws-cloudfront-origins`](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/aws-cloudfront-origins/README.md) module for more information on setting up S3 origins and origin access control (OAC).
 
 #### ELBv2 Load Balancer
 
@@ -114,6 +110,16 @@ new cloudfront.Distribution(this, 'myDist', {
   sslSupportMethod: cloudfront.SSLMethod.SNI,
 });
 ```
+
+#### Moving an alternate domain name to a different distribution
+
+When you try to add an alternate domain name to a distribution but the alternate domain name is already in use on a different distribution, you get a `CNAMEAlreadyExists` error (One or more of the CNAMEs you provided are already associated with a different resource).
+
+In that case, you might want to move the existing alternate domain name from one distribution (the source distribution) to another (the target distribution). The following steps are an overview of the process. For more information, see [Moving an alternate domain name to a different distribution](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/alternate-domain-names-move.html).
+
+1. Deploy the stack with the target distribution. The `certificate` property must be specified but the `domainNames` should be absent.
+2. Move the alternate domain name by running CloudFront `associate-alias` command. For the example and preconditions, see the AWS documentation above.
+3. Specify the `domainNames` property with the alternative domain name, then deploy the stack again to resolve the drift at the alternative domain name.
 
 #### Cross Region Certificates
 
@@ -211,13 +217,44 @@ new cloudfront.Distribution(this, 'myDist', {
 });
 ```
 
+### Attaching WAF Web Acls
+
+You can attach the AWS WAF web ACL to a CloudFront distribution.
+
+To specify a web ACL created using the latest version of AWS WAF, use the ACL ARN, for example
+`arn:aws:wafv2:us-east-1:123456789012:global/webacl/ExampleWebACL/473e64fd-f30b-4765-81a0-62ad96dd167a`.
+The web ACL must be in the `us-east-1` region.
+
+To specify a web ACL created using AWS WAF Classic, use the ACL ID, for example `473e64fd-f30b-4765-81a0-62ad96dd167a`.
+
+```ts
+declare const bucketOrigin: origins.S3Origin;
+declare const webAcl: wafv2.CfnWebACL;
+const distribution = new cloudfront.Distribution(this, 'Distribution', {
+  defaultBehavior: { origin: bucketOrigin },
+  webAclId: webAcl.attrArn,
+});
+```
+
+You can also attach a web ACL to a distribution after creation.
+
+```ts
+declare const bucketOrigin: origins.S3Origin;
+declare const webAcl: wafv2.CfnWebACL;
+const distribution = new cloudfront.Distribution(this, 'Distribution', {
+  defaultBehavior: { origin: bucketOrigin },
+});
+
+distribution.attachWebAclId(webAcl.attrArn);
+```
+
 ### Customizing Cache Keys and TTLs with Cache Policies
 
 You can use a cache policy to improve your cache hit ratio by controlling the values (URL query strings, HTTP headers, and cookies)
 that are included in the cache key, and/or adjusting how long items remain in the cache via the time-to-live (TTL) settings.
 CloudFront provides some predefined cache policies, known as managed policies, for common use cases. You can use these managed policies,
 or you can create your own cache policy that’s specific to your needs.
-See https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/controlling-the-cache-key.html for more details.
+See <https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/controlling-the-cache-key.html> for more details.
 
 ```ts
 // Using an existing cache policy for a Distribution
@@ -260,7 +297,7 @@ Other information from the viewer request, such as URL query strings, HTTP heade
 You can use an origin request policy to control the information that’s included in an origin request.
 CloudFront provides some predefined origin request policies, known as managed policies, for common use cases. You can use these managed policies,
 or you can create your own origin request policy that’s specific to your needs.
-See https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/controlling-origin-requests.html for more details.
+See <https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/controlling-origin-requests.html> for more details.
 
 ```ts
 // Using an existing origin request policy for a Distribution
@@ -296,7 +333,10 @@ new cloudfront.Distribution(this, 'myDistCustomPolicy', {
 
 You can configure CloudFront to add one or more HTTP headers to the responses that it sends to viewers (web browsers or other clients), without making any changes to the origin or writing any code.
 To specify the headers that CloudFront adds to HTTP responses, you use a response headers policy. CloudFront adds the headers regardless of whether it serves the object from the cache or has to retrieve the object from the origin. If the origin response includes one or more of the headers that’s in a response headers policy, the policy can specify whether CloudFront uses the header it received from the origin or overwrites it with the one in the policy.
-See https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/adding-response-headers.html
+See <https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/adding-response-headers.html>
+
+> [!NOTE]
+> If xssProtection `reportUri` is specified, then `modeBlock` cannot be set to `true`.
 
 ```ts
 // Using an existing managed response headers policy
@@ -333,7 +373,7 @@ const myResponseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'Resp
     frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
     referrerPolicy: { referrerPolicy: cloudfront.HeadersReferrerPolicy.NO_REFERRER, override: true },
     strictTransportSecurity: { accessControlMaxAge: Duration.seconds(600), includeSubdomains: true, override: true },
-    xssProtection: { protection: true, modeBlock: true, reportUri: 'https://example.com/csp-report', override: true },
+    xssProtection: { protection: true, modeBlock: false, reportUri: 'https://example.com/csp-report', override: true },
   },
   removeHeaders: ['Server'],
   serverTimingSamplingRate: 50,
@@ -394,7 +434,7 @@ on every request:
 // A Lambda@Edge function added to default behavior of a Distribution
 // and triggered on every request
 const myFunc = new cloudfront.experimental.EdgeFunction(this, 'MyFunction', {
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: lambda.Runtime.NODEJS_LATEST,
   handler: 'index.handler',
   code: lambda.Code.fromAsset(path.join(__dirname, 'lambda-handler')),
 });
@@ -418,14 +458,14 @@ new cloudfront.Distribution(this, 'myDist', {
 > The `EdgeFunction` construct will automatically request a function in `us-east-1`, regardless of the region of the current stack.
 > `EdgeFunction` has the same interface as `Function` and can be created and used interchangeably.
 > Please note that using `EdgeFunction` requires that the `us-east-1` region has been bootstrapped.
-> See https://docs.aws.amazon.com/cdk/latest/guide/bootstrapping.html for more about bootstrapping regions.
+> See <https://docs.aws.amazon.com/cdk/latest/guide/bootstrapping.html> for more about bootstrapping regions.
 
 If the stack is in `us-east-1`, a "normal" `lambda.Function` can be used instead of an `EdgeFunction`.
 
 ```ts
 // Using a lambda Function instead of an EdgeFunction for stacks in `us-east-`.
 const myFunc = new lambda.Function(this, 'MyFunction', {
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: lambda.Runtime.NODEJS_LATEST,
   handler: 'index.handler',
   code: lambda.Code.fromAsset(path.join(__dirname, 'lambda-handler')),
 });
@@ -438,14 +478,14 @@ you can also set a specific stack ID for each Lambda@Edge.
 // Setting stackIds for EdgeFunctions that can be referenced from different applications
 // on the same account.
 const myFunc1 = new cloudfront.experimental.EdgeFunction(this, 'MyFunction1', {
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: lambda.Runtime.NODEJS_LATEST,
   handler: 'index.handler',
   code: lambda.Code.fromAsset(path.join(__dirname, 'lambda-handler1')),
   stackId: 'edge-lambda-stack-id-1',
 });
 
 const myFunc2 = new cloudfront.experimental.EdgeFunction(this, 'MyFunction2', {
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: lambda.Runtime.NODEJS_LATEST,
   handler: 'index.handler',
   code: lambda.Code.fromAsset(path.join(__dirname, 'lambda-handler2')),
   stackId: 'edge-lambda-stack-id-2',
@@ -518,6 +558,7 @@ You can also deploy CloudFront functions and add them to a CloudFront distributi
 // Add a cloudfront Function to a Distribution
 const cfFunction = new cloudfront.Function(this, 'Function', {
   code: cloudfront.FunctionCode.fromInline('function handler(event) { return event.request }'),
+  runtime: cloudfront.FunctionRuntime.JS_2_0,
 });
 
 declare const s3Bucket: s3.Bucket;
@@ -535,6 +576,66 @@ new cloudfront.Distribution(this, 'distro', {
 It will auto-generate the name of the function and deploy it to the `live` stage.
 
 Additionally, you can load the function's code from a file using the `FunctionCode.fromFile()` method.
+
+If you set `autoPublish` to false, the function will not be automatically published to the LIVE stage when it’s created.
+
+```ts
+new cloudfront.Function(this, 'Function', {
+  code: cloudfront.FunctionCode.fromInline('function handler(event) { return event.request }'),
+  runtime: cloudfront.FunctionRuntime.JS_2_0,
+  autoPublish: false
+});
+```
+
+### Key Value Store
+
+A CloudFront Key Value Store can be created and optionally have data imported from a JSON file
+by default.
+
+To create an empty Key Value Store:
+
+```ts
+const store = new cloudfront.KeyValueStore(this, 'KeyValueStore');
+```
+
+To also include an initial set of values, the `source` property can be specified, either from a
+local file or an inline string. For the structure of this file, see [Creating a file of key value pairs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/kvs-with-functions-create-s3-kvp.html).
+
+```ts
+const storeAsset = new cloudfront.KeyValueStore(this, 'KeyValueStoreAsset', {
+  keyValueStoreName: 'KeyValueStoreAsset',
+  source: cloudfront.ImportSource.fromAsset('path-to-data.json'),
+});
+
+const storeInline = new cloudfront.KeyValueStore(this, 'KeyValueStoreInline', {
+  keyValueStoreName: 'KeyValueStoreInline',
+  source: cloudfront.ImportSource.fromInline(JSON.stringify({
+    data: [
+      {
+        key: "key1",
+        value: "value1",
+      },
+      {
+        key: "key2",
+        value: "value2",
+      },
+    ],
+  })),
+});
+```
+
+The Key Value Store can then be associated to a function using the `cloudfront-js-2.0` runtime
+or newer:
+
+```ts
+const store = new cloudfront.KeyValueStore(this, 'KeyValueStore');
+new cloudfront.Function(this, 'Function', {
+  code: cloudfront.FunctionCode.fromInline('function handler(event) { return event.request }'),
+  // Note that JS_2_0 must be used for Key Value Store support
+  runtime: cloudfront.FunctionRuntime.JS_2_0,
+  keyValueStore: store,
+});
+```
 
 ### Logging
 
@@ -560,6 +661,60 @@ new cloudfront.Distribution(this, 'myDist', {
   logFilePrefix: 'distribution-access-logs/',
   logIncludesCookies: true,
 });
+```
+
+### CloudFront Distribution Metrics
+
+You can view operational metrics about your CloudFront distributions.
+
+#### Default CloudFront Distribution Metrics
+
+The [following metrics are available by default](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/viewing-cloudfront-metrics.html#monitoring-console.distributions) for all CloudFront distributions:
+
+- Total requests: The total number of viewer requests received by CloudFront for all HTTP methods and for both HTTP and HTTPS requests.
+- Total bytes uploaded: The total number of bytes that viewers uploaded to your origin with CloudFront, using POST and PUT requests.
+- Total bytes downloaded: The total number of bytes downloaded by viewers for GET, HEAD, and OPTIONS requests.
+- Total error rate: The percentage of all viewer requests for which the response's HTTP status code was 4xx or 5xx.
+- 4xx error rate: The percentage of all viewer requests for which the response's HTTP status code was 4xx.
+- 5xx error rate: The percentage of all viewer requests for which the response's HTTP status code was 5xx.
+
+```ts
+const dist = new cloudfront.Distribution(this, 'myDist', {
+  defaultBehavior: { origin: new origins.HttpOrigin('www.example.com') },
+});
+
+// Retrieving default distribution metrics
+const requestsMetric = dist.metricRequests();
+const bytesUploadedMetric = dist.metricBytesUploaded();
+const bytesDownloadedMetric = dist.metricBytesDownloaded();
+const totalErrorRateMetric = dist.metricTotalErrorRate();
+const http4xxErrorRateMetric = dist.metric4xxErrorRate();
+const http5xxErrorRateMetric = dist.metric5xxErrorRate();
+```
+
+#### Additional CloudFront Distribution Metrics
+
+You can enable [additional CloudFront distribution metrics](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/viewing-cloudfront-metrics.html#monitoring-console.distributions-additional), which include the following metrics:
+
+- 4xx and 5xx error rates: View 4xx and 5xx error rates by the specific HTTP status code, as a percentage of total requests.
+- Origin latency: See the total time spent from when CloudFront receives a request to when it provides a response to the network (not the viewer), for responses that are served from the origin, not the CloudFront cache.
+- Cache hit rate: View cache hits as a percentage of total cacheable requests, excluding errors.
+
+```ts
+const dist = new cloudfront.Distribution(this, 'myDist', {
+  defaultBehavior: { origin: new origins.HttpOrigin('www.example.com') },
+  publishAdditionalMetrics: true,
+});
+
+// Retrieving additional distribution metrics
+const latencyMetric = dist.metricOriginLatency();
+const cacheHitRateMetric = dist.metricCacheHitRate();
+const http401ErrorRateMetric = dist.metric401ErrorRate();
+const http403ErrorRateMetric = dist.metric403ErrorRate();
+const http404ErrorRateMetric = dist.metric404ErrorRate();
+const http502ErrorRateMetric = dist.metric502ErrorRate();
+const http503ErrorRateMetric = dist.metric503ErrorRate();
+const http504ErrorRateMetric = dist.metric504ErrorRate();
 ```
 
 ### HTTP Versions
@@ -601,6 +756,42 @@ distribution.grant(lambdaFn, 'cloudfront:ListInvalidations', 'cloudfront:GetInva
 distribution.grantCreateInvalidation(lambdaFn);
 ```
 
+### Realtime Log Config
+
+CloudFront supports realtime log delivery from your distribution to a Kinesis stream.
+
+See [Real-time logs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html) in the CloudFront User Guide.
+
+Example:
+
+```ts
+// Adding realtime logs config to a Cloudfront Distribution on default behavior.
+import * as kinesis from 'aws-cdk-lib/aws-kinesis';
+
+declare const stream: kinesis.Stream;
+
+const realTimeConfig = new cloudfront.RealtimeLogConfig(this, 'realtimeLog', {
+  endPoints: [
+    cloudfront.Endpoint.fromKinesisStream(stream),
+  ],
+  fields: [
+    'timestamp',
+    'c-ip',
+    'time-to-first-byte',
+    'sc-status',
+  ],
+  realtimeLogConfigName: 'my-delivery-stream',
+  samplingRate: 100,
+});
+
+new cloudfront.Distribution(this, 'myCdn', {
+  defaultBehavior: {
+    origin: new origins.HttpOrigin('www.example.com'),
+    realtimeLogConfig: realTimeConfig,
+  },
+});
+```
+
 ## Migrating from the original CloudFrontWebDistribution to the newer Distribution construct
 
 It's possible to migrate a distribution from the original to the modern API.
@@ -611,13 +802,13 @@ The changes necessary are the following:
 Replace `new CloudFrontWebDistribution` with `new Distribution`. Some
 configuration properties have been changed:
 
-| Old API                        | New API                                                                                        |
-|--------------------------------|------------------------------------------------------------------------------------------------|
-| `originConfigs`                | `defaultBehavior`; use `additionalBehaviors` if necessary                                      |
-| `viewerCertificate`            | `certificate`; use `domainNames` for aliases                                                   |
-| `errorConfigurations`          | `errorResponses`                                                                               |
-| `loggingConfig`                | `enableLogging`; configure with `logBucket` `logFilePrefix` and `logIncludesCookies`           |
-| `viewerProtocolPolicy`         | removed; set on each behavior instead. default changed from `REDIRECT_TO_HTTPS` to `ALLOW_ALL` |
+| Old API                | New API                                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------- |
+| `originConfigs`        | `defaultBehavior`; use `additionalBehaviors` if necessary                                      |
+| `viewerCertificate`    | `certificate`; use `domainNames` for aliases                                                   |
+| `errorConfigurations`  | `errorResponses`                                                                               |
+| `loggingConfig`        | `enableLogging`; configure with `logBucket` `logFilePrefix` and `logIncludesCookies`           |
+| `viewerProtocolPolicy` | removed; set on each behavior instead. default changed from `REDIRECT_TO_HTTPS` to `ALLOW_ALL` |
 
 After switching constructs, you need to maintain the same logical ID for the underlying [CfnDistribution](https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-cloudfront.CfnDistribution.html) if you wish to avoid the deletion and recreation of your distribution.
 To do this, use [escape hatches](https://docs.aws.amazon.com/cdk/v2/guide/cfn_layer.html) to override the logical ID created by the new Distribution construct with the logical ID created by the old construct.
@@ -800,7 +991,7 @@ If no changes are desired during migration, you will at the least be able to use
 
 ## CloudFrontWebDistribution API
 
-> The `CloudFrontWebDistribution` construct is the original construct written for working with CloudFront distributions.
+> The `CloudFrontWebDistribution` construct is the original construct written for working with CloudFront distributions and has been marked as deprecated.
 > Users are encouraged to use the newer `Distribution` instead, as it has a simpler interface and receives new features faster.
 
 Example usage:
@@ -964,7 +1155,7 @@ new cloudfront.CloudFrontWebDistribution(this, 'ADistribution', {
   originConfigs: [
     {
       s3OriginSource: {
-        s3BucketSource: s3.Bucket.fromBucketName(this, 'aBucket', 'myoriginbucket'),
+        s3BucketSource: s3.Bucket.fromBucketName(this, 'aBucket', 'amzn-s3-demo-bucket'),
         originPath: '/',
         originHeaders: {
           'myHeader': '42',
@@ -972,7 +1163,7 @@ new cloudfront.CloudFrontWebDistribution(this, 'ADistribution', {
         originShieldRegion: 'us-west-2',
       },
       failoverS3OriginSource: {
-        s3BucketSource: s3.Bucket.fromBucketName(this, 'aBucketFallback', 'myoriginbucketfallback'),
+        s3BucketSource: s3.Bucket.fromBucketName(this, 'aBucketFallback', 'amzn-s3-demo-bucket1'),
         originPath: '/somewhere',
         originHeaders: {
           'myHeader2': '21',
@@ -1026,5 +1217,5 @@ new cloudfront.KeyGroup(this, 'MyKeyGroup', {
 
 See:
 
-* https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PrivateContent.html
-* https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-trusted-signers.html
+- <https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PrivateContent.html>
+- <https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-trusted-signers.html>

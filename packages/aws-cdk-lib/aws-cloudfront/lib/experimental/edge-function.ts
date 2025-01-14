@@ -1,4 +1,3 @@
-import * as path from 'path';
 import { Construct, Node } from 'constructs';
 import * as cloudwatch from '../../../aws-cloudwatch';
 import * as ec2 from '../../../aws-ec2';
@@ -6,16 +5,15 @@ import * as iam from '../../../aws-iam';
 import * as lambda from '../../../aws-lambda';
 import * as ssm from '../../../aws-ssm';
 import {
-  builtInCustomResourceProviderNodeRuntime,
   CfnResource,
   CustomResource,
-  CustomResourceProvider,
   Lazy,
   Resource,
   Stack,
   Stage,
   Token,
 } from '../../../core';
+import { CrossRegionStringParamReaderProvider } from '../../../custom-resource-handlers/dist/aws-cloudfront/cross-region-string-param-reader-provider.generated';
 
 /**
  * Properties for creating a Lambda@Edge function
@@ -121,8 +119,17 @@ export class EdgeFunction extends Resource implements lambda.IVersion {
   public grantInvoke(identity: iam.IGrantable): iam.Grant {
     return this.lambda.grantInvoke(identity);
   }
+  public grantInvokeLatestVersion(identity: iam.IGrantable): iam.Grant {
+    return this.lambda.grantInvokeLatestVersion(identity);
+  }
+  public grantInvokeVersion(identity: iam.IGrantable, version: lambda.IVersion): iam.Grant {
+    return this.lambda.grantInvokeVersion(identity, version);
+  }
   public grantInvokeUrl(identity: iam.IGrantable): iam.Grant {
     return this.lambda.grantInvokeUrl(identity);
+  }
+  public grantInvokeCompositePrincipal(compositePrincipal: iam.CompositePrincipal): iam.Grant[] {
+    return this.lambda.grantInvokeCompositePrincipal(compositePrincipal);
   }
   public metric(metricName: string, props?: cloudwatch.MetricOptions): cloudwatch.Metric {
     return this.lambda.metric(metricName, { ...props, region: EdgeFunction.EDGE_REGION });
@@ -196,9 +203,7 @@ export class EdgeFunction extends Resource implements lambda.IVersion {
     });
 
     const resourceType = 'Custom::CrossRegionStringParameterReader';
-    const serviceToken = CustomResourceProvider.getOrCreate(this, resourceType, {
-      codeDirectory: path.join(__dirname, 'edge-function'),
-      runtime: builtInCustomResourceProviderNodeRuntime(this),
+    const serviceToken = CrossRegionStringParamReaderProvider.getOrCreate(this, resourceType, {
       policyStatements: [{
         Effect: 'Allow',
         Resource: parameterArnPrefix,

@@ -77,7 +77,7 @@ describe('DatabaseCluster', () => {
         vpc,
         instanceType: InstanceType.R5_LARGE,
       });
-    }).toThrowError('At least one instance is required');
+    }).toThrow('At least one instance is required');
   });
 
   test('errors when only one subnet is specified', () => {
@@ -97,7 +97,7 @@ describe('DatabaseCluster', () => {
         },
         instanceType: InstanceType.R5_LARGE,
       });
-    }).toThrowError('Cluster requires at least 2 subnets, got 1');
+    }).toThrow('Cluster requires at least 2 subnets, got 1');
   });
 
   test('can create a cluster with custom engine version', () => {
@@ -121,7 +121,7 @@ describe('DatabaseCluster', () => {
   });
 
   test.each([
-    ['1.1.1.0', EngineVersion.V1_1_1_0], ['1.2.0.0', EngineVersion.V1_2_0_0],
+    ['1.1.1.0', EngineVersion.V1_1_1_0], ['1.2.0.0', EngineVersion.V1_2_0_0], ['1.3.0.0', EngineVersion.V1_3_0_0],
   ])('can create a cluster for engine version %s', (expected, version) => {
     // GIVEN
     const stack = testStack();
@@ -218,6 +218,24 @@ describe('DatabaseCluster', () => {
           },
         },
       ],
+    });
+  });
+
+  test('cluster with port', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    // WHEN
+    new DatabaseCluster(stack, 'Database', {
+      vpc,
+      instanceType: InstanceType.R5_LARGE,
+      port: 1234,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Neptune::DBCluster', {
+      DBPort: 1234,
     });
   });
 
@@ -752,6 +770,165 @@ describe('DatabaseCluster', () => {
       ComparisonOperator: 'LessThanThreshold',
       EvaluationPeriods: 1,
       Threshold: 1,
+    });
+  });
+
+  test('should instantiate a serverless cluster', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    // WHEN
+    new DatabaseCluster(stack, 'Database', {
+      vpc,
+      instanceType: InstanceType.SERVERLESS,
+      serverlessScalingConfiguration: {
+        minCapacity: 1,
+        maxCapacity: 10,
+      },
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::Neptune::DBCluster', {
+      Properties: {
+        ServerlessScalingConfiguration: {
+          MinCapacity: 1,
+          MaxCapacity: 10,
+        },
+      },
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::Neptune::DBInstance', {
+      DBInstanceClass: 'db.serverless',
+    });
+  });
+
+  test('should validate serverlessScalingConfiguration', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    expect(() => {
+      new DatabaseCluster(stack, 'Database0', {
+        vpc,
+        instanceType: InstanceType.SERVERLESS,
+      });
+    }).toThrow(/You need to specify a serverless scaling configuration with a db.serverless instance type./);
+
+    expect(() => {
+      new DatabaseCluster(stack, 'Database1', {
+        vpc,
+        instanceType: InstanceType.SERVERLESS,
+        serverlessScalingConfiguration: {
+          minCapacity: 0,
+          maxCapacity: 10,
+        },
+      });
+    }).toThrow(/ServerlessScalingConfiguration minCapacity must be greater or equal than 1, received 0/);
+
+    expect(() => {
+      new DatabaseCluster(stack, 'Database2', {
+        vpc,
+        instanceType: InstanceType.SERVERLESS,
+        serverlessScalingConfiguration: {
+          minCapacity: 1,
+          maxCapacity: 200,
+        },
+      });
+    }).toThrow(/ServerlessScalingConfiguration maxCapacity must be between 2.5 and 128, received 200/);
+
+    expect(() => {
+      new DatabaseCluster(stack, 'Database3', {
+        vpc,
+        instanceType: InstanceType.SERVERLESS,
+        serverlessScalingConfiguration: {
+          minCapacity: 10,
+          maxCapacity: 5,
+        },
+      });
+    }).toThrow(/ServerlessScalingConfiguration minCapacity 10 must be less than serverlessScalingConfiguration maxCapacity 5/);
+  });
+
+  test('cloudwatchLogsExports log retention is enabled when configured for multiple logs exports', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    // WHEN
+    new DatabaseCluster(stack, 'Cluster', {
+      vpc,
+      instanceType: InstanceType.R5_LARGE,
+      cloudwatchLogsExports: [LogType.AUDIT, new LogType('slowquery')],
+      cloudwatchLogsRetention: logs.RetentionDays.ONE_MONTH,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Neptune::DBCluster', {
+      EnableCloudwatchLogsExports: ['audit', 'slowquery'],
+    });
+    Template.fromStack(stack).hasResourceProperties('Custom::LogRetention', {
+      LogGroupName: {
+        'Fn::Join': [
+          '',
+          [
+            '/aws/neptune/',
+            {
+              Ref: 'ClusterEB0386A7',
+            },
+            '/audit',
+          ],
+        ],
+      },
+      RetentionInDays: 30,
+    });
+    Template.fromStack(stack).hasResourceProperties('Custom::LogRetention', {
+      LogGroupName: {
+        'Fn::Join': [
+          '',
+          [
+            '/aws/neptune/',
+            {
+              Ref: 'ClusterEB0386A7',
+            },
+            '/slowquery',
+          ],
+        ],
+      },
+      RetentionInDays: 30,
+    });
+  });
+
+  test('copyTagsToSnapshot is not set by default', () => {
+    // GIVEN
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    // WHEN
+    new DatabaseCluster(stack, 'Database', {
+      vpc,
+      instanceType: InstanceType.R5_LARGE,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Neptune::DBCluster', {
+      CopyTagsToSnapshot: Match.absent(),
+    });
+  });
+
+  test.each([false, true])('cluster with copyTagsToSnapshot set', (value) => {
+    const stack = testStack();
+    const vpc = new ec2.Vpc(stack, 'VPC');
+
+    // WHEN
+    new DatabaseCluster(stack, 'Database', {
+      vpc,
+      instanceType: InstanceType.R5_LARGE,
+      copyTagsToSnapshot: value,
+    });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::Neptune::DBCluster', {
+      CopyTagsToSnapshot: value,
     });
   });
 });

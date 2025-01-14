@@ -124,9 +124,11 @@ export class RegionInfo {
   /**
    * The name of the service principal for a given service in this region.
    * @param service the service name (e.g: s3.amazonaws.com)
+   *
+   * @deprecated - Use `iam.ServicePrincipal.servicePrincipalName()` instead.
    */
   public servicePrincipal(service: string): string | undefined {
-    return Fact.find(this.name, FactName.servicePrincipal(service));
+    return `${service.replace(/\.amazonaws\.com(\.cn)?$/, '')}.amazonaws.com`;
   }
 
   /**
@@ -151,6 +153,15 @@ export class RegionInfo {
    */
   public cloudwatchLambdaInsightsArn(insightsVersion: string, architecture?: string): string | undefined {
     return Fact.find(this.name, FactName.cloudwatchLambdaInsightsVersion(insightsVersion, architecture));
+  }
+
+  /**
+   * The ARN of the AppConfig Lambda Layer, for the given version.
+   * @param layerVersion The layer version (e.g. 2.0.181)
+   * @param architecture The Lambda Function architecture (e.g. 'x86_64' or 'arm64'), defaults to x86_64
+   */
+  public appConfigLambdaArn(layerVersion: string, architecture?: string) : string | undefined {
+    return Fact.find(this.name, FactName.appConfigLambdaLayerVersion(layerVersion, architecture));
   }
 
   /**
@@ -188,4 +199,12 @@ export class RegionInfo {
   public paramsAndSecretsLambdaLayerArn(version: string, architecture: string): string | undefined {
     return Fact.find(this.name, FactName.paramsAndSecretsLambdaLayer(version, architecture));
   }
+
+  /**
+   * SAML Sign On URL used by IAM SAML Principals.
+   */
+  public get samlSignOnUrl(): string | undefined {
+    return Fact.find(this.name, FactName.SAML_SIGN_ON_URL);
+  }
+
 }

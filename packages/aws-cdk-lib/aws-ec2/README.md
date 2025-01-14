@@ -2,7 +2,7 @@
 
 
 
-The `@aws-cdk/aws-ec2` package contains primitives for setting up networking and
+The `aws-cdk-lib/aws-ec2` package contains primitives for setting up networking and
 instances.
 
 ```ts nofixture
@@ -180,6 +180,7 @@ Which subnets are selected is evaluated as follows:
   * `onePerAz`: chooses at most one subnet per availability zone
   * `containsIpAddresses`: chooses a subnet which contains *any* of the listed ip addresses
   * `byCidrMask`: chooses subnets that have the provided CIDR netmask
+  * `byCidrRanges`: chooses subnets which are inside any of the specified CIDR ranges
 
 ### Using NAT instances
 
@@ -188,17 +189,72 @@ are managed by AWS. If you would prefer to use your own managed NAT
 *instances* instead, specify a different value for the `natGatewayProvider`
 property, as follows:
 
-[using NAT instances](test/integ.nat-instances.lit.ts)
-
-The construct will automatically search for the most recent NAT gateway AMI.
+The construct will automatically selects the latest version of Amazon Linux 2023.
 If you prefer to use a custom AMI, use `machineImage:
 MachineImage.genericLinux({ ... })` and configure the right AMI ID for the
 regions you want to deploy to.
+
+> **Warning**
+> The NAT instances created using this method will be **unmonitored**.
+> They are not part of an Auto Scaling Group,
+> and if they become unavailable or are terminated for any reason,
+> will not be restarted or replaced.
 
 By default, the NAT instances will route all traffic. To control what traffic
 gets routed, pass a custom value for `defaultAllowedTraffic` and access the
 `NatInstanceProvider.connections` member after having passed the NAT provider to
 the VPC:
+
+```ts
+declare const instanceType: ec2.InstanceType;
+
+const provider = ec2.NatProvider.instanceV2({
+  instanceType,
+  defaultAllowedTraffic: ec2.NatTrafficDirection.OUTBOUND_ONLY,
+});
+new ec2.Vpc(this, 'TheVPC', {
+  natGatewayProvider: provider,
+});
+provider.connections.allowFrom(ec2.Peer.ipv4('1.2.3.4/8'), ec2.Port.HTTP);
+```
+
+You can also customize the characteristics of your NAT instances, including their security group,
+as well as their initialization scripts:
+
+```ts
+declare const bucket: s3.Bucket;
+
+const userData = ec2.UserData.forLinux();
+userData.addCommands(
+  ...ec2.NatInstanceProviderV2.DEFAULT_USER_DATA_COMMANDS,
+  'echo "hello world!" > hello.txt',
+  `aws s3 cp hello.txt s3://${bucket.bucketName}`,
+);
+
+const provider = ec2.NatProvider.instanceV2({
+  instanceType: new ec2.InstanceType('t3.small'),
+  creditSpecification: ec2.CpuCredits.UNLIMITED,
+  defaultAllowedTraffic: ec2.NatTrafficDirection.NONE,
+});
+
+const vpc = new ec2.Vpc(this, 'TheVPC', {
+  natGatewayProvider: provider,
+  natGateways: 2,
+});
+
+const securityGroup = new ec2.SecurityGroup(this, 'SecurityGroup', { vpc });
+    securityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443));
+for (const gateway of provider.gatewayInstances) {
+  bucket.grantWrite(gateway);
+  gateway.addSecurityGroup(securityGroup);
+}
+```
+
+[using NAT instances](test/integ.nat-instances.lit.ts) [Deprecated]
+
+The V1 `NatProvider.instance` construct will use the AWS official NAT instance AMI, which has already
+reached EOL on Dec 31, 2023. For more information, see the following blog post:
+[Amazon Linux AMI end of life](https://aws.amazon.com/blogs/aws/update-on-amazon-linux-ami-end-of-life/).
 
 ```ts
 declare const instanceType: ec2.InstanceType;
@@ -210,8 +266,25 @@ const provider = ec2.NatProvider.instance({
 new ec2.Vpc(this, 'TheVPC', {
   natGatewayProvider: provider,
 });
-provider.connections.allowFrom(ec2.Peer.ipv4('1.2.3.4/8'), ec2.Port.tcp(80));
+provider.connections.allowFrom(ec2.Peer.ipv4('1.2.3.4/8'), ec2.Port.HTTP);
 ```
+
+### Associate Public IP Address to NAT Instance
+
+You can choose to associate public IP address to a NAT instance V2 by specifying `associatePublicIpAddress`
+like the following:
+
+```ts
+const natGatewayProvider = ec2.NatProvider.instanceV2({
+  instanceType: new ec2.InstanceType('t3.small'),
+  associatePublicIpAddress: true,
+});
+```
+
+In certain scenarios where the public subnet has set `mapPublicIpOnLaunch` to `false`, NAT instances does not
+get public IP addresses assigned which would result in non-working NAT instance as NAT instance requires a public
+IP address to enable outbound internet connectivity. Users can specify `associatePublicIpAddress` to `true` to
+solve this problem.
 
 ### Ip Address Management
 
@@ -268,6 +341,22 @@ new ec2.Vpc(this, 'TheVPC', {
 * `defaultSubnetIpv4NetmaskLength`, the size of subnets in groups that don't have `cidrMask` set.
 
 With this method of IP address management, no attempt is made to guess at subnet group sizes or to exhaustively allocate the IP range. All subnet groups must have an explicit `cidrMask` set as part of their subnet configuration, or `defaultSubnetIpv4NetmaskLength` must be set for a default size. If not, synthesis will fail and you must provide one or the other.
+
+### Dual Stack configuration
+
+To allocate both IPv4 and IPv6 addresses in your VPC, you can configure your VPC to have a dual stack protocol.
+
+```ts
+new ec2.Vpc(this, 'DualStackVpc', {
+  ipProtocol: ec2.IpProtocol.DUAL_STACK,
+})
+```
+
+By default, a dual stack VPC will create an Amazon provided IPv6 /56 CIDR block associated to the VPC. It will then assign /64 portions of the block to each subnet. For each subnet, auto-assigning an IPv6 address will be enabled, and auto-asigning a public IPv4 address will be disabled. An egress only internet gateway will be created for `PRIVATE_WITH_EGRESS` subnets, and IPv6 routes will be added for IGWs and EIGWs.
+
+Disabling the auto-assigning of a public IPv4 address by default can avoid the cost of public IPv4 addresses starting 2/1/2024. For use cases that need an IPv4 address, the `mapPublicIpOnLaunch` property in `subnetConfiguration` can be set to auto-assign the IPv4 address. Note that private IPv4 address allocation will not be changed.
+
+See [Advanced Subnet Configuration](#advanced-subnet-configuration) for all IPv6 specific properties.
 
 ### Reserving availability zones
 
@@ -372,6 +461,38 @@ DatabaseSubnet1   |`ISOLATED`|`10.0.6.0/28` |#1|Only routes within the VPC
 DatabaseSubnet2   |`ISOLATED`|`10.0.6.16/28`|#2|Only routes within the VPC
 DatabaseSubnet3   |`ISOLATED`|`10.0.6.32/28`|#3|Only routes within the VPC
 
+#### Dual Stack Configurations
+
+Here is a break down of IPv4 and IPv6 specifc `subnetConfiguration` properties in a dual stack VPC:
+
+```ts
+const vpc = new ec2.Vpc(this, 'TheVPC', {
+  ipProtocol: ec2.IpProtocol.DUAL_STACK,
+
+  subnetConfiguration: [
+    {
+      // general properties
+      name: 'Public',
+      subnetType: ec2.SubnetType.PUBLIC,
+      reserved: false,
+
+      // IPv4 specific properties
+      mapPublicIpOnLaunch: true,
+      cidrMask: 24,
+
+      // new IPv6 specific property
+      ipv6AssignAddressOnCreation: true,
+    },
+  ],
+});
+```
+
+The property `mapPublicIpOnLaunch` controls if a public IPv4 address will be assigned. This defaults to `false` for dual stack VPCs to avoid inadvertant costs of having the public address. However, a public IP must be enabled (or otherwise configured with BYOIP or IPAM) in order for services that rely on the address to function.
+
+The `ipv6AssignAddressOnCreation` property controls the same behavior for the IPv6 address. It defaults to true.
+
+Using IPv6 specific properties in an IPv4 only VPC will result in errors.
+
 ### Accessing the Internet Gateway
 
 If you need access to the internet gateway, you can get its ID like so:
@@ -391,6 +512,22 @@ beforehand.
 
 This can be useful for configuring routing using a combination of gateways:
 for more information see [Routing](#routing) below.
+
+### Disabling the creation of the default internet gateway
+
+If you need to control the creation of the internet gateway explicitly,
+you can disable the creation of the default one using the `createInternetGateway`
+property:
+
+```ts
+const vpc = new ec2.Vpc(this, "VPC", {
+  createInternetGateway: false,
+  subnetConfiguration: [{
+      subnetType: ec2.SubnetType.PUBLIC,
+      name: 'Public',
+    }]
+});
+```
 
 #### Routing
 
@@ -604,13 +741,13 @@ declare const appFleet: autoscaling.AutoScalingGroup;
 declare const dbFleet: autoscaling.AutoScalingGroup;
 
 // Allow connections from anywhere
-loadBalancer.connections.allowFromAnyIpv4(ec2.Port.tcp(443), 'Allow inbound HTTPS');
+loadBalancer.connections.allowFromAnyIpv4(ec2.Port.HTTPS, 'Allow inbound HTTPS');
 
 // The same, but an explicit IP address
-loadBalancer.connections.allowFrom(ec2.Peer.ipv4('1.2.3.4/32'), ec2.Port.tcp(443), 'Allow inbound HTTPS');
+loadBalancer.connections.allowFrom(ec2.Peer.ipv4('1.2.3.4/32'), ec2.Port.HTTPS, 'Allow inbound HTTPS');
 
 // Allow connection between AutoScalingGroups
-appFleet.connections.allowTo(dbFleet, ec2.Port.tcp(443), 'App can call database');
+appFleet.connections.allowTo(dbFleet, ec2.Port.HTTPS, 'App can call database');
 ```
 
 ### Connection Peers
@@ -627,7 +764,7 @@ peer = ec2.Peer.anyIpv4();
 peer = ec2.Peer.ipv6('::0/0');
 peer = ec2.Peer.anyIpv6();
 peer = ec2.Peer.prefixList('pl-12345');
-appFleet.connections.allowTo(peer, ec2.Port.tcp(443), 'Allow outbound HTTPS');
+appFleet.connections.allowTo(peer, ec2.Port.HTTPS, 'Allow outbound HTTPS');
 ```
 
 Any object that has a security group can itself be used as a connection peer:
@@ -638,9 +775,9 @@ declare const fleet2: autoscaling.AutoScalingGroup;
 declare const appFleet: autoscaling.AutoScalingGroup;
 
 // These automatically create appropriate ingress and egress rules in both security groups
-fleet1.connections.allowTo(fleet2, ec2.Port.tcp(80), 'Allow between fleets');
+fleet1.connections.allowTo(fleet2, ec2.Port.HTTP, 'Allow between fleets');
 
-appFleet.connections.allowFromAnyIpv4(ec2.Port.tcp(80), 'Allow from load balancer');
+appFleet.connections.allowFromAnyIpv4(ec2.Port.HTTP, 'Allow from load balancer');
 ```
 
 ### Port Ranges
@@ -650,6 +787,7 @@ the connection specifier:
 
 ```ts
 ec2.Port.tcp(80)
+ec2.Port.HTTPS
 ec2.Port.tcpRange(60000, 65535)
 ec2.Port.allTcp()
 ec2.Port.allIcmp()
@@ -703,7 +841,7 @@ const mySecurityGroupWithoutInlineRules = new ec2.SecurityGroup(this, 'SecurityG
   disableInlineRules: true
 });
 //This will add the rule as an external cloud formation construct
-mySecurityGroupWithoutInlineRules.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'allow ssh access from the world');
+mySecurityGroupWithoutInlineRules.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.SSH, 'allow ssh access from the world');
 ```
 
 ### Importing an existing security group
@@ -826,10 +964,20 @@ examples of images you might want to use:
 Create your VPC with VPN connections by specifying the `vpnConnections` props (keys are construct `id`s):
 
 ```ts
+import { SecretValue } from 'aws-cdk-lib/core';
+
 const vpc = new ec2.Vpc(this, 'MyVpc', {
   vpnConnections: {
     dynamic: { // Dynamic routing (BGP)
-      ip: '1.2.3.4'
+      ip: '1.2.3.4',
+      tunnelOptions: [
+        {
+          preSharedKeySecret: SecretValue.unsafePlainText('secretkey1234'),
+        },
+        {
+          preSharedKeySecret: SecretValue.unsafePlainText('secretkey5678'),
+        },
+      ],
     },
     static: { // Static routing
       ip: '4.5.6.7',
@@ -862,7 +1010,7 @@ By default, routes will be propagated on the route tables associated with the pr
 private subnets exist, isolated subnets are used. If no isolated subnets exist, public subnets are
 used. Use the `Vpc` property `vpnRoutePropagation` to customize this behavior.
 
-VPN connections expose [metrics (cloudwatch.Metric)](https://github.com/aws/aws-cdk/blob/main/packages/%40aws-cdk/aws-cloudwatch/README.md) across all tunnels in the account/region and per connection:
+VPN connections expose [metrics (cloudwatch.Metric)](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/aws-cloudwatch/README.md) across all tunnels in the account/region and per connection:
 
 ```ts fixture=with-vpc
 // Across all tunnels in the account/region
@@ -932,10 +1080,9 @@ new ec2.InterfaceVpcEndpoint(this, 'VPC Endpoint', {
 
 #### Security groups for interface VPC endpoints
 
-By default, interface VPC endpoints create a new security group and traffic is **not**
-automatically allowed from the VPC CIDR.
+By default, interface VPC endpoints create a new security group and all traffic to the endpoint from within the VPC will be automatically allowed.
 
-Use the `connections` object to allow traffic to flow to the endpoint:
+Use the `connections` object to allow other traffic to flow to the endpoint:
 
 ```ts
 declare const myEndpoint: ec2.InterfaceVpcEndpoint;
@@ -947,7 +1094,7 @@ Alternatively, existing security groups can be used by specifying the `securityG
 
 ### VPC endpoint services
 
-A VPC endpoint service enables you to expose a Network Load Balancer(s) as a provider service to consumers, who connect to your service over a VPC endpoint. You can restrict access to your service via allowed principals (anything that extends ArnPrincipal), and require that new connections be manually accepted.
+A VPC endpoint service enables you to expose a Network Load Balancer(s) as a provider service to consumers, who connect to your service over a VPC endpoint. You can restrict access to your service via allowed principals (anything that extends ArnPrincipal), and require that new connections be manually accepted. You can also enable Contributor Insight rules.
 
 ```ts
 declare const networkLoadBalancer1: elbv2.NetworkLoadBalancer;
@@ -956,7 +1103,19 @@ declare const networkLoadBalancer2: elbv2.NetworkLoadBalancer;
 new ec2.VpcEndpointService(this, 'EndpointService', {
   vpcEndpointServiceLoadBalancers: [networkLoadBalancer1, networkLoadBalancer2],
   acceptanceRequired: true,
-  allowedPrincipals: [new iam.ArnPrincipal('arn:aws:iam::123456789012:root')]
+  allowedPrincipals: [new iam.ArnPrincipal('arn:aws:iam::123456789012:root')],
+  contributorInsights: true
+});
+```
+
+You can also include a service principal in the `allowedPrincipals` property by specifying it as a parameter to the  `ArnPrincipal` constructor.
+The resulting VPC endpoint will have an allowlisted principal of type `Service`, instead of `Arn` for that item in the list.
+```ts
+declare const networkLoadBalancer: elbv2.NetworkLoadBalancer;
+
+new ec2.VpcEndpointService(this, 'EndpointService', {
+  vpcEndpointServiceLoadBalancers: [networkLoadBalancer],
+  allowedPrincipals: [new iam.ArnPrincipal('ec2.amazonaws.com')],
 });
 ```
 
@@ -964,8 +1123,8 @@ Endpoint services support private DNS, which makes it easier for clients to conn
 You can enable private DNS on an endpoint service like so:
 
 ```ts
-import { HostedZone, VpcEndpointServiceDomainName } from 'aws-cdk-lib/aws-route53';
-declare const zone: HostedZone;
+import { PublicHostedZone, VpcEndpointServiceDomainName } from 'aws-cdk-lib/aws-route53';
+declare const zone: PublicHostedZone;
 declare const vpces: ec2.VpcEndpointService;
 
 new VpcEndpointServiceDomainName(this, 'EndpointDomain', {
@@ -1070,18 +1229,18 @@ new ec2.Instance(this, 'Instance3', {
   }),
 });
 
-// AWS Linux 2022
+// Amazon Linux 2023
 new ec2.Instance(this, 'Instance4', {
   vpc,
   instanceType,
-  machineImage: ec2.MachineImage.latestAmazonLinux2022(),
+  machineImage: ec2.MachineImage.latestAmazonLinux2023(),
 });
 
 // Graviton 3 Processor
 new ec2.Instance(this, 'Instance5', {
   vpc,
   instanceType: ec2.InstanceType.of(ec2.InstanceClass.C7G, ec2.InstanceSize.LARGE),
-  machineImage: ec2.MachineImage.latestAmazonLinux2022({
+  machineImage: ec2.MachineImage.latestAmazonLinux2023({
     cpuType: ec2.AmazonLinuxCpuType.ARM_64,
   }),
 });
@@ -1285,7 +1444,7 @@ declare const instanceType: ec2.InstanceType;
 new ec2.Instance(this, 'Instance', {
   vpc,
   instanceType,
-  machineImage: ec2.MachineImage.latestAmazonLinux2022(),
+  machineImage: ec2.MachineImage.latestAmazonLinux2023(),
 
   init: ec2.CloudFormationInit.fromElements(
     // Create a simple config file that runs a Python web server
@@ -1323,6 +1482,23 @@ ec2.CloudFormationInit.fromElements(
 );
 ```
 
+You can use the `environmentVariables` or `environmentFiles` parameters to specify environment variables
+for your services:
+
+```ts
+new ec2.InitConfig([
+  ec2.InitFile.fromString('/myvars.env', 'VAR_FROM_FILE="VAR_FROM_FILE"'),
+  ec2.InitService.systemdConfigFile('myapp', {
+    command: '/usr/bin/python3 -m http.server 8080',
+    cwd: '/var/www/html',
+    environmentVariables: {
+      MY_VAR: 'MY_VAR',
+    },
+    environmentFiles: ['/myvars.env'],
+  }),
+])
+```
+
 ### Bastion Hosts
 
 A bastion host functions as an instance used to access servers and resources in a VPC without open up the complete VPC on a network level.
@@ -1354,11 +1530,43 @@ EBS volume for the bastion host can be encrypted like:
 const host = new ec2.BastionHostLinux(this, 'BastionHost', {
   vpc,
   blockDevices: [{
-    deviceName: 'EBSBastionHost',
+    deviceName: '/dev/sdh',
     volume: ec2.BlockDeviceVolume.ebs(10, {
       encrypted: true,
     }),
   }],
+});
+```
+
+It's recommended to set the `@aws-cdk/aws-ec2:bastionHostUseAmazonLinux2023ByDefault`
+[feature flag](https://docs.aws.amazon.com/cdk/v2/guide/featureflags.html) to `true` to use Amazon Linux 2023 as the
+bastion host AMI. Without this flag set, the bastion host will default to Amazon Linux 2, which will be unsupported in
+June 2025.
+
+```json
+{
+  "context": {
+    "@aws-cdk/aws-ec2:bastionHostUseAmazonLinux2023ByDefault": true
+  }
+}
+```
+
+### Placement Group
+
+Specify `placementGroup` to enable the placement group support:
+
+```ts fixture=with-vpc
+declare const instanceType: ec2.InstanceType;
+
+const pg = new ec2.PlacementGroup(this, 'test-pg', {
+  strategy: ec2.PlacementGroupStrategy.SPREAD,
+});
+
+new ec2.Instance(this, 'Instance', {
+  vpc,
+  instanceType,
+  machineImage: ec2.MachineImage.latestAmazonLinux2023(),
+  placementGroup: pg,
 });
 ```
 
@@ -1423,6 +1631,56 @@ new ec2.Instance(this, 'Instance', {
   ],
 });
 
+```
+
+To specify the throughput value for `gp3` volumes, use the `throughput` property:
+
+```ts
+declare const vpc: ec2.Vpc;
+declare const instanceType: ec2.InstanceType;
+declare const machineImage: ec2.IMachineImage;
+
+new ec2.Instance(this, 'Instance', {
+  vpc,
+  instanceType,
+  machineImage,
+
+  // ...
+
+  blockDevices: [
+    {
+      deviceName: '/dev/sda1',
+      volume: ec2.BlockDeviceVolume.ebs(100, {
+        volumeType: ec2.EbsDeviceVolumeType.GP3,
+        throughput: 250,
+      }),
+    },
+  ],
+});
+
+```
+
+#### EBS Optimized Instances
+
+An Amazon EBS–optimized instance uses an optimized configuration stack and provides additional, dedicated capacity for Amazon EBS I/O. This optimization provides the best performance for your EBS volumes by minimizing contention between Amazon EBS I/O and other traffic from your instance.
+
+Depending on the instance type, this features is enabled by default while others require explicit activation. Please refer to the [documentation](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-optimized.html) for details.
+
+```ts
+declare const vpc: ec2.Vpc;
+declare const instanceType: ec2.InstanceType;
+declare const machineImage: ec2.IMachineImage;
+
+new ec2.Instance(this, 'Instance', {
+  vpc,
+  instanceType,
+  machineImage,
+  ebsOptimized: true,
+  blockDevices: [{
+    deviceName: '/dev/xvda',
+    volume: ec2.BlockDeviceVolume.ebs(8),
+  }],
+});
 ```
 
 ### Volumes
@@ -1581,6 +1839,234 @@ const instance = new ec2.Instance(this, 'Instance', {
 });
 ```
 
+### Specifying a key pair
+
+To allow SSH access to an EC2 instance by default, a Key Pair must be specified. Key pairs can
+be provided with the `keyPair` property to instances and launch templates. You can create a
+key pair for an instance like this:
+
+```ts
+declare const vpc: ec2.Vpc;
+declare const instanceType: ec2.InstanceType;
+
+const keyPair = new ec2.KeyPair(this, 'KeyPair', {
+  type: ec2.KeyPairType.ED25519,
+  format: ec2.KeyPairFormat.PEM,
+});
+const instance = new ec2.Instance(this, 'Instance', {
+  vpc,
+  instanceType,
+  machineImage: ec2.MachineImage.latestAmazonLinux2023(),
+  // Use the custom key pair
+  keyPair,
+});
+```
+
+When a new EC2 Key Pair is created (without imported material), the private key material is
+automatically stored in Systems Manager Parameter Store. This can be retrieved from the key pair
+construct:
+
+```ts
+const keyPair = new ec2.KeyPair(this, 'KeyPair');
+const privateKey = keyPair.privateKey;
+```
+
+If you already have an SSH key that you wish to use in EC2, that can be provided when constructing the
+`KeyPair`. If public key material is provided, the key pair is considered "imported" and there
+will not be any data automatically stored in Systems Manager Parameter Store and the `type` property
+cannot be specified for the key pair.
+
+```ts
+const keyPair = new ec2.KeyPair(this, 'KeyPair', {
+  publicKeyMaterial: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB7jpNzG+YG0s+xIGWbxrxIZiiozHOEuzIJacvASP0mq",
+})
+```
+
+#### Using an existing EC2 Key Pair
+
+If you already have an EC2 Key Pair created outside of the CDK, you can import that key to
+your CDK stack.
+
+You can import it purely by name:
+
+```ts
+const keyPair = ec2.KeyPair.fromKeyPairName(this, 'KeyPair', 'the-keypair-name');
+```
+
+Or by specifying additional attributes:
+
+```ts
+const keyPair = ec2.KeyPair.fromKeyPairAttributes(this, 'KeyPair', {
+  keyPairName: 'the-keypair-name',
+  type: ec2.KeyPairType.RSA,
+})
+```
+
+### Using IPv6 IPs
+
+Instances can be given IPv6 IPs by launching them into a subnet of a dual stack VPC.
+
+```ts
+const vpc = new ec2.Vpc(this, 'Ip6VpcDualStack', {
+  ipProtocol: ec2.IpProtocol.DUAL_STACK,
+  subnetConfiguration: [
+    {
+      name: 'Public',
+      subnetType: ec2.SubnetType.PUBLIC,
+      mapPublicIpOnLaunch: true,
+    },
+    {
+      name: 'Private',
+      subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+    },
+  ],
+});
+
+const instance = new ec2.Instance(this, 'MyInstance', {
+  instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
+  machineImage: ec2.MachineImage.latestAmazonLinux2(),
+  vpc: vpc,
+  vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+  allowAllIpv6Outbound: true,
+
+  // ...
+});
+
+instance.connections.allowFrom(ec2.Peer.anyIpv6(), ec2.Port.allIcmpV6(), 'allow ICMPv6');
+```
+
+Note to set `mapPublicIpOnLaunch` to true in the `subnetConfiguration`.
+
+Additionally, IPv6 support varies by instance type. Most instance types have IPv6 support with exception of m1-m3, c1, g2, and t1.micro. A full list can be found here: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html#AvailableIpPerENI.
+
+#### Specifying the IPv6 Address
+
+If you want to specify [the number of IPv6 addresses](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/MultipleIP.html#assign-multiple-ipv6) to assign to the instance, you can use the `ipv6AddresseCount` property:
+
+```ts
+// dual stack VPC
+declare const vpc: ec2.Vpc;
+
+const instance = new ec2.Instance(this, 'MyInstance', {
+  instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.LARGE),
+  machineImage: ec2.MachineImage.latestAmazonLinux2(),
+  vpc: vpc,
+  vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+  // Assign 2 IPv6 addresses to the instance
+  ipv6AddressCount: 2,
+});
+```
+
+### Credit configuration modes for burstable instances
+
+You can set the [credit configuration mode](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-credits-baseline-concepts.html) for burstable instances (T2, T3, T3a and T4g instance types):
+
+```ts
+declare const vpc: ec2.Vpc;
+
+const instance = new ec2.Instance(this, 'Instance', {
+  instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
+  machineImage: ec2.MachineImage.latestAmazonLinux2(),
+  vpc: vpc,
+  creditSpecification: ec2.CpuCredits.STANDARD,
+});
+```
+
+It is also possible to set the credit configuration mode for NAT instances.
+
+```ts
+const natInstanceProvider = ec2.NatProvider.instance({
+  instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.LARGE),
+  machineImage: new ec2.AmazonLinuxImage(),
+  creditSpecification: ec2.CpuCredits.UNLIMITED,
+});
+new ec2.Vpc(this, 'VPC', {
+  natGatewayProvider: natInstanceProvider,
+});
+```
+
+**Note**: `CpuCredits.UNLIMITED` mode is not supported for T3 instances that are launched on a Dedicated Host.
+
+### Shutdown behavior
+
+You can specify the behavior of the instance when you initiate shutdown from the instance (using the operating system command for system shutdown).
+
+```ts
+declare const vpc: ec2.Vpc;
+
+new ec2.Instance(this, 'Instance', {
+  vpc,
+  instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.NANO),
+  machineImage: new ec2.AmazonLinuxImage({ generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2 }),
+  instanceInitiatedShutdownBehavior: ec2.InstanceInitiatedShutdownBehavior.TERMINATE, // default is STOP
+});
+```
+
+### Enabling Nitro Enclaves
+
+You can enable [AWS Nitro Enclaves](https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html) for
+your EC2 instances by setting the `enclaveEnabled` property to `true`. Nitro Enclaves is a feature of
+AWS Nitro System that enables creating isolated and highly constrained CPU environments known as enclaves.
+
+```ts
+declare const vpc: ec2.Vpc;
+
+const instance = new ec2.Instance(this, 'Instance', {
+  instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE),
+  machineImage: new ec2.AmazonLinuxImage(),
+  vpc: vpc,
+  enclaveEnabled: true,
+});
+```
+
+> NOTE: You must use an instance type and operating system that support Nitro Enclaves.
+> For more information, see [Requirements](https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html#nitro-enclave-reqs).
+
+### Enabling Termination Protection
+
+You can enable [Termination Protection](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_ChangingDisableAPITermination.html) for
+your EC2 instances by setting the `disableApiTermination` property to `true`. Termination Protection controls whether the instance can be terminated using the AWS Management Console, AWS Command Line Interface (AWS CLI), or API.
+
+```ts
+declare const vpc: ec2.Vpc;
+
+const instance = new ec2.Instance(this, 'Instance', {
+  instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE),
+  machineImage: new ec2.AmazonLinuxImage(),
+  vpc: vpc,
+  disableApiTermination: true,
+});
+```
+
+### Enabling Instance Hibernation
+
+You can enable [Instance Hibernation](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Hibernate.html) for
+your EC2 instances by setting the `hibernationEnabled` property to `true`. Instance Hibernation saves the
+instance's in-memory (RAM) state when an instance is stopped, and restores that state when the instance is started.
+
+```ts
+declare const vpc: ec2.Vpc;
+
+const instance = new ec2.Instance(this, 'Instance', {
+  instanceType: ec2.InstanceType.of(ec2.InstanceClass.M5, ec2.InstanceSize.XLARGE),
+  machineImage: new ec2.AmazonLinuxImage(),
+  vpc: vpc,
+  hibernationEnabled: true,
+  blockDevices: [{
+    deviceName: '/dev/xvda',
+    volume: ec2.BlockDeviceVolume.ebs(30, {
+      volumeType: ec2.EbsDeviceVolumeType.GP3,
+      encrypted: true,
+      deleteOnTermination: true,
+    }),
+  }],
+});
+```
+
+> NOTE: You must use an instance and a volume that meet the requirements for hibernation.
+> For more information, see [Prerequisites for Amazon EC2 instance hibernation](https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html#nitro-enclave-reqs).
+
+
 ## VPC Flow Logs
 
 VPC Flow Logs is a feature that enables you to capture information about the IP traffic going to and from network interfaces in your VPC. Flow log data can be published to Amazon CloudWatch Logs and Amazon S3. After you've created a flow log, you can retrieve and view its data in the chosen destination. (<https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs.html>).
@@ -1620,6 +2106,28 @@ vpc.addFlowLog('FlowLogCloudWatch', {
   maxAggregationInterval: ec2.FlowLogMaxAggregationInterval.ONE_MINUTE,
 });
 ```
+
+To create a Transit Gateway flow log, you can use the `fromTransitGatewayId` method:
+
+```ts
+declare const tgw: ec2.CfnTransitGateway;
+
+new ec2.FlowLog(this, 'TransitGatewayFlowLog', {
+  resourceType: ec2.FlowLogResourceType.fromTransitGatewayId(tgw.ref)
+})
+```
+
+To create a Transit Gateway Attachment flow log, you can use the `fromTransitGatewayAttachmentId` method:
+
+```ts
+declare const tgwAttachment: ec2.CfnTransitGatewayAttachment;
+
+new ec2.FlowLog(this, 'TransitGatewayAttachmentFlowLog', {
+  resourceType: ec2.FlowLogResourceType.fromTransitGatewayAttachmentId(tgwAttachment.ref)
+})
+```
+
+For flow logs targeting TransitGateway and TransitGatewayAttachment, specifying the `trafficType` is not possible.
 
 ### Custom Formatting
 
@@ -1691,6 +2199,19 @@ new ec2.FlowLog(this, 'FlowLog', {
 new ec2.FlowLog(this, 'FlowLogWithKeyPrefix', {
   resourceType: ec2.FlowLogResourceType.fromVpc(vpc),
   destination: ec2.FlowLogDestination.toS3(bucket, 'prefix/')
+});
+```
+
+*Kinesis Data Firehose*
+
+```ts
+import * as firehose from 'aws-cdk-lib/aws-kinesisfirehose';
+
+declare const vpc: ec2.Vpc;
+declare const deliveryStream: firehose.CfnDeliveryStream;
+
+vpc.addFlowLog('FlowLogsKinesisDataFirehose', {
+  destination: ec2.FlowLogDestination.toKinesisDataFirehoseDestination(deliveryStream.attrArn),
 });
 ```
 
@@ -1843,16 +2364,26 @@ Launch templates enable you to store launch parameters so that you do not have t
 an instance. For information on Launch Templates please see the
 [official documentation](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-launch-templates.html).
 
-The following demonstrates how to create a launch template with an Amazon Machine Image, and security group.
+The following demonstrates how to create a launch template with an Amazon Machine Image, security group, and an instance profile.
 
 ```ts
 declare const vpc: ec2.Vpc;
 
+const role = new iam.Role(this, 'Role', {
+  assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+});
+const instanceProfile = new iam.InstanceProfile(this, 'InstanceProfile', {
+  role,
+});
+
 const template = new ec2.LaunchTemplate(this, 'LaunchTemplate', {
-  machineImage: ec2.MachineImage.latestAmazonLinux2022(),
+  launchTemplateName: 'MyTemplateV1',
+  versionDescription: 'This is my v1 template',
+  machineImage: ec2.MachineImage.latestAmazonLinux2023(),
   securityGroup: new ec2.SecurityGroup(this, 'LaunchTemplateSG', {
     vpc: vpc,
   }),
+  instanceProfile,
 });
 ```
 
@@ -1871,20 +2402,32 @@ new ec2.LaunchTemplate(this, 'LaunchTemplate', {
 And the following demonstrates how to add one or more security groups to launch template.
 
 ```ts
-const sg1 = new ec2.SecurityGroup(stack, 'sg1', {
+declare const vpc: ec2.Vpc;
+
+const sg1 = new ec2.SecurityGroup(this, 'sg1', {
   vpc: vpc,
 });
-const sg2 = new ec2.SecurityGroup(stack, 'sg2', {
+const sg2 = new ec2.SecurityGroup(this, 'sg2', {
   vpc: vpc,
 });
 
-const launchTemplate = new ec2.LaunchTemplate(stack, 'LaunchTemplate', {
-  machineImage: ec2.MachineImage.latestAmazonLinux2022(),
+const launchTemplate = new ec2.LaunchTemplate(this, 'LaunchTemplate', {
+  machineImage: ec2.MachineImage.latestAmazonLinux2023(),
   securityGroup: sg1,
 });
 
 launchTemplate.addSecurityGroup(sg2);
 ```
+
+To use [AWS Systems Manager parameters instead of AMI IDs](https://docs.aws.amazon.com/autoscaling/ec2/userguide/using-systems-manager-parameters.html) in launch templates and resolve the AMI IDs at instance launch time:
+
+```ts
+const launchTemplate = new ec2.LaunchTemplate(this, 'LaunchTemplate', {
+  machineImage: ec2.MachineImage.resolveSsmParameterAtLaunch('parameterName'),
+});
+```
+
+Please note this feature does not support Launch Configurations.
 
 ## Detailed Monitoring
 
@@ -1897,7 +2440,7 @@ declare const instanceType: ec2.InstanceType;
 new ec2.Instance(this, 'Instance1', {
   vpc,
   instanceType,
-  machineImage: ec2.MachineImage.latestAmazonLinux2022(),
+  machineImage: ec2.MachineImage.latestAmazonLinux2023(),
   detailedMonitoring: true,
 });
 ```
@@ -1927,8 +2470,8 @@ new ec2.Instance(this, 'Instance1', {
   vpc,
   instanceType,
 
-  // Amazon Linux 2 comes with SSM Agent by default
-  machineImage: ec2.MachineImage.latestAmazonLinux2022(),
+  // Amazon Linux 2023 comes with SSM Agent by default
+  machineImage: ec2.MachineImage.latestAmazonLinux2023(),
 
   // Turn on SSM
   ssmSessionPermissions: true,
@@ -1959,3 +2502,26 @@ new ec2.PrefixList(this, 'PrefixList', {
 ```
 
 For more information see [Work with customer-managed prefix lists](https://docs.aws.amazon.com/vpc/latest/userguide/working-with-managed-prefix-lists.html)
+
+### IAM instance profile
+
+Use `instanceProfile` to apply specific IAM Instance Profile. Cannot be used with role
+
+```ts
+declare const instanceType: ec2.InstanceType;
+declare const vpc: ec2.Vpc;
+
+const role = new iam.Role(this, 'Role', {
+  assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+});
+const instanceProfile = new iam.InstanceProfile(this, 'InstanceProfile', {
+  role,
+});
+
+new ec2.Instance(this, 'Instance', {
+  vpc,
+  instanceType,
+  machineImage: ec2.MachineImage.latestAmazonLinux2023(),
+  instanceProfile,
+});
+```

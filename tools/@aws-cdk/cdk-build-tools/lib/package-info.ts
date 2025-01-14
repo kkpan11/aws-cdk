@@ -104,6 +104,8 @@ export function packageCompiler(compilers: CompilerOverrides, options?: CDKBuild
       args.push('--compress-assembly');
     }
     if (options?.stripDeprecated) {
+      // This package is not published to npm so the linter rule is invalid
+      // eslint-disable-next-line @cdklabs/no-invalid-path
       args.push(`--strip-deprecated ${path.join(__dirname, '..', '..', '..', '..', 'deprecated_apis.txt')}`);
     }
     return [compilers.jsii || require.resolve('jsii/bin/jsii'), ...args];
@@ -203,6 +205,12 @@ export interface CDKPackageOptions {
    * Should this package be bundled. (and if so, how)
    */
   bundle?: Omit<BundleProps, 'packageDir'>;
+
+  /**
+   * Also package private packages for local usage.
+   * @default false
+   */
+  private?: boolean;
 }
 
 /**

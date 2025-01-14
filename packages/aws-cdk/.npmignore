@@ -29,5 +29,4 @@ tsconfig.json
 **/cdk.out
 junit.xml
 
-# exclude noctilucent source
-/vendor/noctilucent/
+generate.sh

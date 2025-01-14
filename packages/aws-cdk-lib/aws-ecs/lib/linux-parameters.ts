@@ -32,18 +32,18 @@ export interface LinuxParametersProps {
   readonly maxSwap?: cdk.Size;
 
   /**
-    * This allows you to tune a container's memory swappiness behavior. This parameter
-    * maps to the --memory-swappiness option to docker run. The swappiness relates
-    * to the kernel's tendency to swap memory. A value of 0 will cause swapping to
-    * not happen unless absolutely necessary. A value of 100 will cause pages to
-    * be swapped very aggressively.
-    *
-    * This parameter is only supported when you are using the EC2 launch type.
-    * Accepted values are whole numbers between 0 and 100. If a value is not
-    * specified for maxSwap then this parameter is ignored.
-    *
-    * @default 60
-    */
+   * This allows you to tune a container's memory swappiness behavior. This parameter
+   * maps to the --memory-swappiness option to docker run. The swappiness relates
+   * to the kernel's tendency to swap memory. A value of 0 will cause swapping to
+   * not happen unless absolutely necessary. A value of 100 will cause pages to
+   * be swapped very aggressively.
+   *
+   * This parameter is only supported when you are using the EC2 launch type.
+   * Accepted values are whole numbers between 0 and 100. If a value is not
+   * specified for maxSwap then this parameter is ignored.
+   *
+   * @default 60
+   */
   readonly swappiness?: number;
 }
 
@@ -183,12 +183,12 @@ export interface Device {
    *
    * @default Same path as the host
    */
-  readonly containerPath?: string,
+  readonly containerPath?: string;
 
   /**
    * The path for the device on the host container instance.
    */
-  readonly hostPath: string,
+  readonly hostPath: string;
 
   /**
    * The explicit permissions to provide to the container for the device.
@@ -196,7 +196,7 @@ export interface Device {
    *
    * @default Readonly
    */
-  readonly permissions?: DevicePermission[]
+  readonly permissions?: DevicePermission[];
 }
 
 function renderDevice(device: Device): CfnTaskDefinition.DeviceProperty {
@@ -214,18 +214,18 @@ export interface Tmpfs {
   /**
    * The absolute file path where the tmpfs volume is to be mounted.
    */
-  readonly containerPath: string,
+  readonly containerPath: string;
 
   /**
    * The size (in MiB) of the tmpfs volume.
    */
-  readonly size: number,
+  readonly size: number;
 
   /**
    * The list of tmpfs volume mount options. For more information, see
    * [TmpfsMountOptions](https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_Tmpfs.html).
    */
-  readonly mountOptions?: TmpfsMountOption[],
+  readonly mountOptions?: TmpfsMountOption[];
 }
 
 function renderTmpfs(tmpfs: Tmpfs): CfnTaskDefinition.TmpfsProperty {
@@ -277,7 +277,7 @@ export enum Capability {
   SYS_TIME = 'SYS_TIME',
   SYS_TTY_CONFIG = 'SYS_TTY_CONFIG',
   SYSLOG = 'SYSLOG',
-  WAKE_ALARM = 'WAKE_ALARM'
+  WAKE_ALARM = 'WAKE_ALARM',
 }
 
 /**
@@ -342,5 +342,5 @@ export enum TmpfsMountOption {
   GID = 'gid',
   NR_INODES = 'nr_inodes',
   NR_BLOCKS = 'nr_blocks',
-  MPOL = 'mpol'
+  MPOL = 'mpol',
 }

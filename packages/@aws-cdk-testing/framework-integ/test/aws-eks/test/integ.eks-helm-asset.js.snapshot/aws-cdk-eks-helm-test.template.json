@@ -50,9 +50,6 @@
   "VpcPublicSubnet1Subnet5C2D37C4": {
    "Type": "AWS::EC2::Subnet",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "AvailabilityZone": {
      "Fn::Select": [
       0,
@@ -80,15 +77,15 @@
       "Key": "Name",
       "Value": "aws-cdk-eks-helm-test/Vpc/PublicSubnet1"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPublicSubnet1RouteTable6C95E38E": {
    "Type": "AWS::EC2::RouteTable",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "Tags": [
      {
       "Key": "kubernetes.io/role/elb",
@@ -98,7 +95,10 @@
       "Key": "Name",
       "Value": "aws-cdk-eks-helm-test/Vpc/PublicSubnet1"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPublicSubnet1RouteTableAssociation97140677": {
@@ -115,12 +115,12 @@
   "VpcPublicSubnet1DefaultRoute3DA9E72A": {
    "Type": "AWS::EC2::Route",
    "Properties": {
-    "RouteTableId": {
-     "Ref": "VpcPublicSubnet1RouteTable6C95E38E"
-    },
     "DestinationCidrBlock": "0.0.0.0/0",
     "GatewayId": {
      "Ref": "VpcIGWD7BA715C"
+    },
+    "RouteTableId": {
+     "Ref": "VpcPublicSubnet1RouteTable6C95E38E"
     }
    },
    "DependsOn": [
@@ -146,14 +146,14 @@
   "VpcPublicSubnet1NATGateway4D7517AA": {
    "Type": "AWS::EC2::NatGateway",
    "Properties": {
-    "SubnetId": {
-     "Ref": "VpcPublicSubnet1Subnet5C2D37C4"
-    },
     "AllocationId": {
      "Fn::GetAtt": [
       "VpcPublicSubnet1EIPD7E02669",
       "AllocationId"
      ]
+    },
+    "SubnetId": {
+     "Ref": "VpcPublicSubnet1Subnet5C2D37C4"
     },
     "Tags": [
      {
@@ -174,9 +174,6 @@
   "VpcPublicSubnet2Subnet691E08A3": {
    "Type": "AWS::EC2::Subnet",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "AvailabilityZone": {
      "Fn::Select": [
       1,
@@ -204,15 +201,15 @@
       "Key": "Name",
       "Value": "aws-cdk-eks-helm-test/Vpc/PublicSubnet2"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPublicSubnet2RouteTable94F7E489": {
    "Type": "AWS::EC2::RouteTable",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "Tags": [
      {
       "Key": "kubernetes.io/role/elb",
@@ -222,7 +219,10 @@
       "Key": "Name",
       "Value": "aws-cdk-eks-helm-test/Vpc/PublicSubnet2"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPublicSubnet2RouteTableAssociationDD5762D8": {
@@ -239,12 +239,12 @@
   "VpcPublicSubnet2DefaultRoute97F91067": {
    "Type": "AWS::EC2::Route",
    "Properties": {
-    "RouteTableId": {
-     "Ref": "VpcPublicSubnet2RouteTable94F7E489"
-    },
     "DestinationCidrBlock": "0.0.0.0/0",
     "GatewayId": {
      "Ref": "VpcIGWD7BA715C"
+    },
+    "RouteTableId": {
+     "Ref": "VpcPublicSubnet2RouteTable94F7E489"
     }
    },
    "DependsOn": [
@@ -254,9 +254,6 @@
   "VpcPrivateSubnet1Subnet536B997A": {
    "Type": "AWS::EC2::Subnet",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "AvailabilityZone": {
      "Fn::Select": [
       0,
@@ -284,15 +281,15 @@
       "Key": "Name",
       "Value": "aws-cdk-eks-helm-test/Vpc/PrivateSubnet1"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPrivateSubnet1RouteTableB2C5B500": {
    "Type": "AWS::EC2::RouteTable",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "Tags": [
      {
       "Key": "kubernetes.io/role/internal-elb",
@@ -302,7 +299,10 @@
       "Key": "Name",
       "Value": "aws-cdk-eks-helm-test/Vpc/PrivateSubnet1"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPrivateSubnet1RouteTableAssociation70C59FA6": {
@@ -319,21 +319,18 @@
   "VpcPrivateSubnet1DefaultRouteBE02A9ED": {
    "Type": "AWS::EC2::Route",
    "Properties": {
-    "RouteTableId": {
-     "Ref": "VpcPrivateSubnet1RouteTableB2C5B500"
-    },
     "DestinationCidrBlock": "0.0.0.0/0",
     "NatGatewayId": {
      "Ref": "VpcPublicSubnet1NATGateway4D7517AA"
+    },
+    "RouteTableId": {
+     "Ref": "VpcPrivateSubnet1RouteTableB2C5B500"
     }
    }
   },
   "VpcPrivateSubnet2Subnet3788AAA1": {
    "Type": "AWS::EC2::Subnet",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "AvailabilityZone": {
      "Fn::Select": [
       1,
@@ -361,15 +358,15 @@
       "Key": "Name",
       "Value": "aws-cdk-eks-helm-test/Vpc/PrivateSubnet2"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPrivateSubnet2RouteTableA678073B": {
    "Type": "AWS::EC2::RouteTable",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "Tags": [
      {
       "Key": "kubernetes.io/role/internal-elb",
@@ -379,7 +376,10 @@
       "Key": "Name",
       "Value": "aws-cdk-eks-helm-test/Vpc/PrivateSubnet2"
      }
-    ]
+    ],
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
+    }
    }
   },
   "VpcPrivateSubnet2RouteTableAssociationA89CAD56": {
@@ -396,12 +396,12 @@
   "VpcPrivateSubnet2DefaultRoute060D2087": {
    "Type": "AWS::EC2::Route",
    "Properties": {
-    "RouteTableId": {
-     "Ref": "VpcPrivateSubnet2RouteTableA678073B"
-    },
     "DestinationCidrBlock": "0.0.0.0/0",
     "NatGatewayId": {
      "Ref": "VpcPublicSubnet1NATGateway4D7517AA"
+    },
+    "RouteTableId": {
+     "Ref": "VpcPrivateSubnet2RouteTableA678073B"
     }
    }
   },
@@ -419,11 +419,11 @@
   "VpcVPCGWBF912B6E": {
    "Type": "AWS::EC2::VPCGatewayAttachment",
    "Properties": {
-    "VpcId": {
-     "Ref": "Vpc8378EB38"
-    },
     "InternetGatewayId": {
      "Ref": "VpcIGWD7BA715C"
+    },
+    "VpcId": {
+     "Ref": "Vpc8378EB38"
     }
    }
   },
@@ -846,7 +846,8 @@
         ]
        }
       ]
-     }
+     },
+     "accessConfig": {}
     },
     "AssumeRoleArn": {
      "Fn::GetAtt": [
@@ -854,7 +855,7 @@
       "Arn"
      ]
     },
-    "AttributesRevision": 2
+    "AttributesRevision": 3
    },
    "DependsOn": [
     "ClusterCreationRoleDefaultPolicyE8BDFC7B",
@@ -1010,14 +1011,24 @@
   "ClusterNodegroupDefaultCapacityDA0920A3": {
    "Type": "AWS::EKS::Nodegroup",
    "Properties": {
+    "AmiType": "AL2_x86_64",
     "ClusterName": {
      "Ref": "Cluster9EE0221C"
     },
+    "ForceUpdateEnabled": true,
+    "InstanceTypes": [
+     "m5.large"
+    ],
     "NodeRole": {
      "Fn::GetAtt": [
       "ClusterNodegroupDefaultCapacityNodeGroupRole55953B04",
       "Arn"
      ]
+    },
+    "ScalingConfig": {
+     "DesiredSize": 2,
+     "MaxSize": 2,
+     "MinSize": 2
     },
     "Subnets": [
      {
@@ -1026,17 +1037,7 @@
      {
       "Ref": "VpcPrivateSubnet2Subnet3788AAA1"
      }
-    ],
-    "AmiType": "AL2_x86_64",
-    "ForceUpdateEnabled": true,
-    "InstanceTypes": [
-     "m5.large"
-    ],
-    "ScalingConfig": {
-     "DesiredSize": 2,
-     "MaxSize": 2,
-     "MinSize": 2
-    }
+    ]
    }
   },
   "Clustercharttestchart9FD698EB": {
@@ -1091,6 +1092,18 @@
     "Release": "s3-chart",
     "Chart": "s3-chart",
     "Version": "v0.1.0",
+    "Values": {
+     "Fn::Join": [
+      "",
+      [
+       "{\"aws\":{\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\"}}"
+      ]
+     ]
+    },
     "Namespace": "ack-system",
     "Repository": "oci://public.ecr.aws/aws-controllers-k8s/s3-chart",
     "CreateNamespace": true
@@ -1122,6 +1135,18 @@
     "Release": "lambda-chart-release",
     "Chart": "lambda-chart",
     "Version": "v0.1.4",
+    "Values": {
+     "Fn::Join": [
+      "",
+      [
+       "{\"aws\":{\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\"}}"
+      ]
+     ]
+    },
     "Namespace": "ack-system",
     "Repository": "oci://public.ecr.aws/aws-controllers-k8s/lambda-chart",
     "CreateNamespace": true
@@ -1152,11 +1177,68 @@
     },
     "Release": "rds-chart-release",
     "Chart": "rds-chart",
-    "Version": "v1.1.2",
+    "Version": "1.4.1",
+    "Values": {
+     "Fn::Join": [
+      "",
+      [
+       "{\"aws\":{\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\"}}"
+      ]
+     ]
+    },
     "Namespace": "ack-system",
     "Repository": "oci://public.ecr.aws/aws-controllers-k8s/rds-chart",
     "CreateNamespace": true,
     "SkipCrds": true
+   },
+   "DependsOn": [
+    "ClusterKubectlReadyBarrier200052AF"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete"
+  },
+  "ClustercharttestatomicinstallationB879263E": {
+   "Type": "Custom::AWSCDK-EKS-HelmChart",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "awscdkawseksKubectlProviderNestedStackawscdkawseksKubectlProviderNestedStackResourceA7AEBA6B",
+      "Outputs.awscdkekshelmtestawscdkawseksKubectlProviderframeworkonEvent9D93C644Arn"
+     ]
+    },
+    "ClusterName": {
+     "Ref": "Cluster9EE0221C"
+    },
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "ClusterCreationRole360249B6",
+      "Arn"
+     ]
+    },
+    "Release": "ec2-chart-release",
+    "Chart": "ec2-chart",
+    "Version": "1.2.13",
+    "Values": {
+     "Fn::Join": [
+      "",
+      [
+       "{\"aws\":{\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\"}}"
+      ]
+     ]
+    },
+    "Namespace": "ack-system",
+    "Repository": "oci://public.ecr.aws/aws-controllers-k8s/ec2-chart",
+    "CreateNamespace": true,
+    "SkipCrds": true,
+    "Atomic": true
    },
    "DependsOn": [
     "ClusterKubectlReadyBarrier200052AF"
@@ -1214,7 +1296,7 @@
        {
         "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
        },
-       "/13da208f7b3b509e09e66fb7954a52f547fba3492c60e6cc8534bf76da6ffef7.json"
+       "/0b8ba04d8bd9d760e0a86266afa34b5949a1d1898d0e2b020901dd9d4a1e89f7.json"
       ]
      ]
     }
@@ -1225,6 +1307,29 @@
   "awscdkawseksKubectlProviderNestedStackawscdkawseksKubectlProviderNestedStackResourceA7AEBA6B": {
    "Type": "AWS::CloudFormation::Stack",
    "Properties": {
+    "Parameters": {
+     "referencetoawscdkekshelmtestKubectlLayer2638D675Ref": {
+      "Ref": "KubectlLayer600207B5"
+     },
+     "referencetoawscdkekshelmtestClusterKubectlHandlerRoleF7B0B227Arn": {
+      "Fn::GetAtt": [
+       "ClusterKubectlHandlerRole94549F93",
+       "Arn"
+      ]
+     },
+     "referencetoawscdkekshelmtestVpcPrivateSubnet1Subnet3D2B5C0BRef": {
+      "Ref": "VpcPrivateSubnet1Subnet536B997A"
+     },
+     "referencetoawscdkekshelmtestVpcPrivateSubnet2SubnetF5E4AFE9Ref": {
+      "Ref": "VpcPrivateSubnet2Subnet3788AAA1"
+     },
+     "referencetoawscdkekshelmtestCluster35BA672BClusterSecurityGroupId": {
+      "Fn::GetAtt": [
+       "Cluster9EE0221C",
+       "ClusterSecurityGroupId"
+      ]
+     }
+    },
     "TemplateURL": {
      "Fn::Join": [
       "",
@@ -1241,32 +1346,9 @@
        {
         "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
        },
-       "/292e415b201cd46e40727f896b904a826fad88523a922a2dc1c6fc7ede1b9017.json"
+       "/0c524d56077119a57cc17bbeb9b8c75b1950076929210e56952e8d95322652da.json"
       ]
      ]
-    },
-    "Parameters": {
-     "referencetoawscdkekshelmtestClusterKubectlHandlerRoleF7B0B227Arn": {
-      "Fn::GetAtt": [
-       "ClusterKubectlHandlerRole94549F93",
-       "Arn"
-      ]
-     },
-     "referencetoawscdkekshelmtestKubectlLayer2638D675Ref": {
-      "Ref": "KubectlLayer600207B5"
-     },
-     "referencetoawscdkekshelmtestVpcPrivateSubnet1Subnet3D2B5C0BRef": {
-      "Ref": "VpcPrivateSubnet1Subnet536B997A"
-     },
-     "referencetoawscdkekshelmtestVpcPrivateSubnet2SubnetF5E4AFE9Ref": {
-      "Ref": "VpcPrivateSubnet2Subnet3788AAA1"
-     },
-     "referencetoawscdkekshelmtestCluster35BA672BClusterSecurityGroupId": {
-      "Fn::GetAtt": [
-       "Cluster9EE0221C",
-       "ClusterSecurityGroupId"
-      ]
-     }
     }
    },
    "DependsOn": [

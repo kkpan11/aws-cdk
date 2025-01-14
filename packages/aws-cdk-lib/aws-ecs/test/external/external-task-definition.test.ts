@@ -162,7 +162,7 @@ describe('external task definition', () => {
         dockerSecurityOptions: ['ECS_SELINUX_CAPABLE=true'],
         entryPoint: ['/app/node_modules/.bin/cdk'],
         environment: { TEST_ENVIRONMENT_VARIABLE: 'test environment variable value' },
-        environmentFiles: [ecs.EnvironmentFile.fromAsset(path.join(__dirname, '../demo-envfiles/test-envfile.env'))],
+        environmentFiles: [ecs.EnvironmentFile.fromAsset(path.join(__dirname, '..', 'demo-envfiles', 'test-envfile.env'))],
         essential: true,
         extraHosts: { EXTRAHOST: 'extra host' },
         healthCheck: {
@@ -578,7 +578,7 @@ describe('external task definition', () => {
     });
 
     // THEN
-    Annotations.fromStack(stack).hasWarning('/Default/ExternalTaskDef/web', "Proper policies need to be attached before pulling from ECR repository, or use 'fromEcrRepository'.");
+    Annotations.fromStack(stack).hasWarning('/Default/ExternalTaskDef/web', "Proper policies need to be attached before pulling from ECR repository, or use 'fromEcrRepository'. [ack: @aws-cdk/aws-ecs:ecrImageRequiresPolicy]");
   });
 
   test('correctly sets volumes', () => {

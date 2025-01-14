@@ -1,8 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Construct, Node } from 'constructs';
-import * as semver from 'semver';
 import * as YAML from 'yaml';
+import { IAccessPolicy, IAccessEntry, AccessEntry, AccessPolicy, AccessScopeType } from './access-entry';
+import { IAddon, Addon } from './addon';
 import { AlbController, AlbControllerOptions } from './alb-controller';
 import { AwsAuth } from './aws-auth';
 import { ClusterResource, clusterArnComponents } from './cluster-resource';
@@ -86,6 +87,20 @@ export interface ICluster extends IResource, ec2.IConnectable {
    * The Open ID Connect Provider of the cluster used to configure Service Accounts.
    */
   readonly openIdConnectProvider: iam.IOpenIdConnectProvider;
+
+  /**
+   * The EKS Pod Identity Agent addon for the EKS cluster.
+   *
+   * The EKS Pod Identity Agent is responsible for managing the temporary credentials
+   * used by pods in the cluster to access AWS resources. It runs as a DaemonSet on
+   * each node and provides the necessary credentials to the pods based on their
+   * associated service account.
+   *
+   * This property returns the `CfnAddon` resource representing the EKS Pod Identity
+   * Agent addon. If the addon has not been created yet, it will be created and
+   * returned.
+   */
+  readonly eksPodIdentityAgent?: IAddon;
 
   /**
    * An IAM role that can perform kubectl operations against this cluster.
@@ -183,6 +198,12 @@ export interface ICluster extends IResource, ec2.IConnectable {
    * apply` operation with the `--prune` switch.
    */
   readonly prune: boolean;
+
+  /**
+   * The authentication mode for the cluster.
+   * @default AuthenticationMode.CONFIG_MAP
+   */
+  readonly authenticationMode?: AuthenticationMode;
 
   /**
    * Creates a new service account with corresponding IAM Role (IRSA).
@@ -440,8 +461,6 @@ export interface CommonClusterOptions {
   /**
    * Where to place EKS Control Plane ENIs
    *
-   * If you want to create public load balancers, this must include public subnets.
-   *
    * For example, to only select private subnets, supply the following:
    *
    * `vpcSubnets: [{ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }]`
@@ -611,7 +630,7 @@ export interface ClusterOptions extends CommonClusterOptions {
    * ```ts
    * const layer = new lambda.LayerVersion(this, 'proxy-agent-layer', {
    *   code: lambda.Code.fromAsset(`${__dirname}/layer.zip`),
-   *   compatibleRuntimes: [lambda.Runtime.NODEJS_14_X],
+   *   compatibleRuntimes: [lambda.Runtime.NODEJS_LATEST],
    * });
    * ```
    *
@@ -677,6 +696,12 @@ export interface ClusterOptions extends CommonClusterOptions {
    * @default - none
    */
   readonly clusterLogging?: ClusterLoggingTypes[];
+
+  /**
+   * The desired authentication mode for the cluster.
+   * @default AuthenticationMode.CONFIG_MAP
+   */
+  readonly authenticationMode?: AuthenticationMode;
 }
 
 /**
@@ -812,6 +837,16 @@ export interface ClusterProps extends ClusterOptions {
   readonly kubectlLambdaRole?: iam.IRole;
 
   /**
+   * Whether or not IAM principal of the cluster creator was set as a cluster admin access entry
+   * during cluster creation time.
+   *
+   * Changing this value after the cluster has been created will result in the cluster being replaced.
+   *
+   * @default true
+   */
+  readonly bootstrapClusterCreatorAdminPermissions?: boolean;
+
+  /**
    * The tags assigned to the EKS cluster
    *
    * @default - none
@@ -879,6 +914,7 @@ export class KubernetesVersion {
    * When creating a `Cluster` with this version, you need to also specify the
    * `kubectlLayer` property with a `KubectlV22Layer` from
    * `@aws-cdk/lambda-layer-kubectl-v22`.
+   * @deprecated Use newer version of EKS
    */
   public static readonly V1_22 = KubernetesVersion.of('1.22');
 
@@ -919,6 +955,51 @@ export class KubernetesVersion {
   public static readonly V1_26 = KubernetesVersion.of('1.26');
 
   /**
+   * Kubernetes version 1.27
+   *
+   * When creating a `Cluster` with this version, you need to also specify the
+   * `kubectlLayer` property with a `KubectlV27Layer` from
+   * `@aws-cdk/lambda-layer-kubectl-v27`.
+   */
+  public static readonly V1_27 = KubernetesVersion.of('1.27');
+
+  /**
+   * Kubernetes version 1.28
+   *
+   * When creating a `Cluster` with this version, you need to also specify the
+   * `kubectlLayer` property with a `KubectlV28Layer` from
+   * `@aws-cdk/lambda-layer-kubectl-v28`.
+   */
+  public static readonly V1_28 = KubernetesVersion.of('1.28');
+
+  /**
+   * Kubernetes version 1.29
+   *
+   * When creating a `Cluster` with this version, you need to also specify the
+   * `kubectlLayer` property with a `KubectlV29Layer` from
+   * `@aws-cdk/lambda-layer-kubectl-v29`.
+   */
+  public static readonly V1_29 = KubernetesVersion.of('1.29');
+
+  /**
+   * Kubernetes version 1.30
+   *
+   * When creating a `Cluster` with this version, you need to also specify the
+   * `kubectlLayer` property with a `KubectlV30Layer` from
+   * `@aws-cdk/lambda-layer-kubectl-v30`.
+   */
+  public static readonly V1_30 = KubernetesVersion.of('1.30');
+
+  /**
+   * Kubernetes version 1.31
+   *
+   * When creating a `Cluster` with this version, you need to also specify the
+   * `kubectlLayer` property with a `KubectlV31Layer` from
+   * `@aws-cdk/lambda-layer-kubectl-v31`.
+   */
+  public static readonly V1_31 = KubernetesVersion.of('1.31');
+
+  /**
    * Custom cluster version
    * @param version custom version number
    */
@@ -930,6 +1011,7 @@ export class KubernetesVersion {
   private constructor(public readonly version: string) { }
 }
 
+// Shared definition with packages/@aws-cdk/custom-resource-handlers/test/aws-eks/compare-log.test.ts
 /**
  * EKS cluster logging types
  */
@@ -968,6 +1050,24 @@ export enum IpFamily {
    * Use IPv6 for pods and services in your cluster.
    */
   IP_V6 = 'ipv6',
+}
+
+/**
+ * Represents the authentication mode for an Amazon EKS cluster.
+ */
+export enum AuthenticationMode {
+  /**
+   * Authenticates using a Kubernetes ConfigMap.
+   */
+  CONFIG_MAP = 'CONFIG_MAP',
+  /**
+   * Authenticates using both the Kubernetes API server and a ConfigMap.
+   */
+  API_AND_CONFIG_MAP = 'API_AND_CONFIG_MAP',
+  /**
+   * Authenticates using the Kubernetes API server.
+   */
+  API = 'API',
 }
 
 abstract class ClusterBase extends Resource implements ICluster {
@@ -1148,7 +1248,7 @@ abstract class ClusterBase extends Resource implements ICluster {
     let mapRole = options.mapRole ?? true;
     if (mapRole && !(this instanceof Cluster)) {
       // do the mapping...
-      Annotations.of(autoScalingGroup).addWarning('Auto-mapping aws-auth role for imported cluster is not supported, please map role manually');
+      Annotations.of(autoScalingGroup).addWarningV2('@aws-cdk/aws-eks:clusterUnsupportedAutoMappingAwsAutoRole', 'Auto-mapping aws-auth role for imported cluster is not supported, please map role manually');
       mapRole = false;
     }
     if (mapRole) {
@@ -1225,6 +1325,8 @@ export class Cluster extends ClusterBase {
   public static fromClusterAttributes(scope: Construct, id: string, attrs: ClusterAttributes): ICluster {
     return new ImportedCluster(scope, id, attrs);
   }
+
+  private accessEntries: Map<string, IAccessEntry> = new Map();
 
   /**
    * The VPC in which this Cluster was created
@@ -1365,6 +1467,11 @@ export class Cluster extends ClusterBase {
   private _openIdConnectProvider?: iam.IOpenIdConnectProvider;
 
   /**
+   * an EKS Pod Identity Agent instance
+   */
+  private _eksPodIdentityAgent?: IAddon;
+
+  /**
    * An AWS Lambda layer that includes `kubectl` and `helm`
    *
    * If not defined, a default layer will be used containing Kubectl 1.20 and Helm 3.8
@@ -1409,6 +1516,17 @@ export class Cluster extends ClusterBase {
    * Will be undefined if `albController` wasn't configured.
    */
   public readonly albController?: AlbController;
+
+  /**
+   * The authentication mode for the Amazon EKS cluster.
+   *
+   * The authentication mode determines how users and applications authenticate to the Kubernetes API server.
+   *
+   * @property {AuthenticationMode} [authenticationMode] - The authentication mode for the Amazon EKS cluster.
+   *
+   * @default CONFIG_MAP.
+   */
+  public readonly authenticationMode?: AuthenticationMode;
 
   /**
    * If this cluster is kubectl-enabled, returns the `ClusterResource` object
@@ -1460,9 +1578,8 @@ export class Cluster extends ClusterBase {
     this.prune = props.prune ?? true;
     this.vpc = props.vpc || new ec2.Vpc(this, 'DefaultVpc');
 
-    const kubectlVersion = new semver.SemVer(`${props.version.version}.0`);
-    if (semver.gte(kubectlVersion, '1.22.0') && !props.kubectlLayer) {
-      Annotations.of(this).addWarning(`You created a cluster with Kubernetes Version ${props.version.version} without specifying the kubectlLayer property. This may cause failures as the kubectl version provided with aws-cdk-lib is 1.20, which is only guaranteed to be compatible with Kubernetes versions 1.19-1.21. Please provide a kubectlLayer from @aws-cdk/lambda-layer-kubectl-v${kubectlVersion.minor}.`);
+    if (!props.kubectlLayer) {
+      Annotations.of(this).addWarningV2('@aws-cdk/aws-eks:clusterKubectlLayerNotSpecified', `You created a cluster with Kubernetes Version ${props.version.version} without specifying the kubectlLayer property. The property will become required instead of optional in 2025 Jan. Please update your CDK code to provide a kubectlLayer.`);
     };
     this.version = props.version;
 
@@ -1549,11 +1666,17 @@ export class Cluster extends ClusterBase {
       throw new Error('Cannot specify serviceIpv4Cidr with ipFamily equal to IpFamily.IP_V6');
     }
 
+    this.authenticationMode = props.authenticationMode;
+
     const resource = this._clusterResource = new ClusterResource(this, 'Resource', {
       name: this.physicalName,
       environment: props.clusterHandlerEnvironment,
       roleArn: this.role.roleArn,
       version: props.version.version,
+      accessconfig: {
+        authenticationMode: props.authenticationMode,
+        bootstrapClusterCreatorAdminPermissions: props.bootstrapClusterCreatorAdminPermissions,
+      },
       resourcesVpcConfig: {
         securityGroupIds: [securityGroup.securityGroupId],
         subnetIds,
@@ -1651,12 +1774,26 @@ export class Cluster extends ClusterBase {
       new CfnOutput(this, 'ClusterName', { value: this.clusterName });
     }
 
+    const supportAuthenticationApi = (this.authenticationMode === AuthenticationMode.API ||
+      this.authenticationMode === AuthenticationMode.API_AND_CONFIG_MAP) ? true : false;
+
     // do not create a masters role if one is not provided. Trusting the accountRootPrincipal() is too permissive.
     if (props.mastersRole) {
       const mastersRole = props.mastersRole;
 
-      // map the IAM role to the `system:masters` group.
-      this.awsAuth.addMastersRole(mastersRole);
+      // if we support authentication API we create an access entry for this mastersRole
+      // with cluster scope.
+      if (supportAuthenticationApi) {
+        this.grantAccess('mastersRoleAccess', props.mastersRole.roleArn, [
+          AccessPolicy.fromAccessPolicyName('AmazonEKSClusterAdminPolicy', {
+            accessScopeType: AccessScopeType.CLUSTER,
+          }),
+        ]);
+      } else {
+        // if we don't support authentication API we should fallback to configmap
+        // this would avoid breaking changes as well if authenticationMode is undefined
+        this.awsAuth.addMastersRole(mastersRole);
+      }
 
       if (props.outputMastersRoleArn) {
         new CfnOutput(this, 'MastersRoleArn', { value: mastersRole.roleArn });
@@ -1689,6 +1826,21 @@ export class Cluster extends ClusterBase {
 
     this.defineCoreDnsComputeType(props.coreDnsComputeType ?? CoreDnsComputeType.EC2);
 
+  }
+
+  /**
+   * Grants the specified IAM principal access to the EKS cluster based on the provided access policies.
+   *
+   * This method creates an `AccessEntry` construct that grants the specified IAM principal the access permissions
+   * defined by the provided `IAccessPolicy` array. This allows the IAM principal to perform the actions permitted
+   * by the access policies within the EKS cluster.
+   *
+   * @param id - The ID of the `AccessEntry` construct to be created.
+   * @param principal - The IAM principal (role or user) to be granted access to the EKS cluster.
+   * @param accessPolicies - An array of `IAccessPolicy` objects that define the access permissions to be granted to the IAM principal.
+   */
+  public grantAccess(id: string, principal: string, accessPolicies: IAccessPolicy[]) {
+    this.addToAccessEntry(id, principal, accessPolicies);
   }
 
   /**
@@ -1774,7 +1926,8 @@ export class Cluster extends ClusterBase {
       spotInterruptHandler: options.spotInterruptHandler,
     });
 
-    if (nodeTypeForInstanceType(options.instanceType) === NodeType.INFERENTIA) {
+    if (nodeTypeForInstanceType(options.instanceType) === NodeType.INFERENTIA ||
+    nodeTypeForInstanceType(options.instanceType) === NodeType.TRAINIUM ) {
       this.addNeuronDevicePlugin();
     }
 
@@ -1791,6 +1944,15 @@ export class Cluster extends ClusterBase {
    * @param options options for creating a new nodegroup
    */
   public addNodegroupCapacity(id: string, options?: NodegroupOptions): Nodegroup {
+    const hasInferentiaOrTrainiumInstanceType = [
+      options?.instanceType,
+      ...options?.instanceTypes ?? [],
+    ].some(i => i && (nodeTypeForInstanceType(i) === NodeType.INFERENTIA ||
+        nodeTypeForInstanceType(i) === NodeType.TRAINIUM));
+
+    if (hasInferentiaOrTrainiumInstanceType) {
+      this.addNeuronDevicePlugin();
+    }
     return new Nodegroup(this, `Nodegroup${id}`, {
       cluster: this,
       ...options,
@@ -1847,6 +2009,26 @@ export class Cluster extends ClusterBase {
   }
 
   /**
+   * Retrieves the EKS Pod Identity Agent addon for the EKS cluster.
+   *
+   * The EKS Pod Identity Agent is responsible for managing the temporary credentials
+   * used by pods in the cluster to access AWS resources. It runs as a DaemonSet on
+   * each node and provides the necessary credentials to the pods based on their
+   * associated service account.
+   *
+   */
+  public get eksPodIdentityAgent(): IAddon | undefined {
+    if (!this._eksPodIdentityAgent) {
+      this._eksPodIdentityAgent = new Addon(this, 'EksPodIdentityAgentAddon', {
+        cluster: this,
+        addonName: 'eks-pod-identity-agent',
+      });
+    }
+
+    return this._eksPodIdentityAgent;
+  }
+
+  /**
    * Adds a Fargate profile to this cluster.
    * @see https://docs.aws.amazon.com/eks/latest/userguide/fargate-profile.html
    *
@@ -1891,6 +2073,33 @@ export class Cluster extends ClusterBase {
   public _attachKubectlResourceScope(resourceScope: Construct): KubectlProvider {
     Node.of(resourceScope).addDependency(this._kubectlReadyBarrier);
     return this._kubectlResourceProvider;
+  }
+
+  /**
+   * Adds an access entry to the cluster's access entries map.
+   *
+   * If an entry already exists for the given principal, it adds the provided access policies to the existing entry.
+   * If no entry exists for the given principal, it creates a new access entry with the provided access policies.
+   *
+   * @param principal - The principal (e.g., IAM user or role) for which the access entry is being added.
+   * @param policies - An array of access policies to be associated with the principal.
+   *
+   * @throws {Error} If the uniqueName generated for the new access entry is not unique.
+   *
+   * @returns {void}
+   */
+  private addToAccessEntry(id: string, principal: string, policies: IAccessPolicy[]) {
+    const entry = this.accessEntries.get(principal);
+    if (entry) {
+      (entry as AccessEntry).addAccessPolicies(policies);
+    } else {
+      const newEntry = new AccessEntry(this, id, {
+        principal,
+        cluster: this,
+        accessPolicies: policies,
+      });
+      this.accessEntries.set(principal, newEntry);
+    }
   }
 
   private defineKubectlProvider() {
@@ -1943,7 +2152,7 @@ export class Cluster extends ClusterBase {
    */
   private addNeuronDevicePlugin() {
     if (!this._neuronDevicePlugin) {
-      const fileContents = fs.readFileSync(path.join(__dirname, 'addons/neuron-device-plugin.yaml'), 'utf8');
+      const fileContents = fs.readFileSync(path.join(__dirname, 'addons', 'neuron-device-plugin.yaml'), 'utf8');
       const sanitized = YAML.parse(fileContents);
       this._neuronDevicePlugin = this.addManifest('NeuronDevicePlugin', sanitized);
     }
@@ -1966,7 +2175,7 @@ export class Cluster extends ClusterBase {
           // message (if token): "could not auto-tag public/private subnet with tag..."
           // message (if not token): "count not auto-tag public/private subnet xxxxx with tag..."
           const subnetID = Token.isUnresolved(subnet.subnetId) || Token.isUnresolved([subnet.subnetId]) ? '' : ` ${subnet.subnetId}`;
-          Annotations.of(this).addWarning(`Could not auto-tag ${type} subnet${subnetID} with "${tag}=1", please remember to do this manually`);
+          Annotations.of(this).addWarningV2('@aws-cdk/aws-eks:clusterMustManuallyTagSubnet', `Could not auto-tag ${type} subnet${subnetID} with "${tag}=1", please remember to do this manually`);
           continue;
         }
 
@@ -2190,7 +2399,7 @@ class ImportedCluster extends ClusterBase {
   public readonly connections = new ec2.Connections();
   public readonly kubectlRole?: iam.IRole;
   public readonly kubectlLambdaRole?: iam.IRole;
-  public readonly kubectlEnvironment?: { [key: string]: string; } | undefined;
+  public readonly kubectlEnvironment?: { [key: string]: string } | undefined;
   public readonly kubectlSecurityGroup?: ec2.ISecurityGroup | undefined;
   public readonly kubectlPrivateSubnets?: ec2.ISubnet[] | undefined;
   public readonly kubectlLayer?: lambda.ILayerVersion;
@@ -2340,6 +2549,7 @@ export class EksOptimizedImage implements ec2.IMachineImage {
         'amazon-linux-2/' : 'amazon-linux-2-arm64/' : '')
       + (this.nodeType === NodeType.GPU ? 'amazon-linux-2-gpu/' : '')
       + (this.nodeType === NodeType.INFERENTIA ? 'amazon-linux-2-gpu/' : '')
+      + (this.nodeType === NodeType.TRAINIUM ? 'amazon-linux-2-gpu/' : '')
       + 'recommended/image_id';
   }
 
@@ -2377,6 +2587,11 @@ export enum NodeType {
    * Inferentia instances
    */
   INFERENTIA = 'INFERENTIA',
+
+  /**
+   * Trainium instances
+   */
+  TRAINIUM = 'TRAINIUM',
 }
 
 /**
@@ -2438,9 +2653,14 @@ export enum MachineImageType {
 }
 
 function nodeTypeForInstanceType(instanceType: ec2.InstanceType) {
-  return INSTANCE_TYPES.gpu.includes(instanceType.toString().substring(0, 2)) ? NodeType.GPU :
-    INSTANCE_TYPES.inferentia.includes(instanceType.toString().substring(0, 4)) ? NodeType.INFERENTIA :
-      NodeType.STANDARD;
+  if (INSTANCE_TYPES.gpu.includes(instanceType.toString().substring(0, 2))) {
+    return NodeType.GPU;
+  } else if (INSTANCE_TYPES.inferentia.includes(instanceType.toString().substring(0, 4))) {
+    return NodeType.INFERENTIA;
+  } else if (INSTANCE_TYPES.trainium.includes(instanceType.toString().substring(0, 4))) {
+    return NodeType.TRAINIUM;
+  }
+  return NodeType.STANDARD;
 }
 
 function cpuArchForInstanceType(instanceType: ec2.InstanceType) {

@@ -330,6 +330,63 @@ describe('InitFile', () => {
     });
   });
 
+  test('does not have naming collision when multiple EC2 instances are defined in the same stack with using InitFile.fromAsset with the same targetFileName', () => {
+    // GIVEN
+    const myApp = new App();
+    const myStack = new Stack(myApp, 'myStack');
+    const vpc = new ec2.Vpc(myStack, 'vpc');
+
+    // WHEN
+    new ec2.Instance(myStack, 'FirstInstance', {
+      vpc,
+      instanceType:
+        ec2.InstanceType.of(ec2.InstanceClass.T3A, ec2.InstanceSize.MICRO),
+      machineImage: new ec2.AmazonLinuxImage({
+        generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+      }),
+      init: ec2.CloudFormationInit.fromConfigSets({
+        configSets: {
+          default: ['default'],
+        },
+        configs: {
+          default: new ec2.InitConfig([
+            ec2.InitFile.fromAsset(
+              '/target/path/config.json',
+              path.join(__dirname, 'init-configs', 'configFileForFirstInstance.json'),
+            ),
+          ]),
+        },
+      }),
+    });
+
+    // THEN
+    expect(() => {
+
+      new ec2.Instance(myStack, 'SecondInstance', {
+        vpc,
+        instanceType:
+        ec2.InstanceType.of(ec2.InstanceClass.T3A, ec2.InstanceSize.MICRO),
+        machineImage: new ec2.AmazonLinuxImage({
+          generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+        }),
+        init: ec2.CloudFormationInit.fromConfigSets({
+          configSets: {
+            default: ['default'],
+          },
+          configs: {
+            default: new ec2.InitConfig([
+              ec2.InitFile.fromAsset(
+                '/target/path/config.json',
+                path.join(__dirname, 'init-configs', 'configFileForSecondInstance.json'),
+              ),
+            ]),
+          },
+        }),
+      });
+
+    }).not.toThrow();
+  });
+
 });
 
 describe('InitGroup', () => {
@@ -669,6 +726,35 @@ describe('InitService', () => {
     expect(capture).toContain('User=ec2-user');
     expect(capture).toContain('Group=ec2-user');
     expect(capture).toContain('Description=my service');
+  });
+
+  test('can create systemd file with environment variables', () => {
+    // WHEN
+    const file = ec2.InitService.systemdConfigFile('myserver', {
+      command: '/start/my/service',
+      cwd: '/my/dir',
+      user: 'ec2-user',
+      group: 'ec2-user',
+      description: 'my service',
+      environmentFiles: ['/files/one', '/files/two'],
+      environmentVariables: {
+        HELLO: 'WORLD',
+      },
+    });
+
+    // THEN
+    const bindOptions = defaultOptions(InitPlatform.LINUX);
+    const rendered = file._bind(bindOptions).config;
+    expect(rendered).toEqual({
+      '/etc/systemd/system/myserver.service': expect.objectContaining({
+        content: expect.any(String),
+      }),
+    });
+
+    const capture = rendered['/etc/systemd/system/myserver.service'].content;
+    expect(capture).toContain('EnvironmentFile=/files/one');
+    expect(capture).toContain('EnvironmentFile=/files/two');
+    expect(capture).toContain('Environment="HELLO=WORLD"');
   });
 });
 

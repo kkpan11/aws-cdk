@@ -5,10 +5,10 @@ import * as cloudwatch from '../../../aws-cloudwatch';
 import * as cdk from '../../../core';
 import { Chain } from '../chain';
 import { FieldUtils } from '../fields';
+import { noEmptyObject } from '../private/util';
 import { StateGraph } from '../state-graph';
 import { IStepFunctionsTask, StepFunctionsTaskConfig } from '../step-functions-task';
 import { CatchProps, IChainable, INextable, RetryProps } from '../types';
-import { noEmptyObject } from '../util';
 
 /**
  * Props that are common to all tasks
@@ -20,6 +20,13 @@ export interface TaskProps {
    * Actual task to be invoked in this workflow
    */
   readonly task: IStepFunctionsTask;
+
+  /**
+   * Optional name for this state
+   *
+   * @default - The construct ID will be used as state name
+   */
+  readonly stateName?: string;
 
   /**
    * An optional description for this state

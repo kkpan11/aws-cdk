@@ -9,7 +9,8 @@ import * as kms from '../../aws-kms';
 import * as logs from '../../aws-logs';
 import * as route53 from '../../aws-route53';
 import { App, Stack, Duration, SecretValue, CfnParameter, Token } from '../../core';
-import { Domain, EngineVersion } from '../lib';
+import * as cxapi from '../../cx-api';
+import { Domain, DomainProps, EngineVersion, IpAddressType } from '../lib';
 
 let app: App;
 let stack: Stack;
@@ -37,6 +38,13 @@ const testedOpenSearchVersions = [
   EngineVersion.OPENSEARCH_1_3,
   EngineVersion.OPENSEARCH_2_3,
   EngineVersion.OPENSEARCH_2_5,
+  EngineVersion.OPENSEARCH_2_7,
+  EngineVersion.OPENSEARCH_2_9,
+  EngineVersion.OPENSEARCH_2_10,
+  EngineVersion.OPENSEARCH_2_11,
+  EngineVersion.OPENSEARCH_2_13,
+  EngineVersion.OPENSEARCH_2_15,
+  EngineVersion.OPENSEARCH_2_17,
 ];
 
 each(testedOpenSearchVersions).test('connections throws if domain is not placed inside a vpc', (engineVersion) => {
@@ -45,7 +53,7 @@ each(testedOpenSearchVersions).test('connections throws if domain is not placed 
     new Domain(stack, 'Domain', {
       version: engineVersion,
     }).connections;
-  }).toThrowError("Connections are only available on VPC enabled domains. Use the 'vpc' property to place a domain inside a VPC");
+  }).toThrow("Connections are only available on VPC enabled domains. Use the 'vpc' property to place a domain inside a VPC");
 });
 
 each(testedOpenSearchVersions).test('subnets and security groups can be provided when vpc is used', (engineVersion) => {
@@ -198,6 +206,13 @@ each([
   [EngineVersion.OPENSEARCH_1_3, 'OpenSearch_1.3'],
   [EngineVersion.OPENSEARCH_2_3, 'OpenSearch_2.3'],
   [EngineVersion.OPENSEARCH_2_5, 'OpenSearch_2.5'],
+  [EngineVersion.OPENSEARCH_2_7, 'OpenSearch_2.7'],
+  [EngineVersion.OPENSEARCH_2_9, 'OpenSearch_2.9'],
+  [EngineVersion.OPENSEARCH_2_10, 'OpenSearch_2.10'],
+  [EngineVersion.OPENSEARCH_2_11, 'OpenSearch_2.11'],
+  [EngineVersion.OPENSEARCH_2_13, 'OpenSearch_2.13'],
+  [EngineVersion.OPENSEARCH_2_15, 'OpenSearch_2.15'],
+  [EngineVersion.OPENSEARCH_2_17, 'OpenSearch_2.17'],
 ]).test('minimal example renders correctly', (engineVersion, expectedCfVersion) => {
   new Domain(stack, 'Domain', { version: engineVersion });
 
@@ -384,6 +399,58 @@ each([testedOpenSearchVersions]).test('can use tokens in capacity configuration'
   });
 });
 
+each([testedOpenSearchVersions]).test('can specify multiAZWithStandbyEnabled in capacity configuration', (engineVersion) => {
+  new Domain(stack, 'Domain', {
+    version: engineVersion,
+    capacity: {
+      multiAzWithStandbyEnabled: true,
+    },
+  });
+
+  Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+    ClusterConfig: {
+      MultiAZWithStandbyEnabled: true,
+    },
+  });
+});
+
+each([testedOpenSearchVersions]).test('multiAZWithStandbyEnabled: true throws with t3 instance type (data node)', (engineVersion) => {
+  expect(() => new Domain(stack, 'Domain', {
+    version: engineVersion,
+    capacity: {
+      dataNodeInstanceType: 't3.medium.search',
+      multiAzWithStandbyEnabled: true,
+    },
+  })).toThrow(/T3 instance type does not support Multi-AZ with standby feature\./);
+});
+
+each([testedOpenSearchVersions]).test('multiAZWithStandbyEnabled: true throws with t3 instance type (master node)', (engineVersion) => {
+  expect(() => new Domain(stack, 'Domain', {
+    version: engineVersion,
+    capacity: {
+      masterNodeInstanceType: 't3.medium.search',
+      masterNodes: 1,
+      multiAzWithStandbyEnabled: true,
+    },
+  })).toThrow(/T3 instance type does not support Multi-AZ with standby feature\./);
+});
+
+each([testedOpenSearchVersions]).test('ENABLE_OPENSEARCH_MULTIAZ_WITH_STANDBY set multiAZWithStandbyEnabled value', (engineVersion) => {
+  const stackWithFlag = new Stack(app, 'StackWithFlag', {
+    env: { account: '1234', region: 'testregion' },
+  });
+  stackWithFlag.node.setContext(cxapi.ENABLE_OPENSEARCH_MULTIAZ_WITH_STANDBY, true);
+  new Domain(stackWithFlag, 'Domain', {
+    version: engineVersion,
+  });
+
+  Template.fromStack(stackWithFlag).hasResourceProperties('AWS::OpenSearchService::Domain', {
+    ClusterConfig: {
+      MultiAZWithStandbyEnabled: true,
+    },
+  });
+});
+
 each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
 
   test('slowSearchLogEnabled should create a custom log group', () => {
@@ -394,6 +461,7 @@ each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
       },
     });
 
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 1);
     Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
       LogPublishingOptions: {
         SEARCH_SLOW_LOGS: {
@@ -420,6 +488,7 @@ each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
       },
     });
 
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 1);
     Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
       LogPublishingOptions: {
         INDEX_SLOW_LOGS: {
@@ -446,6 +515,7 @@ each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
       },
     });
 
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 1);
     Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
       LogPublishingOptions: {
         ES_APPLICATION_LOGS: {
@@ -480,6 +550,7 @@ each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
       enforceHttps: true,
     });
 
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 1);
     Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
       LogPublishingOptions: {
         AUDIT_LOGS: {
@@ -515,6 +586,8 @@ each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
         slowIndexLogEnabled: true,
       },
     });
+
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 2);
     Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
       LogPublishingOptions: {
         ES_APPLICATION_LOGS: {
@@ -653,6 +726,7 @@ each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
       },
     });
 
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 1);
     Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
       LogPublishingOptions: {
         SEARCH_SLOW_LOGS: {
@@ -682,6 +756,7 @@ each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
       },
     });
 
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 1);
     Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
       LogPublishingOptions: {
         INDEX_SLOW_LOGS: {
@@ -711,6 +786,7 @@ each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
       },
     });
 
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 1);
     Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
       LogPublishingOptions: {
         ES_APPLICATION_LOGS: {
@@ -748,6 +824,7 @@ each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
       },
     });
 
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 1);
     Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
       LogPublishingOptions: {
         AUDIT_LOGS: {
@@ -766,6 +843,120 @@ each([testedOpenSearchVersions]).describe('log groups', (engineVersion) => {
     });
   });
 
+  test('can suppress creation of a CloudWatch Logs resource policy', () => {
+    new Domain(stack, 'Domain1', {
+      version: engineVersion,
+      logging: {
+        appLogEnabled: true,
+        appLogGroup: new logs.LogGroup(stack, 'AppLogs', {
+          retention: logs.RetentionDays.THREE_MONTHS,
+        }),
+      },
+      suppressLogsResourcePolicy: true,
+    });
+
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 0);
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      LogPublishingOptions: {
+        ES_APPLICATION_LOGS: {
+          CloudWatchLogsLogGroupArn: {
+            'Fn::GetAtt': [
+              'AppLogsC5DF83A6',
+              'Arn',
+            ],
+          },
+          Enabled: true,
+        },
+        AUDIT_LOGS: Match.absent(),
+        SEARCH_SLOW_LOGS: Match.absent(),
+        INDEX_SLOW_LOGS: Match.absent(),
+      },
+    });
+  });
+
+  test('can disable application logs', () => {
+    new Domain(stack, 'Domain1', {
+      version: engineVersion,
+      logging: {
+        appLogEnabled: false,
+      },
+    });
+
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 0);
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      LogPublishingOptions: {
+        ES_APPLICATION_LOGS: {
+          Enabled: false,
+        },
+        AUDIT_LOGS: Match.absent(),
+        SEARCH_SLOW_LOGS: Match.absent(),
+        INDEX_SLOW_LOGS: Match.absent(),
+      },
+    });
+  });
+
+  test('can disable audit logs', () => {
+    new Domain(stack, 'Domain1', {
+      version: engineVersion,
+      logging: {
+        auditLogEnabled: false,
+      },
+    });
+
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 0);
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      LogPublishingOptions: {
+        ES_APPLICATION_LOGS: Match.absent(),
+        AUDIT_LOGS: {
+          Enabled: false,
+        },
+        SEARCH_SLOW_LOGS: Match.absent(),
+        INDEX_SLOW_LOGS: Match.absent(),
+      },
+    });
+  });
+
+  test('can disable slow search logs', () => {
+    new Domain(stack, 'Domain1', {
+      version: engineVersion,
+      logging: {
+        slowSearchLogEnabled: false,
+      },
+    });
+
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 0);
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      LogPublishingOptions: {
+        ES_APPLICATION_LOGS: Match.absent(),
+        AUDIT_LOGS: Match.absent(),
+        SEARCH_SLOW_LOGS: {
+          Enabled: false,
+        },
+        INDEX_SLOW_LOGS: Match.absent(),
+      },
+    });
+  });
+
+  test('can disable slow index logs', () => {
+    new Domain(stack, 'Domain1', {
+      version: engineVersion,
+      logging: {
+        slowIndexLogEnabled: false,
+      },
+    });
+
+    Template.fromStack(stack).resourceCountIs('Custom::CloudwatchLogResourcePolicy', 0);
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      LogPublishingOptions: {
+        ES_APPLICATION_LOGS: Match.absent(),
+        AUDIT_LOGS: Match.absent(),
+        SEARCH_SLOW_LOGS: Match.absent(),
+        INDEX_SLOW_LOGS: {
+          Enabled: false,
+        },
+      },
+    });
+  });
 });
 
 each(testedOpenSearchVersions).describe('grants', (engineVersion) => {
@@ -1295,6 +1486,197 @@ each(testedOpenSearchVersions).describe('advanced security options', (engineVers
       enforceHttps: false,
     })).toThrow(/Enforce HTTPS is required when fine-grained access control is enabled/);
   });
+
+  describe('SAML authentication', () => {
+    test('with SAML authentication enabled', () => {
+      new Domain(stack, 'Domain', {
+        version: engineVersion,
+        fineGrainedAccessControl: {
+          masterUserArn,
+          samlAuthenticationEnabled: true,
+          samlAuthenticationOptions: {
+            idpEntityId: 'entity-id',
+            idpMetadataContent: 'metadata',
+            masterBackendRole: 'backend-role',
+            masterUserName: 'master-username',
+          },
+        },
+        encryptionAtRest: {
+          enabled: true,
+        },
+        nodeToNodeEncryption: true,
+        enforceHttps: true,
+      });
+
+      Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+        AdvancedSecurityOptions: {
+          Enabled: true,
+          InternalUserDatabaseEnabled: false,
+          MasterUserOptions: {
+            MasterUserARN: masterUserArn,
+          },
+          SAMLOptions: {
+            Enabled: true,
+            Idp: {
+              EntityId: 'entity-id',
+              MetadataContent: 'metadata',
+            },
+            MasterBackendRole: 'backend-role',
+            MasterUserName: 'master-username',
+            RolesKey: 'roles',
+            SessionTimeoutMinutes: 60,
+          },
+        },
+      });
+    });
+
+    test('throws if SAML authentication is enabled without fine-grained access control', () => {
+      expect(() => {
+        new Domain(stack, 'Domain', {
+          version: engineVersion,
+          fineGrainedAccessControl: {
+            samlAuthenticationEnabled: true,
+            samlAuthenticationOptions: {
+              idpEntityId: 'entity-id',
+              idpMetadataContent: 'metadata',
+              masterBackendRole: 'backend-role',
+              masterUserName: 'master-username',
+            },
+          },
+          encryptionAtRest: {
+            enabled: true,
+          },
+          nodeToNodeEncryption: true,
+          enforceHttps: true,
+        });
+      }).toThrow(/SAML authentication requires fine-grained access control to be enabled./);
+    });
+
+    test('throws if SAML authentication is enabled without specifying its options', () => {
+      expect(() => {
+        new Domain(stack, 'Domain', {
+          version: engineVersion,
+          fineGrainedAccessControl: {
+            masterUserArn,
+            samlAuthenticationEnabled: true,
+          },
+          encryptionAtRest: {
+            enabled: true,
+          },
+          nodeToNodeEncryption: true,
+          enforceHttps: true,
+        });
+      }).toThrow(/You need to specify at least an Entity ID and Metadata content for the SAML configuration/);
+    });
+
+    test('validate SAML authentication options', () => {
+      expect(() => {
+        new Domain(stack, 'Domain0', {
+          version: engineVersion,
+          fineGrainedAccessControl: {
+            masterUserArn,
+            samlAuthenticationEnabled: true,
+            samlAuthenticationOptions: {
+              idpEntityId: 'short',
+              idpMetadataContent: 'metadata',
+              masterBackendRole: 'backend-role',
+              masterUserName: 'master-username',
+            },
+          },
+          encryptionAtRest: {
+            enabled: true,
+          },
+          nodeToNodeEncryption: true,
+          enforceHttps: true,
+        });
+      }).toThrow(/SAML identity provider entity ID must be between 8 and 512 characters long/);
+
+      expect(() => {
+        new Domain(stack, 'Domain1', {
+          version: engineVersion,
+          fineGrainedAccessControl: {
+            masterUserArn,
+            samlAuthenticationEnabled: true,
+            samlAuthenticationOptions: {
+              idpEntityId: 'identity-id',
+              idpMetadataContent: '',
+              masterBackendRole: 'backend-role',
+              masterUserName: 'master-username',
+            },
+          },
+          encryptionAtRest: {
+            enabled: true,
+          },
+          nodeToNodeEncryption: true,
+          enforceHttps: true,
+        });
+      }).toThrow(/SAML identity provider metadata content must be between 1 and 1048576 characters long/);
+
+      expect(() => {
+        new Domain(stack, 'Domain2', {
+          version: engineVersion,
+          fineGrainedAccessControl: {
+            masterUserArn,
+            samlAuthenticationEnabled: true,
+            samlAuthenticationOptions: {
+              idpEntityId: 'identity-id',
+              idpMetadataContent: 'metadata',
+              masterBackendRole: 'backend-role',
+              masterUserName: 'master-long'.repeat(10),
+            },
+          },
+          encryptionAtRest: {
+            enabled: true,
+          },
+          nodeToNodeEncryption: true,
+          enforceHttps: true,
+        });
+      }).toThrow(/SAML master username must be between 1 and 64 characters long/);
+
+      expect(() => {
+        new Domain(stack, 'Domain3', {
+          version: engineVersion,
+          fineGrainedAccessControl: {
+            masterUserArn,
+            samlAuthenticationEnabled: true,
+            samlAuthenticationOptions: {
+              idpEntityId: 'identity-id',
+              idpMetadataContent: 'metadata',
+              masterBackendRole: 'backend-long'.repeat(50),
+              masterUserName: 'master-username',
+            },
+          },
+          encryptionAtRest: {
+            enabled: true,
+          },
+          nodeToNodeEncryption: true,
+          enforceHttps: true,
+        });
+      }).toThrow(/SAML backend role must be between 1 and 256 characters long/);
+
+      expect(() => {
+        new Domain(stack, 'Domain4', {
+          version: engineVersion,
+          fineGrainedAccessControl: {
+            masterUserArn,
+            samlAuthenticationEnabled: true,
+            samlAuthenticationOptions: {
+              idpEntityId: 'identity-id',
+              idpMetadataContent: 'metadata',
+              masterBackendRole: 'backend-role',
+              masterUserName: 'master-username',
+              sessionTimeoutMinutes: 2000,
+            },
+          },
+          encryptionAtRest: {
+            enabled: true,
+          },
+          nodeToNodeEncryption: true,
+          enforceHttps: true,
+        });
+      }).toThrow(/SAML session timeout must be a value between 1 and 1440/);
+    });
+  });
 });
 
 each(testedOpenSearchVersions).describe('custom endpoints', (engineVersion) => {
@@ -1582,58 +1964,41 @@ each(testedOpenSearchVersions).describe('custom error responses', (engineVersion
     })).toThrow(/Node-to-node encryption requires Elasticsearch version 6.0 or later or OpenSearch version 1.0 or later/);
   });
 
-  test('error when i3 or r6g instance types are specified with EBS enabled', () => {
-    expect(() => new Domain(stack, 'Domain1', {
-      version: engineVersion,
-      capacity: {
-        dataNodeInstanceType: 'i3.2xlarge.search',
-      },
-      ebs: {
-        volumeSize: 100,
-        volumeType: EbsDeviceVolumeType.GENERAL_PURPOSE_SSD,
-      },
-    })).toThrow(/I3 and R6GD instance types do not support EBS storage volumes/);
+  test.each([
+    'i3.2xlarge.search',
+    'r6gd.large.search',
+    'im4gn.2xlarge.search',
+    'i4g.large.search',
+    'i4i.xlarge.search',
+    'r7gd.xlarge.search',
+  ])('error when %s instance type is specified with EBS enabled', (dataNodeInstanceType) => {
     expect(() => new Domain(stack, 'Domain2', {
       version: engineVersion,
       capacity: {
-        dataNodeInstanceType: 'r6gd.large.search',
+        dataNodeInstanceType,
       },
       ebs: {
         volumeSize: 100,
         volumeType: EbsDeviceVolumeType.GENERAL_PURPOSE_SSD,
       },
-    })).toThrow(/I3 and R6GD instance types do not support EBS storage volumes/);
+    })).toThrow(/I3, R6GD, I4G, I4I, IM4GN and R7GD instance types do not support EBS storage volumes./);
   });
 
-  test('error when m3, r3, or t2 instance types are specified with encryption at rest enabled', () => {
-    const error = /M3, R3, and T2 instance types do not support encryption of data at rest/;
+  test.each([
+    'm3.2xlarge.search',
+    'r3.2xlarge.search',
+    't2.2xlarge.search',
+  ])
+  ('error when %s instance type is specified with encryption at rest enabled', (masterNodeInstanceType) => {
     expect(() => new Domain(stack, 'Domain1', {
       version: engineVersion,
       capacity: {
-        masterNodeInstanceType: 'm3.2xlarge.search',
+        masterNodeInstanceType,
       },
       encryptionAtRest: {
         enabled: true,
       },
-    })).toThrow(error);
-    expect(() => new Domain(stack, 'Domain2', {
-      version: engineVersion,
-      capacity: {
-        dataNodeInstanceType: 'r3.2xlarge.search',
-      },
-      encryptionAtRest: {
-        enabled: true,
-      },
-    })).toThrow(error);
-    expect(() => new Domain(stack, 'Domain3', {
-      version: engineVersion,
-      capacity: {
-        masterNodeInstanceType: 't2.2xlarge.search',
-      },
-      encryptionAtRest: {
-        enabled: true,
-      },
-    })).toThrow(error);
+    })).toThrow(/M3, R3 and T2 instance types do not support encryption of data at rest/);
   });
 
   test('error when t2.micro is specified with Elasticsearch version > 2.3', () => {
@@ -1645,25 +2010,19 @@ each(testedOpenSearchVersions).describe('custom error responses', (engineVersion
     })).toThrow(/t2.micro.search instance type supports only Elasticsearch versions 1.5 and 2.3/);
   });
 
-  test('error when any instance type other than R3, I3 and R6GD are specified without EBS enabled', () => {
+  test.each([
+    'm5.large.search',
+    'r5.large.search',
+  ])('error when any instance type other than R3, I3, R6GD, I4I, I4G, IM4GN or R7GD are specified without EBS enabled', (masterNodeInstanceType) => {
     expect(() => new Domain(stack, 'Domain1', {
       version: engineVersion,
       ebs: {
         enabled: false,
       },
       capacity: {
-        masterNodeInstanceType: 'm5.large.search',
+        masterNodeInstanceType,
       },
-    })).toThrow(/EBS volumes are required when using instance types other than r3, i3 or r6gd/);
-    expect(() => new Domain(stack, 'Domain2', {
-      version: engineVersion,
-      ebs: {
-        enabled: false,
-      },
-      capacity: {
-        dataNodeInstanceType: 'm5.large.search',
-      },
-    })).toThrow(/EBS volumes are required when using instance types other than r3, i3 or r6gd/);
+    })).toThrow(/EBS volumes are required when using instance types other than R3, I3, R6GD, I4G, I4I, IM4GN or R7GD./);
   });
 
   test('can use compatible master instance types that does not have local storage when data node type is i3 or r6gd', () => {
@@ -1714,22 +2073,91 @@ each(testedOpenSearchVersions).describe('custom error responses', (engineVersion
     })).toThrow(/UltraWarm requires Elasticsearch version 6\.8 or later or OpenSearch version 1.0 or later/);
   });
 
-  test('error when t2 or t3 instance types are specified with UltramWarm enabled', () => {
-    const error = /T2 and T3 instance types do not support UltraWarm storage/;
+  test('enabling cold storage without ultrawarm throws an error', () => {
+    expect(() => new Domain(stack, 'Domain', {
+      version: engineVersion,
+      coldStorageEnabled: true,
+    })).toThrow(/You must enable UltraWarm storage to enable cold storage./);
+  });
+
+  test('can enable cold storage', () => {
+    new Domain(stack, 'Domain', {
+      version: engineVersion,
+      capacity: {
+        masterNodes: 2,
+        warmNodes: 2,
+      },
+      coldStorageEnabled: true,
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      ClusterConfig: {
+        DedicatedMasterEnabled: true,
+        WarmEnabled: true,
+        WarmCount: 2,
+        WarmType: 'ultrawarm1.medium.search',
+        ColdStorageOptions: {
+          Enabled: true,
+        },
+      },
+    });
+  });
+
+  test('can disable cold storage', () => {
+    new Domain(stack, 'Domain', {
+      version: engineVersion,
+      capacity: {
+        masterNodes: 2,
+        warmNodes: 2,
+      },
+      coldStorageEnabled: false,
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      ClusterConfig: {
+        DedicatedMasterEnabled: true,
+        WarmEnabled: true,
+        WarmCount: 2,
+        WarmType: 'ultrawarm1.medium.search',
+        ColdStorageOptions: {
+          Enabled: false,
+        },
+      },
+    });
+  });
+
+  test('cold storage default is undefined', () => {
+    new Domain(stack, 'Domain', {
+      version: engineVersion,
+      capacity: {
+        masterNodes: 2,
+        warmNodes: 2,
+      },
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      ClusterConfig: {
+        DedicatedMasterEnabled: true,
+        WarmEnabled: true,
+        WarmCount: 2,
+        WarmType: 'ultrawarm1.medium.search',
+        ColdStorageOptions: Match.absent(),
+      },
+    });
+  });
+
+  test.each([
+    't2.2xlarge.search',
+    't3.2xlarge.search',
+  ])
+  ('error when %s instance types is specified with UltramWarm enabled', (masterNodeInstanceType) => {
     expect(() => new Domain(stack, 'Domain1', {
       version: engineVersion,
       capacity: {
-        masterNodeInstanceType: 't2.2xlarge.search',
+        masterNodeInstanceType,
         warmNodes: 1,
       },
-    })).toThrow(error);
-    expect(() => new Domain(stack, 'Domain2', {
-      version: engineVersion,
-      capacity: {
-        masterNodeInstanceType: 't3.2xlarge.search',
-        warmNodes: 1,
-      },
-    })).toThrow(error);
+    })).toThrow(/T2 and T3 instance types do not support UltraWarm storage/);
   });
 
   test('error when UltraWarm instance is used and no dedicated master instance specified', () => {
@@ -1943,6 +2371,301 @@ each(testedOpenSearchVersions).describe('cognito dashboards auth', (engineVersio
         UserPoolId: userPoolId,
       },
     });
+  });
+});
+
+each(testedOpenSearchVersions).describe('offPeakWindow and softwareUpdateOptions', (engineVersion) => {
+  test('with offPeakWindowStart and offPeakWindowEnabled', () => {
+    new Domain(stack, 'Domain', {
+      version: engineVersion,
+      offPeakWindowEnabled: true,
+      offPeakWindowStart: {
+        hours: 10,
+        minutes: 30,
+      },
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      OffPeakWindowOptions: {
+        Enabled: true,
+        OffPeakWindow: {
+          WindowStartTime: {
+            Hours: 10,
+            Minutes: 30,
+          },
+        },
+      },
+    });
+  });
+
+  test('with offPeakWindowStart only', () => {
+    new Domain(stack, 'Domain', {
+      version: engineVersion,
+      offPeakWindowStart: {
+        hours: 10,
+        minutes: 30,
+      },
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      OffPeakWindowOptions: {
+        Enabled: true,
+        OffPeakWindow: {
+          WindowStartTime: {
+            Hours: 10,
+            Minutes: 30,
+          },
+        },
+      },
+    });
+  });
+
+  test('with offPeakWindowOptions default start time', () => {
+    new Domain(stack, 'Domain', {
+      version: engineVersion,
+      offPeakWindowEnabled: true,
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      OffPeakWindowOptions: {
+        Enabled: true,
+        OffPeakWindow: {
+          WindowStartTime: {
+            Hours: 22,
+            Minutes: 0,
+          },
+        },
+      },
+    });
+  });
+
+  test('with autoSoftwareUpdateEnabled', () => {
+    new Domain(stack, 'Domain', {
+      version: engineVersion,
+      enableAutoSoftwareUpdate: true,
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      SoftwareUpdateOptions: {
+        AutoSoftwareUpdateEnabled: true,
+      },
+    });
+  });
+
+  test('with invalid offPeakWindowStart', () => {
+    expect(() => {
+      new Domain(stack, 'Domain1', {
+        version: engineVersion,
+        offPeakWindowEnabled: true,
+        offPeakWindowStart: {
+          hours: 50,
+          minutes: 0,
+        },
+      });
+    }).toThrow(
+      /Hours must be a value between 0 and 23/,
+    );
+
+    expect(() => {
+      new Domain(stack, 'Domain2', {
+        version: engineVersion,
+        offPeakWindowEnabled: true,
+        offPeakWindowStart: {
+          hours: 10,
+          minutes: 90,
+        },
+      });
+    }).toThrow(
+      /Minutes must be a value between 0 and 59/,
+    );
+  });
+});
+
+describe('EBS Options Configurations', () => {
+
+  test('iops', () => {
+    const domainProps: DomainProps = {
+      version: EngineVersion.OPENSEARCH_2_5,
+      ebs: {
+        volumeSize: 30,
+        iops: 500,
+        volumeType: EbsDeviceVolumeType.PROVISIONED_IOPS_SSD,
+      },
+    };
+    new Domain(stack, 'Domain', domainProps);
+
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      EBSOptions: {
+        VolumeSize: 30,
+        Iops: 500,
+        VolumeType: 'io1',
+      },
+    });
+  });
+
+  test('throughput', () => {
+    const domainProps: DomainProps = {
+      version: EngineVersion.OPENSEARCH_2_5,
+      ebs: {
+        volumeSize: 30,
+        throughput: 125,
+        volumeType: EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3,
+      },
+    };
+    new Domain(stack, 'Domain', domainProps);
+
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      EBSOptions: {
+        VolumeSize: 30,
+        Throughput: 125,
+        VolumeType: 'gp3',
+      },
+    });
+  });
+
+  test('throughput and iops', () => {
+    const domainProps: DomainProps = {
+      version: EngineVersion.OPENSEARCH_2_5,
+      ebs: {
+        volumeSize: 30,
+        iops: 3000,
+        throughput: 125,
+        volumeType: EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3,
+      },
+    };
+    new Domain(stack, 'Domain', domainProps);
+
+    Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+      EBSOptions: {
+        VolumeSize: 30,
+        Iops: 3000,
+        Throughput: 125,
+        VolumeType: 'gp3',
+      },
+    });
+  });
+
+  test('validation required props', () => {
+    let idx: number = 0;
+
+    expect(() => {
+      const domainProps: DomainProps = {
+        version: EngineVersion.OPENSEARCH_2_5,
+        ebs: {
+          volumeSize: 30,
+          volumeType: EbsDeviceVolumeType.PROVISIONED_IOPS_SSD,
+        },
+      };
+      new Domain(stack, `Domain${idx++}`, domainProps);
+    }).toThrow('`iops` must be specified if the `volumeType` is `PROVISIONED_IOPS_SSD`.');
+
+    expect(() => {
+      const domainProps: DomainProps = {
+        version: EngineVersion.OPENSEARCH_2_5,
+        ebs: {
+          volumeSize: 30,
+          volumeType: EbsDeviceVolumeType.GENERAL_PURPOSE_SSD,
+          iops: 125,
+        },
+      };
+      new Domain(stack, `Domain${idx++}`, domainProps);
+    }).toThrow('General Purpose EBS volumes can not be used with Iops or Throughput configuration');
+
+    expect(() => {
+      const domainProps: DomainProps = {
+        version: EngineVersion.OPENSEARCH_2_5,
+        ebs: {
+          iops: 125,
+        },
+      };
+      new Domain(stack, `Domain${idx++}`, domainProps);
+    }).toThrow('General Purpose EBS volumes can not be used with Iops or Throughput configuration');
+
+    expect(() => {
+      const domainProps: DomainProps = {
+        version: EngineVersion.OPENSEARCH_2_5,
+        ebs: {
+          volumeSize: 30,
+          volumeType: EbsDeviceVolumeType.PROVISIONED_IOPS_SSD,
+          iops: 99,
+        },
+      };
+      new Domain(stack, `Domain${idx++}`, domainProps);
+    }).toThrow('`io1` volumes iops must be between 100 and 64000.');
+
+    expect(() => {
+      const domainProps: DomainProps = {
+        version: EngineVersion.OPENSEARCH_2_5,
+        ebs: {
+          volumeSize: 30,
+          volumeType: EbsDeviceVolumeType.PROVISIONED_IOPS_SSD,
+          iops: 64001,
+        },
+      };
+      new Domain(stack, `Domain${idx++}`, domainProps);
+    }).toThrow('`io1` volumes iops must be between 100 and 64000.');
+
+    expect(() => {
+      const domainProps: DomainProps = {
+        version: EngineVersion.OPENSEARCH_2_5,
+        ebs: {
+          volumeSize: 30,
+          volumeType: EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3,
+          iops: 16001,
+        },
+      };
+      new Domain(stack, `Domain${idx++}`, domainProps);
+    }).toThrow('`gp3` volumes iops must be between 3000 and 16000.');
+
+    expect(() => {
+      const domainProps: DomainProps = {
+        version: EngineVersion.OPENSEARCH_2_5,
+        ebs: {
+          volumeSize: 30,
+          volumeType: EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3,
+          iops: 2999,
+        },
+      };
+      new Domain(stack, `Domain${idx++}`, domainProps);
+    }).toThrow('`gp3` volumes iops must be between 3000 and 16000.');
+
+    expect(() => {
+      const domainProps: DomainProps = {
+        version: EngineVersion.OPENSEARCH_2_5,
+        ebs: {
+          volumeSize: 30,
+          volumeType: EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3,
+          throughput: 1024,
+        },
+      };
+      new Domain(stack, `Domain${idx++}`, domainProps);
+    }).toThrow('throughput property takes a minimum of 125 and a maximum of 1000.');
+
+    expect(() => {
+      const domainProps: DomainProps = {
+        version: EngineVersion.OPENSEARCH_2_5,
+        ebs: {
+          volumeSize: 30,
+          volumeType: EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3,
+          throughput: 100,
+        },
+      };
+      new Domain(stack, `Domain${idx++}`, domainProps);
+    }).toThrow('throughput property takes a minimum of 125 and a maximum of 1000.');
+  });
+});
+
+each([
+  [IpAddressType.IPV4, 'ipv4'],
+  [IpAddressType.DUAL_STACK, 'dualstack'],
+]).test('ip address type', (type, expected) => {
+  new Domain(stack, 'Domain', {
+    version: EngineVersion.OPENSEARCH_2_5,
+    ipAddressType: type,
+  });
+
+  Template.fromStack(stack).hasResourceProperties('AWS::OpenSearchService::Domain', {
+    IPAddressType: expected,
   });
 });
 

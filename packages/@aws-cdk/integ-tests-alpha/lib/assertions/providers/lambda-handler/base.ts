@@ -1,8 +1,7 @@
 /* eslint-disable no-console */
 import * as https from 'https';
 import * as url from 'url';
-// eslint-disable-next-line import/no-extraneous-dependencies
-import * as AWS from 'aws-sdk';
+import { SFN, StartExecutionInput } from '@aws-sdk/client-sfn';
 
 interface HandlerResponse {
   readonly status: 'SUCCESS' | 'FAILED';
@@ -10,7 +9,6 @@ interface HandlerResponse {
   readonly data?: any;
 }
 
-// eslint-disable-next-line @typescript-eslint/ban-types
 export abstract class CustomResourceHandler<Request extends object, Response extends object> {
   public readonly physicalResourceId: string;
   private readonly timeout: NodeJS.Timeout;
@@ -36,7 +34,7 @@ export abstract class CustomResourceHandler<Request extends object, Response ext
   public async handle(): Promise<Response | undefined> {
     try {
       if ('stateMachineArn' in this.event.ResourceProperties) {
-        const req: AWS.StepFunctions.StartExecutionInput = {
+        const req: StartExecutionInput = {
           stateMachineArn: this.event.ResourceProperties.stateMachineArn,
           name: this.event.RequestId,
           input: JSON.stringify(this.event),
@@ -74,10 +72,10 @@ export abstract class CustomResourceHandler<Request extends object, Response ext
    * Start a step function state machine which will wait for the request
    * to be successful.
    */
-  private async startExecution(req: AWS.StepFunctions.StartExecutionInput): Promise<void> {
+  private async startExecution(req: StartExecutionInput): Promise<void> {
     try {
-      const sfn = new AWS.StepFunctions();
-      await sfn.startExecution(req).promise();
+      const sfn = new SFN({});
+      await sfn.startExecution(req);
     } finally {
       clearTimeout(this.timeout);
     }

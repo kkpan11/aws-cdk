@@ -1,15 +1,28 @@
 {
  "Resources": {
+  "DLQ581697C4": {
+   "Type": "AWS::SQS::Queue",
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete"
+  },
   "BusEA82B648": {
    "Type": "AWS::Events::EventBus",
    "Properties": {
+    "DeadLetterConfig": {
+     "Arn": {
+      "Fn::GetAtt": [
+       "DLQ581697C4",
+       "Arn"
+      ]
+     }
+    },
+    "Description": "myEventBus",
     "Name": "StackBusAA0A1E4B"
    }
   },
-  "BusPolicyCF00D793": {
+  "BuscdkStatement1D7D87B9D": {
    "Type": "AWS::Events::EventBusPolicy",
    "Properties": {
-    "StatementId": "123",
     "EventBusName": {
      "Ref": "BusEA82B648"
     },
@@ -21,7 +34,11 @@
        "Fn::Join": [
         "",
         [
-         "arn:aws:iam::",
+         "arn:",
+         {
+          "Ref": "AWS::Partition"
+         },
+         ":iam::",
          {
           "Ref": "AWS::AccountId"
          },
@@ -36,8 +53,47 @@
        "Arn"
       ]
      },
-     "Sid": "123"
-    }
+     "Sid": "cdk-Statement1"
+    },
+    "StatementId": "cdk-Statement1"
+   }
+  },
+  "BuscdkStatement2341A5B58": {
+   "Type": "AWS::Events::EventBusPolicy",
+   "Properties": {
+    "EventBusName": {
+     "Ref": "BusEA82B648"
+    },
+    "Statement": {
+     "Action": "events:PutRule",
+     "Effect": "Allow",
+     "Principal": {
+      "AWS": {
+       "Fn::Join": [
+        "",
+        [
+         "arn:",
+         {
+          "Ref": "AWS::Partition"
+         },
+         ":iam::",
+         {
+          "Ref": "AWS::AccountId"
+         },
+         ":root"
+        ]
+       ]
+      }
+     },
+     "Resource": {
+      "Fn::GetAtt": [
+       "BusEA82B648",
+       "Arn"
+      ]
+     },
+     "Sid": "cdk-Statement2"
+    },
+    "StatementId": "cdk-Statement2"
    }
   }
  },

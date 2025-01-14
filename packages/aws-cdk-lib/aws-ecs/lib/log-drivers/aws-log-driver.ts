@@ -1,7 +1,9 @@
 import { Construct } from 'constructs';
 import { LogDriver, LogDriverConfig } from './log-driver';
 import { removeEmpty } from './utils';
+import * as iam from '../../../aws-iam';
 import * as logs from '../../../aws-logs';
+import { Size, SizeRoundingBehavior } from '../../../core';
 import { ContainerDefinition } from '../container-definition';
 
 /**
@@ -18,7 +20,7 @@ export enum AwsLogDriverMode {
    * The non-blocking message delivery mode prevents applications from blocking due to logging back pressure.
    * Applications are likely to fail in unexpected ways when STDERR or STDOUT streams block.
    */
-  NON_BLOCKING = 'non-blocking'
+  NON_BLOCKING = 'non-blocking',
 }
 
 /**
@@ -82,6 +84,16 @@ export interface AwsLogDriverProps {
    * @default - AwsLogDriverMode.BLOCKING
    */
   readonly mode?: AwsLogDriverMode;
+
+  /**
+   * When AwsLogDriverMode.NON_BLOCKING is configured, this parameter
+   * controls the size of the non-blocking buffer used to temporarily
+   * store messages. This parameter is not valid with
+   * AwsLogDriverMode.BLOCKING.
+   *
+   * @default - 1 megabyte if driver mode is non-blocking, otherwise this property is not set
+   */
+  readonly maxBufferSize?: Size;
 }
 
 /**
@@ -106,6 +118,10 @@ export class AwsLogDriver extends LogDriver {
     if (props.logGroup && props.logRetention) {
       throw new Error('Cannot specify both `logGroup` and `logRetentionDays`.');
     }
+
+    if (props.maxBufferSize && props.mode !== AwsLogDriverMode.NON_BLOCKING) {
+      throw new Error('Cannot specify `maxBufferSize` when the driver mode is blocking');
+    }
   }
 
   /**
@@ -116,7 +132,20 @@ export class AwsLogDriver extends LogDriver {
       retention: this.props.logRetention || Infinity,
     });
 
-    this.logGroup.grantWrite(containerDefinition.taskDefinition.obtainExecutionRole());
+    const maxBufferSize = this.props.maxBufferSize
+      ? `${this.props.maxBufferSize.toBytes({ rounding: SizeRoundingBehavior.FLOOR })}b`
+      : undefined;
+
+    // These policies are required for the Execution role to use awslogs driver.
+    // In cases where `addToExecutionRolePolicy` is not implemented,
+    // for example, when used from aws-batch construct,
+    // use `obtainExecutionRole` instead of `addToExecutionRolePolicy` to grant policies to the Execution role.
+    // See https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_awslogs.html#enable_awslogs
+    const execRole = containerDefinition.taskDefinition.obtainExecutionRole();
+    execRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+      resources: [this.logGroup.logGroupArn],
+    }));
 
     return {
       logDriver: 'awslogs',
@@ -127,8 +156,8 @@ export class AwsLogDriver extends LogDriver {
         'awslogs-datetime-format': this.props.datetimeFormat,
         'awslogs-multiline-pattern': this.props.multilinePattern,
         'mode': this.props.mode,
+        'max-buffer-size': maxBufferSize,
       }),
     };
   }
-
 }

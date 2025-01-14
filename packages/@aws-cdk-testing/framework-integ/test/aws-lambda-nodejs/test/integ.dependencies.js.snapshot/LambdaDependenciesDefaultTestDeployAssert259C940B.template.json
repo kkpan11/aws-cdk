@@ -1,6 +1,6 @@
 {
  "Resources": {
-  "LambdaInvoke5050b1f640cc49956b59f2a71febe95c": {
+  "LambdaInvoke7d0602e4b9f40ae057f935d874b5f971": {
    "Type": "Custom::DeployAssert@SdkCallLambdainvoke",
    "Properties": {
     "ServiceToken": {
@@ -14,21 +14,30 @@
     "expected": "{\"$ObjectLike\":{\"StatusCode\":200,\"ExecutedVersion\":\"$LATEST\",\"Payload\":\"null\"}}",
     "parameters": {
      "FunctionName": {
-      "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies:ExportsOutputRefexternal068F12D12C72A375"
+      "Fn::Join": [
+       "",
+       [
+        "\"",
+        {
+         "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies-for-sdk-v3:ExportsOutputRefexternalsdkv3B69F9D996ACDF2E7"
+        },
+        "\""
+       ]
+      ]
      }
     },
     "flattenResponse": "false",
-    "salt": "1680011320828"
+    "salt": "1719863788262"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "LambdaInvoke5050b1f640cc49956b59f2a71febe95cInvokeB4FBC029": {
+  "LambdaInvoke7d0602e4b9f40ae057f935d874b5f971Invoke970717DE": {
    "Type": "AWS::Lambda::Permission",
    "Properties": {
     "Action": "lambda:InvokeFunction",
     "FunctionName": {
-     "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies:ExportsOutputRefexternal068F12D12C72A375"
+     "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies-for-sdk-v3:ExportsOutputRefexternalsdkv3B69F9D996ACDF2E7"
     },
     "Principal": {
      "Fn::GetAtt": [
@@ -97,7 +106,7 @@
              },
              ":function:",
              {
-              "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies:ExportsOutputRefexternal068F12D12C72A375"
+              "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies-for-sdk-v3:ExportsOutputRefexternalsdkv3B69F9D996ACDF2E7"
              }
             ]
            ]
@@ -137,7 +146,7 @@
              },
              ":function:",
              {
-              "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies-for-sdk-v3:ExportsOutputRefexternalsdkv3B69F9D996ACDF2E7"
+              "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies-for-sdk-v3-bundled:ExportsOutputRefbundlesdk386047BDE2F94E08"
              }
             ]
            ]
@@ -153,12 +162,20 @@
   "SingletonFunction1488541a7b23466481b69b4408076b81HandlerCD40AE9F": {
    "Type": "AWS::Lambda::Function",
    "Properties": {
-    "Runtime": "nodejs14.x",
+    "Runtime": {
+     "Fn::FindInMap": [
+      "LatestNodeRuntimeMap",
+      {
+       "Ref": "AWS::Region"
+      },
+      "value"
+     ]
+    },
     "Code": {
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "92ec9d050245fd270cf2b0df478b31f140ba820c3407e964246946bcea933a19.zip"
+     "S3Key": "3cef2cdbb46b3821e641ffb8b9af9731af5f7e4a9e857ab633dbcd9023de724d.zip"
     },
     "Timeout": 120,
     "Handler": "index.handler",
@@ -170,7 +187,7 @@
     }
    }
   },
-  "LambdaInvoke7d0602e4b9f40ae057f935d874b5f971": {
+  "LambdaInvokee35a5227846e334cb95a90bacfbfb877": {
    "Type": "Custom::DeployAssert@SdkCallLambdainvoke",
    "Properties": {
     "ServiceToken": {
@@ -184,21 +201,30 @@
     "expected": "{\"$ObjectLike\":{\"StatusCode\":200,\"ExecutedVersion\":\"$LATEST\",\"Payload\":\"null\"}}",
     "parameters": {
      "FunctionName": {
-      "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies-for-sdk-v3:ExportsOutputRefexternalsdkv3B69F9D996ACDF2E7"
+      "Fn::Join": [
+       "",
+       [
+        "\"",
+        {
+         "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies-for-sdk-v3-bundled:ExportsOutputRefbundlesdk386047BDE2F94E08"
+        },
+        "\""
+       ]
+      ]
      }
     },
     "flattenResponse": "false",
-    "salt": "1680011320828"
+    "salt": "1719863788263"
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
   },
-  "LambdaInvoke7d0602e4b9f40ae057f935d874b5f971Invoke970717DE": {
+  "LambdaInvokee35a5227846e334cb95a90bacfbfb877InvokeD00B178B": {
    "Type": "AWS::Lambda::Permission",
    "Properties": {
     "Action": "lambda:InvokeFunction",
     "FunctionName": {
-     "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies-for-sdk-v3:ExportsOutputRefexternalsdkv3B69F9D996ACDF2E7"
+     "Fn::ImportValue": "cdk-integ-lambda-nodejs-dependencies-for-sdk-v3-bundled:ExportsOutputRefbundlesdk386047BDE2F94E08"
     },
     "Principal": {
      "Fn::GetAtt": [
@@ -210,20 +236,129 @@
   }
  },
  "Outputs": {
-  "AssertionResultsLambdaInvoke5050b1f640cc49956b59f2a71febe95c": {
-   "Value": {
-    "Fn::GetAtt": [
-     "LambdaInvoke5050b1f640cc49956b59f2a71febe95c",
-     "assertion"
-    ]
-   }
-  },
   "AssertionResultsLambdaInvoke7d0602e4b9f40ae057f935d874b5f971": {
    "Value": {
     "Fn::GetAtt": [
      "LambdaInvoke7d0602e4b9f40ae057f935d874b5f971",
      "assertion"
     ]
+   }
+  },
+  "AssertionResultsLambdaInvokee35a5227846e334cb95a90bacfbfb877": {
+   "Value": {
+    "Fn::GetAtt": [
+     "LambdaInvokee35a5227846e334cb95a90bacfbfb877",
+     "assertion"
+    ]
+   }
+  }
+ },
+ "Mappings": {
+  "LatestNodeRuntimeMap": {
+   "af-south-1": {
+    "value": "nodejs20.x"
+   },
+   "ap-east-1": {
+    "value": "nodejs20.x"
+   },
+   "ap-northeast-1": {
+    "value": "nodejs20.x"
+   },
+   "ap-northeast-2": {
+    "value": "nodejs20.x"
+   },
+   "ap-northeast-3": {
+    "value": "nodejs20.x"
+   },
+   "ap-south-1": {
+    "value": "nodejs20.x"
+   },
+   "ap-south-2": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-1": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-2": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-3": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-4": {
+    "value": "nodejs20.x"
+   },
+   "ca-central-1": {
+    "value": "nodejs20.x"
+   },
+   "cn-north-1": {
+    "value": "nodejs18.x"
+   },
+   "cn-northwest-1": {
+    "value": "nodejs18.x"
+   },
+   "eu-central-1": {
+    "value": "nodejs20.x"
+   },
+   "eu-central-2": {
+    "value": "nodejs20.x"
+   },
+   "eu-north-1": {
+    "value": "nodejs20.x"
+   },
+   "eu-south-1": {
+    "value": "nodejs20.x"
+   },
+   "eu-south-2": {
+    "value": "nodejs20.x"
+   },
+   "eu-west-1": {
+    "value": "nodejs20.x"
+   },
+   "eu-west-2": {
+    "value": "nodejs20.x"
+   },
+   "eu-west-3": {
+    "value": "nodejs20.x"
+   },
+   "il-central-1": {
+    "value": "nodejs20.x"
+   },
+   "me-central-1": {
+    "value": "nodejs20.x"
+   },
+   "me-south-1": {
+    "value": "nodejs20.x"
+   },
+   "sa-east-1": {
+    "value": "nodejs20.x"
+   },
+   "us-east-1": {
+    "value": "nodejs20.x"
+   },
+   "us-east-2": {
+    "value": "nodejs20.x"
+   },
+   "us-gov-east-1": {
+    "value": "nodejs18.x"
+   },
+   "us-gov-west-1": {
+    "value": "nodejs18.x"
+   },
+   "us-iso-east-1": {
+    "value": "nodejs18.x"
+   },
+   "us-iso-west-1": {
+    "value": "nodejs18.x"
+   },
+   "us-isob-east-1": {
+    "value": "nodejs18.x"
+   },
+   "us-west-1": {
+    "value": "nodejs20.x"
+   },
+   "us-west-2": {
+    "value": "nodejs20.x"
    }
   }
  },

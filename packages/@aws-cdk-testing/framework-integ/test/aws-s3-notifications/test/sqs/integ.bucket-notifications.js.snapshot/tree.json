@@ -39,7 +39,7 @@
                 },
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.2.54"
+                  "version": "10.3.0"
                 }
               }
             },
@@ -268,7 +268,7 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.2.54"
+              "version": "10.3.0"
             }
           },
           "Bucket2": {
@@ -313,7 +313,8 @@
                               "Action": [
                                 "s3:DeleteObject*",
                                 "s3:GetBucket*",
-                                "s3:List*"
+                                "s3:List*",
+                                "s3:PutBucketPolicy"
                               ],
                               "Effect": "Allow",
                               "Principal": {
@@ -396,7 +397,7 @@
                 },
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.2.54"
+                  "version": "10.3.0"
                 }
               }
             },
@@ -405,9 +406,9 @@
               "version": "0.0.0"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "sqs-bucket-notifications/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "sqs-bucket-notifications/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -443,7 +444,7 @@
               }
             },
             "constructInfo": {
-              "fqn": "aws-cdk-lib.CustomResourceProvider",
+              "fqn": "aws-cdk-lib.CustomResourceProviderBase",
               "version": "0.0.0"
             }
           },
@@ -461,6 +462,7 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::KMS::Key",
                       "aws:cdk:cloudformation:props": {
+                        "description": "Created by sqs-bucket-notifications/EncryptedQueue",
                         "keyPolicy": {
                           "Statement": [
                             {
@@ -522,8 +524,7 @@
                             }
                           ],
                           "Version": "2012-10-17"
-                        },
-                        "description": "Created by sqs-bucket-notifications/EncryptedQueue"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -622,6 +623,141 @@
               "version": "0.0.0"
             }
           },
+          "Bucket3WithSkipDestinationValidation": {
+            "id": "Bucket3WithSkipDestinationValidation",
+            "path": "sqs-bucket-notifications/Bucket3WithSkipDestinationValidation",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "sqs-bucket-notifications/Bucket3WithSkipDestinationValidation/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::S3::Bucket",
+                  "aws:cdk:cloudformation:props": {}
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                  "version": "0.0.0"
+                }
+              },
+              "Notifications": {
+                "id": "Notifications",
+                "path": "sqs-bucket-notifications/Bucket3WithSkipDestinationValidation/Notifications",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "sqs-bucket-notifications/Bucket3WithSkipDestinationValidation/Notifications/Resource",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnResource",
+                      "version": "0.0.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "constructs.Construct",
+                  "version": "10.3.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_s3.Bucket",
+              "version": "0.0.0"
+            }
+          },
+          "MyQueueWithIncorrectS3Permissions": {
+            "id": "MyQueueWithIncorrectS3Permissions",
+            "path": "sqs-bucket-notifications/MyQueueWithIncorrectS3Permissions",
+            "children": {
+              "Resource": {
+                "id": "Resource",
+                "path": "sqs-bucket-notifications/MyQueueWithIncorrectS3Permissions/Resource",
+                "attributes": {
+                  "aws:cdk:cloudformation:type": "AWS::SQS::Queue",
+                  "aws:cdk:cloudformation:props": {}
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_sqs.CfnQueue",
+                  "version": "0.0.0"
+                }
+              },
+              "Policy": {
+                "id": "Policy",
+                "path": "sqs-bucket-notifications/MyQueueWithIncorrectS3Permissions/Policy",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "sqs-bucket-notifications/MyQueueWithIncorrectS3Permissions/Policy/Resource",
+                    "attributes": {
+                      "aws:cdk:cloudformation:type": "AWS::SQS::QueuePolicy",
+                      "aws:cdk:cloudformation:props": {
+                        "policyDocument": {
+                          "Statement": [
+                            {
+                              "Action": "sqs:SendMessage",
+                              "Effect": "Deny",
+                              "Principal": {
+                                "Service": "s3.amazonaws.com"
+                              },
+                              "Resource": {
+                                "Fn::GetAtt": [
+                                  "MyQueueWithIncorrectS3PermissionsBE3BD1C7",
+                                  "Arn"
+                                ]
+                              }
+                            },
+                            {
+                              "Action": [
+                                "sqs:GetQueueAttributes",
+                                "sqs:GetQueueUrl",
+                                "sqs:SendMessage"
+                              ],
+                              "Condition": {
+                                "ArnLike": {
+                                  "aws:SourceArn": {
+                                    "Fn::GetAtt": [
+                                      "Bucket3WithSkipDestinationValidation4A19337A",
+                                      "Arn"
+                                    ]
+                                  }
+                                }
+                              },
+                              "Effect": "Allow",
+                              "Principal": {
+                                "Service": "s3.amazonaws.com"
+                              },
+                              "Resource": {
+                                "Fn::GetAtt": [
+                                  "MyQueueWithIncorrectS3PermissionsBE3BD1C7",
+                                  "Arn"
+                                ]
+                              }
+                            }
+                          ],
+                          "Version": "2012-10-17"
+                        },
+                        "queues": [
+                          {
+                            "Ref": "MyQueueWithIncorrectS3PermissionsBE3BD1C7"
+                          }
+                        ]
+                      }
+                    },
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_sqs.CfnQueuePolicy",
+                      "version": "0.0.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_sqs.QueuePolicy",
+                  "version": "0.0.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "aws-cdk-lib.aws_sqs.Queue",
+              "version": "0.0.0"
+            }
+          },
           "Exports": {
             "id": "Exports",
             "path": "sqs-bucket-notifications/Exports",
@@ -645,7 +781,7 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.2.54"
+              "version": "10.3.0"
             }
           },
           "BootstrapVersion": {
@@ -683,7 +819,7 @@
                 "path": "SQSBucketNotificationsTest/DefaultTest/Default",
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.2.54"
+                  "version": "10.3.0"
                 }
               },
               "DeployAssert": {
@@ -703,7 +839,7 @@
                             "path": "SQSBucketNotificationsTest/DefaultTest/DeployAssert/AwsApiCallSQSpurgeQueue0080aee76c0c561f142ddb9a13ec7cc4/SdkProvider/AssertionsProvider",
                             "constructInfo": {
                               "fqn": "constructs.Construct",
-                              "version": "10.2.54"
+                              "version": "10.3.0"
                             }
                           }
                         },
@@ -767,7 +903,15 @@
                     },
                     "constructInfo": {
                       "fqn": "constructs.Construct",
-                      "version": "10.2.54"
+                      "version": "10.3.0"
+                    }
+                  },
+                  "LatestNodeRuntimeMap": {
+                    "id": "LatestNodeRuntimeMap",
+                    "path": "SQSBucketNotificationsTest/DefaultTest/DeployAssert/LatestNodeRuntimeMap",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnMapping",
+                      "version": "0.0.0"
                     }
                   },
                   "AwsApiCallS3putObjectfdcc2b330314993fae3423f6d19b433f": {
@@ -783,7 +927,7 @@
                             "path": "SQSBucketNotificationsTest/DefaultTest/DeployAssert/AwsApiCallS3putObjectfdcc2b330314993fae3423f6d19b433f/SdkProvider/AssertionsProvider",
                             "constructInfo": {
                               "fqn": "constructs.Construct",
-                              "version": "10.2.54"
+                              "version": "10.3.0"
                             }
                           }
                         },
@@ -829,7 +973,7 @@
                             "path": "SQSBucketNotificationsTest/DefaultTest/DeployAssert/AwsApiCallSQSreceiveMessage2339d0007bf8ec3f84ba0d037203c1f7/SdkProvider/AssertionsProvider",
                             "constructInfo": {
                               "fqn": "constructs.Construct",
-                              "version": "10.2.54"
+                              "version": "10.3.0"
                             }
                           }
                         },
@@ -909,7 +1053,7 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.2.54"
+          "version": "10.3.0"
         }
       }
     },

@@ -412,7 +412,7 @@ describe('pipeline', () => {
           'Environment': {
             'Type': 'LINUX_CONTAINER',
             'PrivilegedMode': false,
-            'Image': 'aws/codebuild/standard:1.0',
+            'Image': 'aws/codebuild/standard:7.0',
             'ComputeType': 'BUILD_GENERAL1_SMALL',
           },
         });
@@ -427,7 +427,7 @@ describe('pipeline', () => {
     const lambdaFun = new lambda.Function(stack, 'Function', {
       code: new lambda.InlineCode('bla'),
       handler: 'index.handler',
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
     });
 
     const pipeline = new codepipeline.Pipeline(stack, 'Pipeline');

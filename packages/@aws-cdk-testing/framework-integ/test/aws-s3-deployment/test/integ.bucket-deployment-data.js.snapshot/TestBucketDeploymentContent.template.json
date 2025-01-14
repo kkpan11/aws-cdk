@@ -20,7 +20,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "68b22621fff135f9e3f225bad7ff80fdf2f45c3d9910af601206a0d9b279933a.zip"
+     "S3Key": "3322b7049fb0ed2b7cbb644a2ada8d1116ff80c32dca89e6ada846b5de26f961.zip"
     },
     "Description": "/opt/awscli/aws"
    }
@@ -46,13 +46,17 @@
      },
      {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      }
     ],
     "SourceObjectKeys": [
      "d09271be89b6cb0398f793b40c1531fd9b076aa92ba80b5e436914b1808fe18d.zip",
      "0f14dedeaf4386031c978375cbda0f65d7b52b29452cabb8873eb8f0d0fa936b.zip",
      "27eff729291aea0a2b33592996b9a764c233dc3387bd9cfd58c6f064073f177f.zip",
-     "939a4ab8b51f1a1cccb59d97f04c318ad41c1d404e666c158ca2810894bc5f5f.zip"
+     "939a4ab8b51f1a1cccb59d97f04c318ad41c1d404e666c158ca2810894bc5f5f.zip",
+     "4050143e044258715dc77e0d45e38dfaaba94cba5339fe6f76f1c067fa45020d.zip"
     ],
     "SourceMarkers": [
      {},
@@ -76,6 +80,24 @@
         "WebsiteURL"
        ]
       }
+     },
+     {
+      "<<marker:0xbaba:0>>": {
+       "Fn::Select": [
+        2,
+        {
+         "Fn::Split": [
+          "/",
+          {
+           "Fn::GetAtt": [
+            "Bucket83908E77",
+            "WebsiteURL"
+           ]
+          }
+         ]
+        }
+       ]
+      }
      }
     ],
     "DestinationBucketName": {
@@ -83,7 +105,8 @@
     },
     "DestinationBucketKeyPrefix": "deploy/here/",
     "RetainOnDelete": false,
-    "Prune": true
+    "Prune": true,
+    "OutputObjectKeys": true
    },
    "UpdateReplacePolicy": "Delete",
    "DeletionPolicy": "Delete"
@@ -220,13 +243,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "9eb41a5505d37607ac419321497a4f8c21cf0ee1f9b4a6b29aa04301aea5c7fd.zip"
-    },
-    "Role": {
-     "Fn::GetAtt": [
-      "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRole89A01265",
-      "Arn"
-     ]
+     "S3Key": "c6358465bf49dfae556bb430bf9c81fa578c221b82c308e3707901b1dd654762.zip"
     },
     "Environment": {
      "Variables": {
@@ -239,7 +256,13 @@
       "Ref": "DeployMeHereAwsCliLayerDDC2FE7D"
      }
     ],
-    "Runtime": "python3.9",
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRole89A01265",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.11",
     "Timeout": 900
    },
    "DependsOn": [

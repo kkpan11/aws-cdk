@@ -168,7 +168,7 @@ export class CloudFormationInit {
     }
   }
 
-  private bind(scope: Construct, options: AttachInitOptions): { configData: any, authData: any, assetHash?: any } {
+  private bind(scope: Construct, options: AttachInitOptions): { configData: any; authData: any; assetHash?: any } {
     const nonEmptyConfigs = mapValues(this._configs, c => c.isEmpty() ? undefined : c);
 
     const configNameToBindResult = mapValues(nonEmptyConfigs, c => c._bind(scope, options));
@@ -303,14 +303,25 @@ function deepMerge(target?: Record<string, any>, src?: Record<string, any>) {
   if (src == null) { return target; }
 
   for (const [key, value] of Object.entries(src)) {
+    if (key === '__proto__' || key === 'constructor') {
+      continue;
+    }
+
     if (Array.isArray(value)) {
       if (target[key] && !Array.isArray(target[key])) {
         throw new Error(`Trying to merge array [${value}] into a non-array '${target[key]}'`);
       }
-      target[key] = Array.from(new Set([
-        ...target[key] ?? [],
-        ...value,
-      ]));
+      if (key === 'command') { // don't deduplicate command arguments
+        target[key] = new Array(
+          ...target[key] ?? [],
+          ...value,
+        );
+      } else {
+        target[key] = Array.from(new Set([
+          ...target[key] ?? [],
+          ...value,
+        ]));
+      }
       continue;
     }
     if (typeof value === 'object' && value) {

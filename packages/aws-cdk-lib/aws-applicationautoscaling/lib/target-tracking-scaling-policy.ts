@@ -255,6 +255,16 @@ export enum PredefinedMetric {
    */
   SAGEMAKER_VARIANT_INVOCATIONS_PER_INSTANCE = 'SageMakerVariantInvocationsPerInstance',
   /**
+   * SAGEMAKER_VARIANT_PROVISIONED_CONCURRENCY_UTILIZATION
+   * @see https://docs.aws.amazon.com/autoscaling/application/APIReference/API_PredefinedMetricSpecification.html
+   */
+  SAGEMAKER_VARIANT_PROVISIONED_CONCURRENCY_UTILIZATION = 'SageMakerVariantProvisionedConcurrencyUtilization',
+  /**
+   * SAGEMAKER_INFERENCE_COMPONENT_INVOCATIONS_PER_COPY
+   * @see https://docs.aws.amazon.com/autoscaling/application/APIReference/API_PredefinedMetricSpecification.html
+   */
+  SAGEMAKER_INFERENCE_COMPONENT_INVOCATIONS_PER_COPY = 'SageMakerInferenceComponentInvocationsPerCopy',
+  /**
    * ECS_SERVICE_AVERAGE_CPU_UTILIZATION
    * @see https://docs.aws.amazon.com/autoscaling/application/APIReference/API_PredefinedMetricSpecification.html
    */
@@ -275,18 +285,38 @@ export enum PredefinedMetric {
    */
   KAFKA_BROKER_STORAGE_UTILIZATION = 'KafkaBrokerStorageUtilization',
   /**
-   * ELASTIC_CACHE_PRIMARY_ENGINE_CPU_UTILIZATION
+   * ELASTICACHE_PRIMARY_ENGINE_CPU_UTILIZATION
    * @see https://docs.aws.amazon.com/autoscaling/application/APIReference/API_PredefinedMetricSpecification.html
    */
   ELASTICACHE_PRIMARY_ENGINE_CPU_UTILIZATION = 'ElastiCachePrimaryEngineCPUUtilization',
   /**
-   * ELASTIC_CACHE_REPLICA_ENGINE_CPU_UTILIZATION
+   * ELASTICACHE_REPLICA_ENGINE_CPU_UTILIZATION
    * @see https://docs.aws.amazon.com/autoscaling/application/APIReference/API_PredefinedMetricSpecification.html
    */
   ELASTICACHE_REPLICA_ENGINE_CPU_UTILIZATION = 'ElastiCacheReplicaEngineCPUUtilization',
   /**
-   * ELASTIC_CACHE_REPLICA_ENGINE_CPU_UTILIZATION
+   * ELASTICACHE_DATABASE_MEMORY_USAGE_COUNTED_FOR_EVICT_PERCENTAGE
    * @see https://docs.aws.amazon.com/autoscaling/application/APIReference/API_PredefinedMetricSpecification.html
    */
   ELASTICACHE_DATABASE_MEMORY_USAGE_COUNTED_FOR_EVICT_PERCENTAGE = 'ElastiCacheDatabaseMemoryUsageCountedForEvictPercentage',
+  /**
+   * ELASTICACHE_DATABASE_CAPACITY_USAGE_COUNTED_FOR_EVICT_PERCENTAGE
+   * @see https://docs.aws.amazon.com/autoscaling/application/APIReference/API_PredefinedMetricSpecification.html
+   */
+  ELASTICACHE_DATABASE_CAPACITY_USAGE_COUNTED_FOR_EVICT_PERCENTAGE = 'ElastiCacheDatabaseCapacityUsageCountedForEvictPercentage',
+  /**
+   * SAGEMAKER_INFERENCE_COMPONENT_CONCURRENT_REQUESTS_PER_COPY_HIGH_RESOLUTION
+   * @see https://docs.aws.amazon.com/autoscaling/application/APIReference/API_PredefinedMetricSpecification.html
+   */
+  SAGEMAKER_INFERENCE_COMPONENT_CONCURRENT_REQUESTS_PER_COPY_HIGH_RESOLUTION = 'SageMakerInferenceComponentConcurrentRequestsPerCopyHighResolution',
+  /**
+   * SAGEMAKER_VARIANT_CONCURRENT_REQUESTS_PER_MODEL_HIGH_RESOLUTION
+    * @see https://docs.aws.amazon.com/autoscaling/application/APIReference/API_PredefinedMetricSpecification.html
+    */
+  SAGEMAKER_VARIANT_CONCURRENT_REQUESTS_PER_MODEL_HIGH_RESOLUTION = 'SageMakerVariantConcurrentRequestsPerModelHighResolution',
+  /**
+   * WORKSPACES_AVERAGE_USER_SESSIONS_CAPACITY_UTILIZATION
+   * @see https://docs.aws.amazon.com/autoscaling/application/APIReference/API_PredefinedMetricSpecification.html
+   */
+  WORKSPACES_AVERAGE_USER_SESSIONS_CAPACITY_UTILIZATION = 'WorkSpacesAverageUserSessionsCapacityUtilization',
 }

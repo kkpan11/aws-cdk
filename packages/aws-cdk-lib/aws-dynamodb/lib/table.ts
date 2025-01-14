@@ -5,15 +5,21 @@ import * as perms from './perms';
 import { ReplicaProvider } from './replica-provider';
 import { EnableScalingProps, IScalableTableAttribute } from './scalable-attribute-api';
 import { ScalableTableAttribute } from './scalable-table-attribute';
+import {
+  Operation, OperationsMetricOptions, SystemErrorsForOperationsMetricOptions,
+  Attribute, BillingMode, ProjectionType, ITable, SecondaryIndexProps, TableClass,
+  LocalSecondaryIndexProps, TableEncryption, StreamViewType, WarmThroughput,
+} from './shared';
 import * as appscaling from '../../aws-applicationautoscaling';
 import * as cloudwatch from '../../aws-cloudwatch';
 import * as iam from '../../aws-iam';
 import * as kinesis from '../../aws-kinesis';
 import * as kms from '../../aws-kms';
+import * as s3 from '../../aws-s3';
 import {
-  ArnFormat,
-  Aws, CfnCondition, CfnCustomResource, CfnResource, CustomResource, Duration,
-  Fn, IResource, Lazy, Names, RemovalPolicy, Resource, Stack, Token,
+  ArnFormat, Resource,
+  Aws, CfnCondition, CfnCustomResource, CfnResource, Duration,
+  Fn, Lazy, Names, RemovalPolicy, Stack, Token, CustomResource,
 } from '../../core';
 
 const HASH_KEY_TYPE = 'HASH';
@@ -21,117 +27,6 @@ const RANGE_KEY_TYPE = 'RANGE';
 
 // https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-secondary-indexes
 const MAX_LOCAL_SECONDARY_INDEX_COUNT = 5;
-
-/**
- * Options for configuring a system errors metric that considers multiple operations.
- */
-export interface SystemErrorsForOperationsMetricOptions extends cloudwatch.MetricOptions {
-
-  /**
-   * The operations to apply the metric to.
-   *
-   * @default - All operations available by DynamoDB tables will be considered.
-   */
-  readonly operations?: Operation[];
-
-}
-
-/**
- * Options for configuring metrics that considers multiple operations.
- */
-export interface OperationsMetricOptions extends SystemErrorsForOperationsMetricOptions {}
-
-/**
- * Supported DynamoDB table operations.
- */
-export enum Operation {
-
-  /** GetItem */
-  GET_ITEM = 'GetItem',
-
-  /** BatchGetItem */
-  BATCH_GET_ITEM = 'BatchGetItem',
-
-  /** Scan */
-  SCAN = 'Scan',
-
-  /** Query */
-  QUERY = 'Query',
-
-  /** GetRecords */
-  GET_RECORDS = 'GetRecords',
-
-  /** PutItem */
-  PUT_ITEM = 'PutItem',
-
-  /** DeleteItem */
-  DELETE_ITEM = 'DeleteItem',
-
-  /** UpdateItem */
-  UPDATE_ITEM = 'UpdateItem',
-
-  /** BatchWriteItem */
-  BATCH_WRITE_ITEM = 'BatchWriteItem',
-
-  /** TransactWriteItems */
-  TRANSACT_WRITE_ITEMS = 'TransactWriteItems',
-
-  /** TransactGetItems */
-  TRANSACT_GET_ITEMS = 'TransactGetItems',
-
-  /** ExecuteTransaction */
-  EXECUTE_TRANSACTION = 'ExecuteTransaction',
-
-  /** BatchExecuteStatement */
-  BATCH_EXECUTE_STATEMENT = 'BatchExecuteStatement',
-
-  /** ExecuteStatement */
-  EXECUTE_STATEMENT = 'ExecuteStatement',
-
-}
-
-/**
- * Represents an attribute for describing the key schema for the table
- * and indexes.
- */
-export interface Attribute {
-  /**
-   * The name of an attribute.
-   */
-  readonly name: string;
-
-  /**
-   * The data type of an attribute.
-   */
-  readonly type: AttributeType;
-}
-
-/**
- * What kind of server-side encryption to apply to this table.
- */
-export enum TableEncryption {
-  /**
-   * Server-side KMS encryption with a master key owned by AWS.
-   */
-  DEFAULT = 'AWS_OWNED',
-
-  /**
-   * Server-side KMS encryption with a customer master key managed by customer.
-   * If `encryptionKey` is specified, this key will be used, otherwise, one will be defined.
-   *
-   * > **NOTE**: if `encryptionKey` is not specified and the `Table` construct creates
-   * > a KMS key for you, the key will be created with default permissions. If you are using
-   * > CDKv2, these permissions will be sufficient to enable the key for use with DynamoDB tables.
-   * > If you are using CDKv1, make sure the feature flag `@aws-cdk/aws-kms:defaultKeyPolicies`
-   * > is set to `true` in your `cdk.json`.
-   */
-  CUSTOMER_MANAGED = 'CUSTOMER_MANAGED',
-
-  /**
-   * Server-side KMS encryption with a master key managed by AWS.
-   */
-  AWS_MANAGED = 'AWS_MANAGED',
-}
 
 /**
  * Represents the table schema attributes.
@@ -148,6 +43,186 @@ export interface SchemaOptions {
    * @default no sort key
    */
   readonly sortKey?: Attribute;
+}
+
+/**
+ * Type of compression to use for imported data.
+ */
+export enum InputCompressionType {
+  /**
+   * GZIP compression.
+   */
+  GZIP = 'GZIP',
+
+  /**
+   * ZSTD compression.
+   */
+  ZSTD = 'ZSTD',
+
+  /**
+   * No compression.
+   */
+  NONE = 'NONE',
+}
+
+/**
+ * The options for imported source files in CSV format.
+ */
+export interface CsvOptions {
+  /**
+   * The delimiter used for separating items in the CSV file being imported.
+   *
+   * Valid delimiters are as follows:
+   * - comma (`,`)
+   * - tab (`\t`)
+   * - colon (`:`)
+   * - semicolon (`;`)
+   * - pipe (`|`)
+   * - space (` `)
+   *
+   * @default - use comma as a delimiter.
+   */
+  readonly delimiter?: string;
+
+  /**
+   * List of the headers used to specify a common header for all source CSV files being imported.
+   *
+   * **NOTE**: If this field is specified then the first line of each CSV file is treated as data instead of the header.
+   * If this field is not specified the the first line of each CSV file is treated as the header.
+   *
+   * @default - the first line of the CSV file is treated as the header
+   */
+  readonly headerList?: string[];
+}
+
+/**
+ * The format of the source data.
+ */
+export abstract class InputFormat {
+  /**
+   * DynamoDB JSON format.
+   */
+  public static dynamoDBJson(): InputFormat {
+    return new class extends InputFormat {
+      public _render(): Pick<CfnTable.ImportSourceSpecificationProperty, 'inputFormat' | 'inputFormatOptions'> {
+        return {
+          inputFormat: 'DYNAMODB_JSON',
+        };
+      }
+    }();
+  }
+
+  /**
+   * Amazon Ion format.
+   */
+  public static ion(): InputFormat {
+    return new class extends InputFormat {
+      public _render(): Pick<CfnTable.ImportSourceSpecificationProperty, 'inputFormat' | 'inputFormatOptions'> {
+        return {
+          inputFormat: 'ION',
+        };
+      }
+    }();
+  }
+
+  /**
+   * CSV format.
+   */
+  public static csv(options?: CsvOptions): InputFormat {
+    // We are using the .length property to check the length of the delimiter.
+    // Note that .length may not return the expected result for multi-codepoint characters like full-width characters or emojis,
+    // but such characters are not expected to be used as delimiters in this context.
+    if (options?.delimiter && (!this.validCsvDelimiters.includes(options.delimiter) || options.delimiter.length !== 1)) {
+      throw new Error([
+        'Delimiter must be a single character and one of the following:',
+        `${this.readableValidCsvDelimiters.join(', ')},`,
+        `got '${options.delimiter}'`,
+      ].join(' '));
+    }
+
+    return new class extends InputFormat {
+      public _render(): Pick<CfnTable.ImportSourceSpecificationProperty, 'inputFormat' | 'inputFormatOptions'> {
+        return {
+          inputFormat: 'CSV',
+          inputFormatOptions: {
+            csv: {
+              delimiter: options?.delimiter,
+              headerList: options?.headerList,
+            },
+          },
+        };
+      }
+    }();
+  }
+
+  /**
+   * Valid CSV delimiters.
+   *
+   * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-dynamodb-table-csv.html#cfn-dynamodb-table-csv-delimiter
+   */
+  private static validCsvDelimiters = [',', '\t', ':', ';', '|', ' '];
+
+  private static readableValidCsvDelimiters = ['comma (,)', 'tab (\\t)', 'colon (:)', 'semicolon (;)', 'pipe (|)', 'space ( )'];
+
+  /**
+   * Render the input format and options.
+   *
+   * @internal
+   */
+  public abstract _render(): Pick<CfnTable.ImportSourceSpecificationProperty, 'inputFormat' | 'inputFormatOptions'>;
+}
+
+/**
+ *  Properties for importing data from the S3.
+ */
+export interface ImportSourceSpecification {
+  /**
+   * The compression type of the imported data.
+   *
+   * @default InputCompressionType.NONE
+   */
+  readonly compressionType?: InputCompressionType;
+
+  /**
+   * The format of the imported data.
+   */
+  readonly inputFormat: InputFormat;
+
+  /**
+   * The S3 bucket that is being imported from.
+   */
+  readonly bucket: s3.IBucket;
+
+  /**
+   * The account number of the S3 bucket that is being imported from.
+   *
+   * @default - no value
+   */
+  readonly bucketOwner?: string;
+
+  /**
+   * The key prefix shared by all S3 Objects that are being imported.
+   *
+   * @default - no value
+   */
+  readonly keyPrefix?: string;
+}
+
+/**
+ * The precision associated with the DynamoDB write timestamps that will be replicated to Kinesis.
+ * The default setting for record timestamp precision is microseconds. You can change this setting at any time.
+ * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-dynamodb-table-kinesisstreamspecification.html#aws-properties-dynamodb-table-kinesisstreamspecification-properties
+ */
+export enum ApproximateCreationDateTimePrecision {
+  /**
+   * Millisecond precision
+   */
+  MILLISECOND = 'MILLISECOND',
+
+  /**
+   * Microsecond precision
+   */
+  MICROSECOND = 'MICROSECOND',
 }
 
 /**
@@ -176,11 +251,38 @@ export interface TableOptions extends SchemaOptions {
   readonly writeCapacity?: number;
 
   /**
+   * The maximum read request units for the table. Careful if you add Global Secondary Indexes, as
+     * those will share the table's maximum on-demand throughput.
+   *
+   * Can only be provided if billingMode is PAY_PER_REQUEST.
+   *
+   * @default - on-demand throughput is disabled
+   */
+  readonly maxReadRequestUnits?: number;
+  /**
+   * The write request units for the table. Careful if you add Global Secondary Indexes, as
+   * those will share the table's maximum on-demand throughput.
+   *
+   * Can only be provided if billingMode is PAY_PER_REQUEST.
+   *
+   * @default - on-demand throughput is disabled
+   */
+  readonly maxWriteRequestUnits?: number;
+
+  /**
    * Specify how you are charged for read and write throughput and how you manage capacity.
    *
    * @default PROVISIONED if `replicationRegions` is not specified, PAY_PER_REQUEST otherwise
    */
   readonly billingMode?: BillingMode;
+
+  /**
+   * Specify values to pre-warm you DynamoDB Table
+   * Warm Throughput feature is not available for Global Table replicas using the `Table` construct. To enable Warm Throughput, use the `TableV2` construct instead.
+   * @see http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-dynamodb-table.html#cfn-dynamodb-table-warmthroughput
+   * @default - warm throughput is not configured
+   */
+  readonly warmThroughput?: WarmThroughput;
 
   /**
    * Whether point-in-time recovery is enabled.
@@ -270,6 +372,7 @@ export interface TableOptions extends SchemaOptions {
   readonly replicationTimeout?: Duration;
 
   /**
+   * [WARNING: Use this flag with caution, misusing this flag may cause deleting existing replicas, refer to the detailed documentation for more information]
    * Indicates whether CloudFormation stack waits for replication to finish.
    * If set to false, the CloudFormation resource will mark the resource as
    * created and replication will be completed asynchronously. This property is
@@ -305,6 +408,20 @@ export interface TableOptions extends SchemaOptions {
    * @default false
    */
   readonly deletionProtection?: boolean;
+
+  /**
+   * The properties of data being imported from the S3 bucket source to the table.
+   *
+   * @default - no data import from the S3 bucket
+   */
+  readonly importSource?: ImportSourceSpecification;
+
+  /**
+   * Resource policy to assign to table.
+   * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-dynamodb-table.html#cfn-dynamodb-table-resourcepolicy
+   * @default - No resource policy statement
+   */
+  readonly resourcePolicy?: iam.PolicyDocument;
 }
 
 /**
@@ -323,28 +440,13 @@ export interface TableProps extends TableOptions {
    * @default - no Kinesis Data Stream
    */
   readonly kinesisStream?: kinesis.IStream;
-}
-
-/**
- * Properties for a secondary index
- */
-export interface SecondaryIndexProps {
-  /**
-   * The name of the secondary index.
-   */
-  readonly indexName: string;
 
   /**
-   * The set of attributes that are projected into the secondary index.
-   * @default ALL
+   * Kinesis Data Stream approximate creation timestamp precision
+   *
+   * @default ApproximateCreationDateTimePrecision.MICROSECOND
    */
-  readonly projectionType?: ProjectionType;
-
-  /**
-   * The non-key attributes that are projected into the secondary index.
-   * @default - No additional attributes
-   */
-  readonly nonKeyAttributes?: string[];
+  readonly kinesisPrecisionTimestamp?: ApproximateCreationDateTimePrecision;
 }
 
 /**
@@ -368,210 +470,38 @@ export interface GlobalSecondaryIndexProps extends SecondaryIndexProps, SchemaOp
    * @default 5
    */
   readonly writeCapacity?: number;
-}
-
-/**
- * Properties for a local secondary index
- */
-export interface LocalSecondaryIndexProps extends SecondaryIndexProps {
-  /**
-   * The attribute of a sort key for the local secondary index.
-   */
-  readonly sortKey: Attribute;
-}
-
-/**
- * An interface that represents a DynamoDB Table - either created with the CDK, or an existing one.
- */
-export interface ITable extends IResource {
-  /**
-   * Arn of the dynamodb table.
-   *
-   * @attribute
-   */
-  readonly tableArn: string;
 
   /**
-   * Table name of the dynamodb table.
+   * The maximum read request units for the global secondary index.
    *
-   * @attribute
+   * Can only be provided if table billingMode is PAY_PER_REQUEST.
+   *
+   * @default - on-demand throughput is disabled
    */
-  readonly tableName: string;
+  readonly maxReadRequestUnits?: number;
 
   /**
-   * ARN of the table's stream, if there is one.
+   * The maximum write request units for the global secondary index.
    *
-   * @attribute
+   * Can only be provided if table billingMode is PAY_PER_REQUEST.
+   *
+   * @default - on-demand throughput is disabled
    */
-  readonly tableStreamArn?: string;
+  readonly maxWriteRequestUnits?: number;
 
   /**
+   * The warm throughput configuration for the global secondary index.
    *
-   * Optional KMS encryption key associated with this table.
+   * @default - no warm throughput is configured
    */
-  readonly encryptionKey?: kms.IKey;
+  readonly warmThroughput?: WarmThroughput;
 
   /**
-   * Adds an IAM policy statement associated with this table to an IAM
-   * principal's policy.
+   * Whether CloudWatch contributor insights is enabled for the specified global secondary index.
    *
-   * If `encryptionKey` is present, appropriate grants to the key needs to be added
-   * separately using the `table.encryptionKey.grant*` methods.
-   *
-   * @param grantee The principal (no-op if undefined)
-   * @param actions The set of actions to allow (i.e. "dynamodb:PutItem", "dynamodb:GetItem", ...)
+   * @default false
    */
-  grant(grantee: iam.IGrantable, ...actions: string[]): iam.Grant;
-
-  /**
-   * Adds an IAM policy statement associated with this table's stream to an
-   * IAM principal's policy.
-   *
-   * If `encryptionKey` is present, appropriate grants to the key needs to be added
-   * separately using the `table.encryptionKey.grant*` methods.
-   *
-   * @param grantee The principal (no-op if undefined)
-   * @param actions The set of actions to allow (i.e. "dynamodb:DescribeStream", "dynamodb:GetRecords", ...)
-   */
-  grantStream(grantee: iam.IGrantable, ...actions: string[]): iam.Grant;
-
-  /**
-   * Permits an IAM principal all data read operations from this table:
-   * BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan.
-   *
-   * Appropriate grants will also be added to the customer-managed KMS key
-   * if one was configured.
-   *
-   * @param grantee The principal to grant access to
-   */
-  grantReadData(grantee: iam.IGrantable): iam.Grant;
-
-  /**
-   * Permits an IAM Principal to list streams attached to current dynamodb table.
-   *
-   * @param grantee The principal (no-op if undefined)
-   */
-  grantTableListStreams(grantee: iam.IGrantable): iam.Grant;
-
-  /**
-   * Permits an IAM principal all stream data read operations for this
-   * table's stream:
-   * DescribeStream, GetRecords, GetShardIterator, ListStreams.
-   *
-   * Appropriate grants will also be added to the customer-managed KMS key
-   * if one was configured.
-   *
-   * @param grantee The principal to grant access to
-   */
-  grantStreamRead(grantee: iam.IGrantable): iam.Grant;
-
-  /**
-   * Permits an IAM principal all data write operations to this table:
-   * BatchWriteItem, PutItem, UpdateItem, DeleteItem.
-   *
-   * Appropriate grants will also be added to the customer-managed KMS key
-   * if one was configured.
-   *
-   * @param grantee The principal to grant access to
-   */
-  grantWriteData(grantee: iam.IGrantable): iam.Grant;
-
-  /**
-   * Permits an IAM principal to all data read/write operations to this table.
-   * BatchGetItem, GetRecords, GetShardIterator, Query, GetItem, Scan,
-   * BatchWriteItem, PutItem, UpdateItem, DeleteItem
-   *
-   * Appropriate grants will also be added to the customer-managed KMS key
-   * if one was configured.
-   *
-   * @param grantee The principal to grant access to
-   */
-  grantReadWriteData(grantee: iam.IGrantable): iam.Grant;
-
-  /**
-   * Permits all DynamoDB operations ("dynamodb:*") to an IAM principal.
-   *
-   * Appropriate grants will also be added to the customer-managed KMS key
-   * if one was configured.
-   *
-   * @param grantee The principal to grant access to
-   */
-  grantFullAccess(grantee: iam.IGrantable): iam.Grant;
-
-  /**
-   * Metric for the number of Errors executing all Lambdas
-   */
-  metric(metricName: string, props?: cloudwatch.MetricOptions): cloudwatch.Metric;
-
-  /**
-   * Metric for the consumed read capacity units
-   *
-   * @param props properties of a metric
-   */
-  metricConsumedReadCapacityUnits(props?: cloudwatch.MetricOptions): cloudwatch.Metric;
-
-  /**
-   * Metric for the consumed write capacity units
-   *
-   * @param props properties of a metric
-   */
-  metricConsumedWriteCapacityUnits(props?: cloudwatch.MetricOptions): cloudwatch.Metric;
-
-  /**
-   * Metric for the system errors
-   *
-   * @param props properties of a metric
-   *
-   * @deprecated use `metricSystemErrorsForOperations`
-   */
-  metricSystemErrors(props?: cloudwatch.MetricOptions): cloudwatch.Metric;
-
-  /**
-   * Metric for the system errors this table
-   *
-   * @param props properties of a metric
-   *
-   */
-  metricSystemErrorsForOperations(props?: SystemErrorsForOperationsMetricOptions): cloudwatch.IMetric;
-
-  /**
-   * Metric for the user errors
-   *
-   * @param props properties of a metric
-   */
-  metricUserErrors(props?: cloudwatch.MetricOptions): cloudwatch.Metric;
-
-  /**
-   * Metric for the conditional check failed requests
-   *
-   * @param props properties of a metric
-   */
-  metricConditionalCheckFailedRequests(props?: cloudwatch.MetricOptions): cloudwatch.Metric;
-
-  /**
-   * Metric for throttled requests
-   *
-   * @param props properties of a metric
-   *
-   * @deprecated use `metricThrottledRequestsForOperations`
-   */
-  metricThrottledRequests(props?: cloudwatch.MetricOptions): cloudwatch.Metric;
-
-  /**
-   * Metric for throttled requests
-   *
-   * @param props properties of a metric
-   *
-   */
-  metricThrottledRequestsForOperations(props?: OperationsMetricOptions): cloudwatch.IMetric;
-
-  /**
-   * Metric for the successful request latency
-   *
-   * @param props properties of a metric
-   *
-   */
-  metricSuccessfulRequestLatency(props?: cloudwatch.MetricOptions): cloudwatch.Metric;
+  readonly contributorInsightsEnabled?: boolean;
 }
 
 /**
@@ -640,7 +570,7 @@ export interface TableAttributes {
   readonly grantIndexPermissions?: boolean;
 }
 
-abstract class TableBase extends Resource implements ITable {
+export abstract class TableBase extends Resource implements ITable, iam.IResourceWithPolicy {
   /**
    * @attribute
    */
@@ -661,6 +591,12 @@ abstract class TableBase extends Resource implements ITable {
    */
   public abstract readonly encryptionKey?: kms.IKey;
 
+  /**
+   * Resource policy to assign to table.
+   * @attribute
+   */
+  public abstract resourcePolicy?: iam.PolicyDocument;
+
   protected readonly regionalArns = new Array<string>();
 
   /**
@@ -674,7 +610,7 @@ abstract class TableBase extends Resource implements ITable {
    * @param actions The set of actions to allow (i.e. "dynamodb:PutItem", "dynamodb:GetItem", ...)
    */
   public grant(grantee: iam.IGrantable, ...actions: string[]): iam.Grant {
-    return iam.Grant.addToPrincipal({
+    return iam.Grant.addToPrincipalOrResource({
       grantee,
       actions,
       resourceArns: [
@@ -685,10 +621,9 @@ abstract class TableBase extends Resource implements ITable {
           produce: () => this.hasIndex ? `${arn}/index/*` : Aws.NO_VALUE,
         })),
       ],
-      scope: this,
+      resource: this,
     });
   }
-
   /**
    * Adds an IAM policy statement associated with this table's stream to an
    * IAM principal's policy.
@@ -800,6 +735,23 @@ abstract class TableBase extends Resource implements ITable {
   public grantFullAccess(grantee: iam.IGrantable) {
     const keyActions = perms.KEY_READ_ACTIONS.concat(perms.KEY_WRITE_ACTIONS);
     return this.combinedGrant(grantee, { keyActions, tableActions: ['dynamodb:*'] });
+  }
+
+  /**
+   * Adds a statement to the resource policy associated with this file system.
+   * A resource policy will be automatically created upon the first call to `addToResourcePolicy`.
+   *
+   * Note that this does not work with imported file systems.
+   *
+   * @param statement The policy statement to add
+   */
+  public addToResourcePolicy(statement: iam.PolicyStatement): iam.AddToResourcePolicyResult {
+    this.resourcePolicy = this.resourcePolicy ?? new iam.PolicyDocument({ statements: [] });
+    this.resourcePolicy.addStatements(statement);
+    return {
+      statementAdded: true,
+      policyDependable: this,
+    };
   }
 
   /**
@@ -1038,23 +990,25 @@ abstract class TableBase extends Resource implements ITable {
    */
   private combinedGrant(
     grantee: iam.IGrantable,
-    opts: { keyActions?: string[], tableActions?: string[], streamActions?: string[] },
+    opts: { keyActions?: string[]; tableActions?: string[]; streamActions?: string[] },
   ): iam.Grant {
     if (this.encryptionKey && opts.keyActions) {
       this.encryptionKey.grant(grantee, ...opts.keyActions);
     }
     if (opts.tableActions) {
-      const resources = [this.tableArn,
+      const resources = [
+        this.tableArn,
         Lazy.string({ produce: () => this.hasIndex ? `${this.tableArn}/index/*` : Aws.NO_VALUE }),
         ...this.regionalArns,
         ...this.regionalArns.map(arn => Lazy.string({
           produce: () => this.hasIndex ? `${arn}/index/*` : Aws.NO_VALUE,
-        }))];
-      const ret = iam.Grant.addToPrincipal({
+        })),
+      ];
+      const ret = iam.Grant.addToPrincipalOrResource({
         grantee,
         actions: opts.tableActions,
         resourceArns: resources,
-        scope: this,
+        resource: this,
       });
       return ret;
     }
@@ -1063,11 +1017,11 @@ abstract class TableBase extends Resource implements ITable {
         throw new Error(`DynamoDB Streams must be enabled on the table ${this.node.path}`);
       }
       const resources = [this.tableStreamArn];
-      const ret = iam.Grant.addToPrincipal({
+      const ret = iam.Grant.addToPrincipalOrResource({
         grantee,
         actions: opts.streamActions,
         resourceArns: resources,
-        scope: this,
+        resource: this,
       });
       return ret;
     }
@@ -1138,6 +1092,7 @@ export class Table extends TableBase {
       public readonly tableArn: string;
       public readonly tableStreamArn?: string;
       public readonly encryptionKey?: kms.IKey;
+      public resourcePolicy?: iam.PolicyDocument;
       protected readonly hasIndex = (attrs.grantIndexPermissions ?? false) ||
         (attrs.globalIndexes ?? []).length > 0 ||
         (attrs.localIndexes ?? []).length > 0;
@@ -1175,6 +1130,13 @@ export class Table extends TableBase {
   }
 
   public readonly encryptionKey?: kms.IKey;
+
+  /**
+   * Resource policy to assign to DynamoDB Table.
+   * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-dynamodb-table-resourcepolicy.html
+   * @default - No resource policy statements are added to the created table.
+   */
+  public resourcePolicy?: iam.PolicyDocument;
 
   /**
    * @attribute
@@ -1234,6 +1196,13 @@ export class Table extends TableBase {
     }
     this.validateProvisioning(props);
 
+    const kinesisStreamSpecification = props.kinesisStream
+      ? {
+        streamArn: props.kinesisStream.streamArn,
+        ...(props.kinesisPrecisionTimestamp && { approximateCreationDateTimePrecision: props.kinesisPrecisionTimestamp }),
+      }
+      : undefined;
+
     this.table = new CfnTable(this, 'Resource', {
       tableName: this.physicalName,
       keySchema: this.keySchema,
@@ -1246,13 +1215,25 @@ export class Table extends TableBase {
         readCapacityUnits: props.readCapacity || 5,
         writeCapacityUnits: props.writeCapacity || 5,
       },
+      ...(props.maxReadRequestUnits || props.maxWriteRequestUnits ?
+        {
+          onDemandThroughput: this.billingMode === BillingMode.PROVISIONED ? undefined : {
+            maxReadRequestUnits: props.maxReadRequestUnits || undefined,
+            maxWriteRequestUnits: props.maxWriteRequestUnits || undefined,
+          },
+        } : undefined),
       sseSpecification,
       streamSpecification,
       tableClass: props.tableClass,
       timeToLiveSpecification: props.timeToLiveAttribute ? { attributeName: props.timeToLiveAttribute, enabled: true } : undefined,
       contributorInsightsSpecification: props.contributorInsightsEnabled !== undefined ? { enabled: props.contributorInsightsEnabled } : undefined,
-      kinesisStreamSpecification: props.kinesisStream ? { streamArn: props.kinesisStream.streamArn } : undefined,
+      kinesisStreamSpecification: kinesisStreamSpecification,
       deletionProtectionEnabled: props.deletionProtection,
+      importSourceSpecification: this.renderImportSourceSpecification(props.importSource),
+      resourcePolicy: props.resourcePolicy
+        ? { policyDocument: props.resourcePolicy }
+        : undefined,
+      warmThroughput: props.warmThroughput?? undefined,
     });
     this.table.applyRemovalPolicy(props.removalPolicy);
 
@@ -1300,6 +1281,7 @@ export class Table extends TableBase {
     const gsiProjection = this.buildIndexProjection(props);
 
     this.globalSecondaryIndexes.push({
+      contributorInsightsSpecification: props.contributorInsightsEnabled !== undefined ? { enabled: props.contributorInsightsEnabled } : undefined,
       indexName: props.indexName,
       keySchema: gsiKeySchema,
       projection: gsiProjection,
@@ -1307,6 +1289,14 @@ export class Table extends TableBase {
         readCapacityUnits: props.readCapacity || 5,
         writeCapacityUnits: props.writeCapacity || 5,
       },
+      ...(props.maxReadRequestUnits || props.maxWriteRequestUnits ?
+        {
+          onDemandThroughput: this.billingMode === BillingMode.PROVISIONED ? undefined : {
+            maxReadRequestUnits: props.maxReadRequestUnits || undefined,
+            maxWriteRequestUnits: props.maxWriteRequestUnits || undefined,
+          },
+        } : undefined),
+      warmThroughput: props.warmThroughput ?? undefined,
     });
 
     this.secondaryIndexSchemas.set(props.indexName, {
@@ -1499,7 +1489,7 @@ export class Table extends TableBase {
    *
    * @param props read and write capacity properties
    */
-  private validateProvisioning(props: { readCapacity?: number, writeCapacity?: number }): void {
+  private validateProvisioning(props: { readCapacity?: number; writeCapacity?: number }): void {
     if (this.billingMode === BillingMode.PAY_PER_REQUEST) {
       if (props.readCapacity !== undefined || props.writeCapacity !== undefined) {
         throw new Error('you cannot provision read and write capacity for a table with PAY_PER_REQUEST billing mode');
@@ -1728,7 +1718,7 @@ export class Table extends TableBase {
    * Set up key properties and return the Table encryption property from the
    * user's configuration.
    */
-  private parseEncryption(props: TableProps): { sseSpecification: CfnTableProps['sseSpecification'], encryptionKey?: kms.IKey } {
+  private parseEncryption(props: TableProps): { sseSpecification: CfnTableProps['sseSpecification']; encryptionKey?: kms.IKey } {
     let encryptionType = props.encryption;
 
     if (encryptionType != null && props.serverSideEncryption != null) {
@@ -1748,7 +1738,7 @@ export class Table extends TableBase {
     }
 
     if (encryptionType !== TableEncryption.CUSTOMER_MANAGED && props.encryptionKey) {
-      throw new Error('`encryptionKey cannot be specified unless encryption is set to TableEncryption.CUSTOMER_MANAGED (it was set to ${encryptionType})`');
+      throw new Error(`encryptionKey cannot be specified unless encryption is set to TableEncryption.CUSTOMER_MANAGED (it was set to ${encryptionType})`);
     }
 
     if (encryptionType === TableEncryption.CUSTOMER_MANAGED && props.replicationRegions) {
@@ -1782,78 +1772,22 @@ export class Table extends TableBase {
         throw new Error(`Unexpected 'encryptionType': ${encryptionType}`);
     }
   }
-}
 
-/**
- * Data types for attributes within a table
- *
- * @see https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.NamingRulesDataTypes.html#HowItWorks.DataTypes
- */
-export enum AttributeType {
-  /** Up to 400KiB of binary data (which must be encoded as base64 before sending to DynamoDB) */
-  BINARY = 'B',
-  /** Numeric values made of up to 38 digits (positive, negative or zero) */
-  NUMBER = 'N',
-  /** Up to 400KiB of UTF-8 encoded text */
-  STRING = 'S',
-}
+  private renderImportSourceSpecification(
+    importSource?: ImportSourceSpecification,
+  ): CfnTable.ImportSourceSpecificationProperty | undefined {
+    if (!importSource) return undefined;
 
-/**
- * DynamoDB's Read/Write capacity modes.
- */
-export enum BillingMode {
-  /**
-   * Pay only for what you use. You don't configure Read/Write capacity units.
-   */
-  PAY_PER_REQUEST = 'PAY_PER_REQUEST',
-  /**
-   * Explicitly specified Read/Write capacity units.
-   */
-  PROVISIONED = 'PROVISIONED',
-}
-
-/**
- * The set of attributes that are projected into the index
- *
- * @see https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_Projection.html
- */
-export enum ProjectionType {
-  /** Only the index and primary keys are projected into the index. */
-  KEYS_ONLY = 'KEYS_ONLY',
-  /** Only the specified table attributes are projected into the index. The list of projected attributes is in `nonKeyAttributes`. */
-  INCLUDE = 'INCLUDE',
-  /** All of the table attributes are projected into the index. */
-  ALL = 'ALL'
-}
-
-/**
- * When an item in the table is modified, StreamViewType determines what information
- * is written to the stream for this table.
- *
- * @see https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_StreamSpecification.html
- */
-export enum StreamViewType {
-  /** The entire item, as it appears after it was modified, is written to the stream. */
-  NEW_IMAGE = 'NEW_IMAGE',
-  /** The entire item, as it appeared before it was modified, is written to the stream. */
-  OLD_IMAGE = 'OLD_IMAGE',
-  /** Both the new and the old item images of the item are written to the stream. */
-  NEW_AND_OLD_IMAGES = 'NEW_AND_OLD_IMAGES',
-  /** Only the key attributes of the modified item are written to the stream. */
-  KEYS_ONLY = 'KEYS_ONLY'
-}
-
-/**
- * DynamoDB's table class.
- *
- * @see https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.TableClasses.html
- */
-export enum TableClass {
-  /** Default table class for DynamoDB. */
-  STANDARD = 'STANDARD',
-
-  /** Table class for DynamoDB that reduces storage costs compared to existing DynamoDB Standard tables. */
-  STANDARD_INFREQUENT_ACCESS = 'STANDARD_INFREQUENT_ACCESS',
+    return {
+      ...importSource.inputFormat._render(),
+      inputCompressionType: importSource.compressionType,
+      s3BucketSource: {
+        s3Bucket: importSource.bucket.bucketName,
+        s3BucketOwner: importSource.bucketOwner,
+        s3KeyPrefix: importSource.keyPrefix,
+      },
+    };
+  }
 }
 
 /**

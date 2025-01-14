@@ -105,26 +105,34 @@ export interface EcsTaskProps extends TargetBaseProps {
   readonly assignPublicIp?: boolean;
 
   /**
-    * Specifies whether to propagate the tags from the task definition to the task. If no value is specified, the tags are not propagated.
-    *
-    * @default - Tags will not be propagated
-    */
-  readonly propagateTags?: ecs.PropagatedTagSource
+   * Specifies whether to propagate the tags from the task definition to the task. If no value is specified, the tags are not propagated.
+   *
+   * @default - Tags will not be propagated
+   */
+  readonly propagateTags?: ecs.PropagatedTagSource;
 
   /**
-     * The metadata that you apply to the task to help you categorize and organize them. Each tag consists of a key and an optional value, both of which you define.
-     *
-     * @default - No additional tags are applied to the task
-     */
-  readonly tags?: Tag[]
+   * The metadata that you apply to the task to help you categorize and organize them. Each tag consists of a key and an optional value, both of which you define.
+   *
+   * @default - No additional tags are applied to the task
+   */
+  readonly tags?: Tag[];
 
   /**
-    * Whether or not to enable the execute command functionality for the containers in this task.
-    * If true, this enables execute command functionality on all containers in the task.
-    *
-    * @default - false
-    */
+   * Whether or not to enable the execute command functionality for the containers in this task.
+   * If true, this enables execute command functionality on all containers in the task.
+   *
+   * @default - false
+   */
   readonly enableExecuteCommand?: boolean;
+
+  /**
+   * Specifies the launch type on which your task is running. The launch type that you specify here
+   * must match one of the launch type (compatibilities) of the target task.
+   *
+   * @default - 'EC2' if `isEc2Compatible` for the `taskDefinition` is true, otherwise 'FARGATE'
+   */
+  readonly launchType?: ecs.LaunchType;
 }
 
 /**
@@ -156,6 +164,7 @@ export class EcsTask implements events.IRuleTarget {
   private readonly propagateTags?: ecs.PropagatedTagSource;
   private readonly tags?: Tag[];
   private readonly enableExecuteCommand?: boolean;
+  private readonly launchType?: ecs.LaunchType;
 
   constructor(private readonly props: EcsTaskProps) {
     if (props.securityGroup !== undefined && props.securityGroups !== undefined) {
@@ -168,6 +177,7 @@ export class EcsTask implements events.IRuleTarget {
     this.platformVersion = props.platformVersion;
     this.assignPublicIp = props.assignPublicIp;
     this.enableExecuteCommand = props.enableExecuteCommand;
+    this.launchType = props.launchType;
 
     const propagateTagsValidValues = [ecs.PropagatedTagSource.TASK_DEFINITION, ecs.PropagatedTagSource.NONE];
     if (props.propagateTags && !propagateTagsValidValues.includes(props.propagateTags)) {
@@ -185,7 +195,7 @@ export class EcsTask implements events.IRuleTarget {
     // Security groups are only configurable with the "awsvpc" network mode.
     if (this.taskDefinition.networkMode !== ecs.NetworkMode.AWS_VPC) {
       if (props.securityGroup !== undefined || props.securityGroups !== undefined) {
-        cdk.Annotations.of(this.taskDefinition).addWarning('security groups are ignored when network mode is not awsvpc');
+        cdk.Annotations.of(this.taskDefinition).addWarningV2('@aws-cdk/aws-events-targets:ecsTaskSecurityGroupIgnored', 'security groups are ignored when network mode is not awsvpc');
       }
       return;
     }
@@ -229,7 +239,8 @@ export class EcsTask implements events.IRuleTarget {
     }
 
     const assignPublicIp = (this.assignPublicIp ?? subnetSelection.subnetType === ec2.SubnetType.PUBLIC) ? 'ENABLED' : 'DISABLED';
-    const launchType = this.taskDefinition.isEc2Compatible ? 'EC2' : 'FARGATE';
+    const launchType = this.launchType ?? (this.taskDefinition.isEc2Compatible ? 'EC2' : 'FARGATE');
+
     if (assignPublicIp === 'ENABLED' && launchType !== 'FARGATE') {
       throw new Error('assignPublicIp is only supported for FARGATE tasks');
     };
@@ -266,13 +277,27 @@ export class EcsTask implements events.IRuleTarget {
   }
 
   private createEventRolePolicyStatements(): iam.PolicyStatement[] {
-    const policyStatements = [new iam.PolicyStatement({
-      actions: ['ecs:RunTask'],
-      resources: [this.taskDefinition.taskDefinitionArn],
-      conditions: {
-        ArnEquals: { 'ecs:cluster': this.cluster.clusterArn },
-      },
-    })];
+    // check if there is a taskdefinition revision (arn will end with : followed by digits) included in the arn already
+    let needsRevisionWildcard = false;
+    if (!cdk.Token.isUnresolved(this.taskDefinition.taskDefinitionArn)) {
+      const revisionAtEndPattern = /:[0-9]+$/;
+      const hasRevision = revisionAtEndPattern.test(this.taskDefinition.taskDefinitionArn);
+      needsRevisionWildcard = !hasRevision;
+    }
+
+    const policyStatements = [
+      new iam.PolicyStatement({
+        actions: ['ecs:RunTask'],
+        resources: [`${this.taskDefinition.taskDefinitionArn}${needsRevisionWildcard ? ':*' : ''}`],
+        conditions: {
+          ArnEquals: { 'ecs:cluster': this.cluster.clusterArn },
+        },
+      }),
+      new iam.PolicyStatement({
+        actions: ['ecs:TagResource'],
+        resources: [`arn:${this.cluster.stack.partition}:ecs:${this.cluster.env.region}:*:task/${this.cluster.clusterName}/*`],
+      }),
+    ];
 
     // If it so happens that a Task Execution Role was created for the TaskDefinition,
     // then the EventBridge Role must have permissions to pass it (otherwise it doesn't).

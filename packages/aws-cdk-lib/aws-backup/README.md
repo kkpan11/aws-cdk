@@ -39,7 +39,7 @@ const myDatabaseCluster = new rds.DatabaseCluster(this, 'DatabaseCluster', {
 });
 const myServerlessCluster = new rds.ServerlessCluster(this, 'ServerlessCluster', {
   engine: rds.DatabaseClusterEngine.AURORA_POSTGRESQL,
-  parameterGroup: rds.ParameterGroup.fromParameterGroupName(this, 'ParameterGroup', 'default.aurora-postgresql10'),
+  parameterGroup: rds.ParameterGroup.fromParameterGroupName(this, 'ParameterGroup', 'default.aurora-postgresql11'),
   vpc,
 });
 const myCoolConstruct = new Construct(this, 'MyCoolConstruct');
@@ -58,6 +58,28 @@ plan.addSelection('Selection', {
 
 If not specified, a new IAM role with a managed policy for backup will be
 created for the selection. The `BackupSelection` implements `IGrantable`.
+
+To disable the plan from assigning the default `AWSBackupServiceRolePolicyForBackup` backup policy use the `disableDefaultBackupPolicy` property.
+
+This is useful if you want to avoid granting unnecessary permissions to the role.
+
+```ts
+declare const plan: backup.BackupPlan;
+
+const role = new iam.Role(this, 'BackupRole', {
+  assumedBy: new iam.ServicePrincipal('backup.amazonaws.com'),
+});
+// Assign S3-specific backup policy
+role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AWSBackupServiceRolePolicyForS3Backup'));
+
+plan.addSelection('Selection', {
+  resources: [
+    backup.BackupResource.fromTag('stage', 'prod'),
+  ],
+  role,
+  disableDefaultBackupPolicy: true,
+});
+```
 
 To add rules to a plan, use `addRule()`:
 

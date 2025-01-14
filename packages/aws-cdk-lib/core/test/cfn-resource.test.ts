@@ -49,6 +49,7 @@ describe('cfn resource', () => {
 
   describe('snapshot removal policy', () => {
     const supportedResources = [
+      'AWS::DocDB::DBCluster',
       'AWS::EC2::Volume',
       'AWS::ElastiCache::CacheCluster',
       'AWS::ElastiCache::ReplicationGroup',
@@ -119,7 +120,7 @@ describe('cfn resource', () => {
       expect(getWarnings(app.synth())).toEqual([
         {
           path: '/Default/Resource',
-          message: 'AWS::Lambda::Function does not support snapshot removal policy. This policy will be ignored.',
+          message: 'AWS::Lambda::Function does not support snapshot removal policy. This policy will be ignored. [ack: @aws-cdk/core:AWS::Lambda::FunctionSnapshotRemovalPolicyIgnored]',
         },
       ]);
     });
@@ -133,7 +134,7 @@ describe('cfn resource', () => {
       });
 
       // THEN
-      expect(() => resource.applyRemovalPolicy(core.RemovalPolicy.SNAPSHOT)).toThrowError('AWS::Lambda::Function does not support snapshot removal policy');
+      expect(() => resource.applyRemovalPolicy(core.RemovalPolicy.SNAPSHOT)).toThrow('AWS::Lambda::Function does not support snapshot removal policy');
     });
   });
 
@@ -411,5 +412,29 @@ describe('cfn resource', () => {
     } finally {
       delete process.env.CDK_DEBUG;
     }
+  });
+
+  test('isCfnResource returns true with a CfnResource', () => {
+    const app = new core.App();
+    const stack = new core.Stack(app, 'Stack');
+    const res = new core.CfnResource(stack, 'SomeCfnResource', {
+      type: 'Some::Resource',
+    });
+
+    // THEN
+    expect(core.CfnResource.isCfnResource(res)).toBe(true);
+  });
+
+  test('isCfnResource returns false with a construct', () => {
+    const app = new core.App();
+    const stack = new core.Stack(app, 'Stack');
+
+    // THEN
+    expect(core.CfnResource.isCfnResource(stack)).toBe(false);
+  });
+
+  test('isCfnResource returns false with undefined', () => {
+    // THEN
+    expect(core.CfnResource.isCfnResource(undefined)).toBe(false);
   });
 });

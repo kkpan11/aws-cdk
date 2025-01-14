@@ -3,7 +3,12 @@ import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 
-const app = new cdk.App();
+const app = new cdk.App({
+  postCliContext: {
+    '@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature': false,
+    '@aws-cdk/aws-ecs:disableEcsImdsBlocking': false,
+  },
+});
 const stack = new cdk.Stack(app, 'aws-ecs-integ');
 
 const vpc = new ec2.Vpc(stack, 'Vpc', { maxAzs: 2, restrictDefaultSecurityGroup: false });
@@ -20,6 +25,9 @@ const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef', {
 const container = taskDefinition.addContainer('web', {
   image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
   memoryLimitMiB: 256,
+  environment: {
+    SOME_VARIABLE: 'value',
+  },
 });
 
 container.addPortMappings({

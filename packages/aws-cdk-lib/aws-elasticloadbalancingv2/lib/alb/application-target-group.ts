@@ -60,7 +60,7 @@ export interface ApplicationTargetGroupProps extends BaseTargetGroupProps {
    * After this period, the cookie is considered stale. The minimum value is
    * 1 second and the maximum value is 7 days (604800 seconds).
    *
-   * @default Duration.days(1)
+   * @default - Stickiness is disabled
    */
   readonly stickinessCookieDuration?: Duration;
 
@@ -95,6 +95,17 @@ export interface ApplicationTargetGroupProps extends BaseTargetGroupProps {
    * @default - No targets.
    */
   readonly targets?: IApplicationLoadBalancerTarget[];
+
+  /**
+   * Indicates whether anomaly mitigation is enabled.
+   *
+   * Only available when `loadBalancingAlgorithmType` is `TargetGroupLoadBalancingAlgorithmType.WEIGHTED_RANDOM`
+   *
+   * @default false
+   *
+   * @see https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-target-groups.html#automatic-target-weights
+   */
+  readonly enableAnomalyMitigation?: boolean;
 }
 
 /**
@@ -264,7 +275,7 @@ class ApplicationTargetGroupMetrics implements IApplicationTargetGroupMetrics {
   }
 
   private cannedMetric(
-    fn: (dims: { LoadBalancer: string, TargetGroup: string }) => cloudwatch.MetricProps,
+    fn: (dims: { LoadBalancer: string; TargetGroup: string }) => cloudwatch.MetricProps,
     props?: cloudwatch.MetricOptions): cloudwatch.Metric {
     return new cloudwatch.Metric({
       ...fn({
@@ -329,11 +340,19 @@ export class ApplicationTargetGroup extends TargetGroupBase implements IApplicat
     this.listeners = [];
 
     if (props) {
+      const isWeightedRandomAlgorithm = !Token.isUnresolved(props.loadBalancingAlgorithmType) &&
+        (props.loadBalancingAlgorithmType === TargetGroupLoadBalancingAlgorithmType.WEIGHTED_RANDOM);
+
       if (props.slowStart !== undefined) {
-        if (props.slowStart.toSeconds() < 30 || props.slowStart.toSeconds() > 900) {
-          throw new Error('Slow start duration value must be between 30 and 900 seconds.');
+        // 0 is allowed and disables slow start
+        if ((props.slowStart.toSeconds() < 30 && props.slowStart.toSeconds() !== 0) || props.slowStart.toSeconds() > 900) {
+          throw new Error('Slow start duration value must be between 30 and 900 seconds, or 0 to disable slow start.');
         }
         this.setAttribute('slow_start.duration_seconds', props.slowStart.toSeconds().toString());
+
+        if (isWeightedRandomAlgorithm) {
+          throw new Error('The weighted random routing algorithm can not be used with slow start mode.');
+        }
       }
 
       if (props.stickinessCookieDuration) {
@@ -346,6 +365,13 @@ export class ApplicationTargetGroup extends TargetGroupBase implements IApplicat
         this.setAttribute('load_balancing.algorithm.type', props.loadBalancingAlgorithmType);
       }
       this.addTarget(...(props.targets || []));
+
+      if (props.enableAnomalyMitigation !== undefined) {
+        if (props.enableAnomalyMitigation && !isWeightedRandomAlgorithm) {
+          throw new Error('Anomaly mitigation is only available when `loadBalancingAlgorithmType` is `TargetGroupLoadBalancingAlgorithmType.WEIGHTED_RANDOM`.');
+        }
+        this.setAttribute('load_balancing.algorithm.anomaly_mitigation', props.enableAnomalyMitigation ? 'on' : 'off');
+      }
     }
   }
 
@@ -643,11 +669,11 @@ class ImportedApplicationTargetGroup extends ImportedTargetGroupBase implements 
 
   public registerListener(_listener: IApplicationListener, _associatingConstruct?: IConstruct) {
     // Nothing to do, we know nothing of our members
-    Annotations.of(this).addWarning('Cannot register listener on imported target group -- security groups might need to be updated manually');
+    Annotations.of(this).addWarningV2('@aws-cdk/aws-elbv2:albTargetGroupCannotRegisterListener', 'Cannot register listener on imported target group -- security groups might need to be updated manually');
   }
 
   public registerConnectable(_connectable: ec2.IConnectable, _portRange?: ec2.Port | undefined): void {
-    Annotations.of(this).addWarning('Cannot register connectable on imported target group -- security groups might need to be updated manually');
+    Annotations.of(this).addWarningV2('@aws-cdk/aws-elbv2:albTargetGroupCannotRegisterConnectable', 'Cannot register connectable on imported target group -- security groups might need to be updated manually');
   }
 
   public addTarget(...targets: IApplicationLoadBalancerTarget[]) {

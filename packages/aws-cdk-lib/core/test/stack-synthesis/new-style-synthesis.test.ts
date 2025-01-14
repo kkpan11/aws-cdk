@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as cxschema from '../../../cloud-assembly-schema';
 import { ArtifactType } from '../../../cloud-assembly-schema';
 import * as cxapi from '../../../cx-api';
-import { App, Aws, CfnResource, ContextProvider, DefaultStackSynthesizer, FileAssetPackaging, Stack, NestedStack } from '../../lib';
+import { App, Aws, CfnResource, ContextProvider, DefaultStackSynthesizer, FileAssetPackaging, Stack, NestedStack, DockerImageAssetLocation, DockerImageAssetSource, FileAssetLocation, FileAssetSource, SynthesizeStackArtifactOptions } from '../../lib';
 import { ISynthesisSession } from '../../lib/stack-synthesizers/types';
 import { evaluateCFN } from '../evaluate-cfn';
 
@@ -105,6 +105,66 @@ describe('new style synthesis', () => {
 
   });
 
+  test('can set role additional options tags on default stack synthesizer', () => {
+    // GIVEN
+    stack = new Stack(app, 'SessionTagsStack', {
+      synthesizer: new DefaultStackSynthesizer({
+        deployRoleAdditionalOptions: {
+          Tags: [{ Key: 'Department', Value: 'Engineering-DeployRoleTag' }],
+        },
+        fileAssetPublishingRoleAdditionalOptions: {
+          Tags: [{ Key: 'Department', Value: 'Engineering-FileAssetTag' }],
+        },
+        imageAssetPublishingRoleAdditionalOptions: {
+          Tags: [{ Key: 'Department', Value: 'Engineering-ImageAssetTag' }],
+        },
+        lookupRoleAdditionalOptions: {
+          Tags: [{ Key: 'Department', Value: 'Engineering-LookupRoleTag' }],
+        },
+      }),
+      env: {
+        account: '111111111111', region: 'us-east-1',
+      },
+    });
+
+    stack.synthesizer.addFileAsset({
+      fileName: __filename,
+      packaging: FileAssetPackaging.FILE,
+      sourceHash: 'fileHash',
+    });
+
+    stack.synthesizer.addDockerImageAsset({
+      directoryName: '.',
+      sourceHash: 'dockerHash',
+    });
+
+    ContextProvider.getValue(stack, {
+      provider: cxschema.ContextProvider.VPC_PROVIDER,
+      props: {},
+      dummyValue: undefined,
+    }).value;
+
+    // THEN
+    const asm = app.synth();
+    const manifest = asm.getStackByName('SessionTagsStack').manifest;
+    // Validates that the deploy and lookup role session tags were set in the Manifest:
+    expect((manifest.properties as cxschema.AwsCloudFormationStackProperties).assumeRoleAdditionalOptions?.Tags).toEqual([{ Key: 'Department', Value: 'Engineering-DeployRoleTag' }]);
+    expect((manifest.properties as cxschema.AwsCloudFormationStackProperties).lookupRole?.assumeRoleAdditionalOptions?.Tags).toEqual([{ Key: 'Department', Value: 'Engineering-LookupRoleTag' }]);
+
+    const assetManifest = getAssetManifest(asm);
+    const assetManifestJSON = readAssetManifest(assetManifest);
+
+    // Validates that the image and file asset session tags were set in the asset manifest:
+    expect(assetManifestJSON.dockerImages?.dockerHash.destinations['111111111111-us-east-1'].assumeRoleAdditionalOptions?.Tags).toEqual([{ Key: 'Department', Value: 'Engineering-ImageAssetTag' }]);
+    expect(assetManifestJSON.files?.fileHash.destinations['111111111111-us-east-1'].assumeRoleAdditionalOptions?.Tags).toEqual([{ Key: 'Department', Value: 'Engineering-FileAssetTag' }]);
+
+    // assert that lookup role options are added to the missing lookup context
+    expect(asm.manifest.missing![0].props.assumeRoleAdditionalOptions).toEqual({
+      Tags: [{ Key: 'Department', Value: 'Engineering-LookupRoleTag' }],
+    });
+
+  });
+
   test('customize version parameter', () => {
     // GIVEN
     const myapp = new App();
@@ -188,6 +248,29 @@ describe('new style synthesis', () => {
 
   });
 
+  test('generates missing context with the lookup role external id as one of the missing context properties', () => {
+    // GIVEN
+    stack = new Stack(app, 'Stack2', {
+      synthesizer: new DefaultStackSynthesizer({
+        generateBootstrapVersionRule: false,
+        lookupRoleExternalId: 'External',
+      }),
+      env: {
+        account: '111111111111', region: 'us-east-1',
+      },
+    });
+    ContextProvider.getValue(stack, {
+      provider: cxschema.ContextProvider.VPC_PROVIDER,
+      props: {},
+      dummyValue: undefined,
+    }).value;
+
+    // THEN
+    const assembly = app.synth();
+    expect(assembly.manifest.missing![0].props.lookupRoleExternalId).toEqual('External');
+
+  });
+
   test('nested Stack uses the lookup role ARN of the parent stack', () => {
     // GIVEN
     const myapp = new App();
@@ -208,6 +291,7 @@ describe('new style synthesis', () => {
 
   test('add file asset', () => {
     // WHEN
+    const ext = __filename.match(/\.([tj]s)$/)?.[1];
     const location = stack.synthesizer.addFileAsset({
       fileName: __filename,
       packaging: FileAssetPackaging.FILE,
@@ -216,7 +300,7 @@ describe('new style synthesis', () => {
 
     // THEN - we have a fixed asset location with region placeholders
     expect(evalCFN(location.bucketName)).toEqual('cdk-hnb659fds-assets-the_account-the_region');
-    expect(evalCFN(location.s3Url)).toEqual('https://s3.the_region.domain.aws/cdk-hnb659fds-assets-the_account-the_region/abcdef.js');
+    expect(evalCFN(location.s3Url)).toEqual(`https://s3.the_region.domain.aws/cdk-hnb659fds-assets-the_account-the_region/abcdef.${ext}`);
 
     // THEN - object key contains source hash somewhere
     expect(location.objectKey.indexOf('abcdef')).toBeGreaterThan(-1);
@@ -245,7 +329,7 @@ describe('new style synthesis', () => {
           ABC: '123',
         },
       });
-    }).toThrowError(/Exactly one of 'directoryName' or 'executable' is required/);
+    }).toThrow(/Exactly one of 'directoryName' or 'executable' is required/);
 
     expect(() => {
       stack.synthesizer.addDockerImageAsset({
@@ -254,7 +338,7 @@ describe('new style synthesis', () => {
           DEF: '456',
         },
       });
-    }).toThrowError(/Exactly one of 'directoryName' or 'executable' is required/);
+    }).toThrow(/Exactly one of 'directoryName' or 'executable' is required/);
   });
 
   test('synthesis', () => {
@@ -314,6 +398,7 @@ describe('new style synthesis', () => {
       }),
     });
 
+    const ext = __filename.match(/\.([tj]s)$/)?.[1];
     mystack.synthesizer.addFileAsset({
       fileName: __filename,
       packaging: FileAssetPackaging.FILE,
@@ -331,7 +416,7 @@ describe('new style synthesis', () => {
 
     expect(manifest.files?.['file-asset-hash']?.destinations?.['current_account-current_region']).toEqual({
       bucketName: 'file-asset-bucket',
-      objectKey: 'file-asset-hash.js',
+      objectKey: `file-asset-hash.${ext}`,
       assumeRoleArn: 'file:role:arn',
       assumeRoleExternalId: 'file-external-id',
     });
@@ -396,7 +481,7 @@ describe('new style synthesis', () => {
     // THEN
     expect(manifest.files?.['file-asset-hash-with-prefix']?.destinations?.['current_account-current_region']).toEqual({
       bucketName: 'file-asset-bucket',
-      objectKey: '000000000000/file-asset-hash-with-prefix.js',
+      objectKey: '000000000000/file-asset-hash-with-prefix.ts',
       assumeRoleArn: 'file:role:arn',
       assumeRoleExternalId: 'file-external-id',
     });

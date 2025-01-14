@@ -10,7 +10,7 @@ export interface BackupPlanRuleProps {
    * The duration after a backup job is successfully started before it must be
    * completed or it is canceled by AWS Backup.
    *
-   * @default - 8 hours
+   * @default - 7 days
    */
   readonly completionWindow?: Duration;
 
@@ -200,7 +200,7 @@ export class BackupPlanRule {
   /**
    * Properties of BackupPlanRule
    */
-  public readonly props: BackupPlanRuleProps
+  public readonly props: BackupPlanRuleProps;
 
   /** @param props Rule properties */
   constructor(props: BackupPlanRuleProps) {

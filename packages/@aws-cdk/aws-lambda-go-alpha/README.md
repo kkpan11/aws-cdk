@@ -29,7 +29,7 @@ Define a `GoFunction`:
 
 ```ts
 new go.GoFunction(this, 'handler', {
-  entry: 'app/cmd/api',
+  entry: 'lambda-app/cmd/api',
 });
 ```
 
@@ -37,7 +37,7 @@ By default, if `entry` points to a directory, then the construct will assume the
 Let's look at an example Go project:
 
 ```bash
-lamda-app
+lambda-app
 ├── cmd
 │   └── api
 │       └── main.go
@@ -99,7 +99,7 @@ generally fall into two scenarios:
    If you are not vendoring then `go build` will be run without `-mod=vendor`
     since the default behavior is to download dependencies
 
-All other properties of `lambda.Function` are supported, see also the [AWS Lambda construct library](https://github.com/aws/aws-cdk/tree/main/packages/%40aws-cdk/aws-lambda).
+All other properties of `lambda.Function` are supported, see also the [AWS Lambda construct library](https://github.com/aws/aws-cdk/tree/main/packages/aws-cdk-lib/aws-lambda).
 
 ## Environment
 
@@ -124,7 +124,7 @@ new go.GoFunction(this, 'handler', {
 
 ## Local Bundling
 
-If `Go` is installed locally and the version is >= `go1.11` then it will be used to bundle your code in your environment. Otherwise, bundling will happen in a [Lambda compatible Docker container](https://gallery.ecr.aws/sam/build-go1.x) with the Docker platform based on the target architecture of the Lambda function.
+If `Go` is installed locally and the version is >= `go1.11` then it will be used to bundle your code in your environment. Otherwise, bundling will happen in a [Lambda compatible Docker container](https://gallery.ecr.aws/sam/build-provided.al2023) with the Docker platform based on the target architecture of the Lambda function.
 
 For macOS the recommended approach is to install `Go` as Docker volume performance is really poor.
 
@@ -244,7 +244,7 @@ all of your functions if anything changes, then `AssetHashType.SOURCE` will prob
 For example, if my app looked like this:
 
 ```bash
-lamda-app
+lambda-app
 ├── cmd
 │   └── api
 │       └── main.go
@@ -263,7 +263,7 @@ should trigger a new deploy, I could specify `AssetHashType.SOURCE`.
 On the other hand, if I had a project that deployed multiple Lambda functions, for example:
 
 ```bash
-lamda-app
+lambda-app
 ├── cmd
 │   ├── api
 │   │   └── main.go

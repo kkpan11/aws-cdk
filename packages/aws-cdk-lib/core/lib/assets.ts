@@ -203,6 +203,14 @@ export interface DockerImageAssetSource {
   readonly dockerBuildSecrets?: { [key: string]: string };
 
   /**
+   * SSH agent socket or keys to pass to the `docker buildx` command.
+   *
+   *
+   * @default - no ssh arg is passed
+   */
+  readonly dockerBuildSsh?: string;
+
+  /**
    * Docker target to build to
    *
    * Only allowed when `directoryName` is specified.
@@ -278,6 +286,13 @@ export interface DockerImageAssetSource {
    * @default - no cache to args are passed
    */
   readonly dockerCacheTo?: DockerCacheOption;
+
+  /**
+   * Disable the cache and pass `--no-cache` to the `docker build` command.
+   *
+   * @default - cache is used
+   */
+  readonly dockerCacheDisabled?: boolean;
 }
 
 /**
@@ -294,7 +309,7 @@ export enum FileAssetPackaging {
    * The asset source path points to a single file, which should be uploaded
    * to Amazon S3.
    */
-  FILE = 'file'
+  FILE = 'file',
 }
 
 /**

@@ -35,10 +35,11 @@ taskDefinition.addContainer('DefaultContainer', {
 const ecsService = new ecs.Ec2Service(this, 'Service', {
   cluster,
   taskDefinition,
+  minHealthyPercent: 100,
 });
 ```
 
-For a set of constructs defining common ECS architectural patterns, see the `@aws-cdk/aws-ecs-patterns` package.
+For a set of constructs defining common ECS architectural patterns, see the `aws-cdk-lib/aws-ecs-patterns` package.
 
 ## Launch Types: AWS Fargate vs Amazon EC2 vs AWS ECS Anywhere
 
@@ -82,6 +83,17 @@ declare const vpc: ec2.Vpc;
 
 const cluster = new ecs.Cluster(this, 'Cluster', {
   vpc,
+});
+```
+
+To encrypt the fargate ephemeral storage configure a KMS key.
+```ts
+declare const key: kms.Key;
+
+const cluster = new ecs.Cluster(this, 'Cluster', {
+  managedStorageConfiguration: {
+    fargateEphemeralStorageKmsKey: key,
+  },
 });
 ```
 
@@ -186,6 +198,35 @@ const capacityProvider = new ecs.AsgCapacityProvider(this, 'AsgCapacityProvider'
 cluster.addAsgCapacityProvider(capacityProvider);
 ```
 
+The following code retrieve the Amazon Resource Names (ARNs) of tasks that are a part of a specified ECS cluster.
+It's useful when you want to grant permissions to a task to access other AWS resources.
+
+```ts
+declare const cluster: ecs.Cluster;
+declare const taskDefinition: ecs.TaskDefinition;
+const taskARNs = cluster.arnForTasks('*'); // arn:aws:ecs:<region>:<regionId>:task/<clusterName>/*
+
+// Grant the task permission to access other AWS resources
+taskDefinition.addToTaskRolePolicy(
+  new iam.PolicyStatement({
+    actions: ['ecs:UpdateTaskProtection'],
+    resources: [taskARNs],
+  })
+)
+```
+
+To manage task protection settings in an ECS cluster, you can use the `grantTaskProtection` method.
+This method grants the `ecs:UpdateTaskProtection` permission to a specified IAM entity.
+
+```ts
+// Assume 'cluster' is an instance of ecs.Cluster
+declare const cluster: ecs.Cluster;
+declare const taskRole: iam.Role;
+
+// Grant ECS Task Protection permissions to the role
+// Now 'taskRole' has the 'ecs:UpdateTaskProtection' permission on all tasks in the cluster
+cluster.grantTaskProtection(taskRole);
+```
 
 ### Bottlerocket
 
@@ -203,6 +244,19 @@ cluster.addCapacity('bottlerocket-asg', {
   minCapacity: 2,
   instanceType: new ec2.InstanceType('c5.large'),
   machineImage: new ecs.BottleRocketImage(),
+});
+```
+
+You can also specify an NVIDIA-compatible AMI such as in this example:
+
+```ts
+declare const cluster: ecs.Cluster;
+
+cluster.addCapacity('bottlerocket-asg', {
+  instanceType: new ec2.InstanceType('p3.2xlarge'),
+  machineImage: new ecs.BottleRocketImage({
+      variant: ecs.BottlerocketEcsVariant.AWS_ECS_2_NVIDIA,
+  }),
 });
 ```
 
@@ -232,6 +286,20 @@ cluster.addCapacity('graviton-cluster', {
   minCapacity: 2,
   instanceType: new ec2.InstanceType('c6g.large'),
   machineImageType: ecs.MachineImageType.BOTTLEROCKET,
+});
+```
+
+### Amazon Linux 2 (Neuron) Instances
+
+To launch Amazon EC2 Inf1, Trn1 or Inf2 instances, you can use the Amazon ECS optimized Amazon Linux 2 (Neuron) AMI. It comes pre-configured with AWS Inferentia and AWS Trainium drivers and the AWS Neuron runtime for Docker which makes running machine learning inference workloads easier on Amazon ECS.
+
+```ts
+declare const cluster: ecs.Cluster;
+
+cluster.addCapacity('neuron-cluster', {
+  minCapacity: 2,
+  instanceType: new ec2.InstanceType('inf1.xlarge'),
+  machineImage: ecs.EcsOptimizedImage.amazonLinux2(ecs.AmiHardwareType.NEURON),
 });
 ```
 
@@ -273,6 +341,17 @@ cluster.addCapacity('ASGEncryptedSNS', {
 });
 ```
 
+### Container Insights
+
+On a cluster, CloudWatch Container Insights can be enabled by setting the `containerInsightsV2` property. [Container Insights](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/cloudwatch-container-insights.html) 
+can be disabled, enabled, or enhanced.
+
+```ts
+const cluster = new ecs.Cluster(this, 'Cluster', {
+  containerInsightsV2: ecs.ContainerInsights.ENHANCED
+});
+```
+
 ## Task definitions
 
 A task definition describes what a single copy of a **task** should look like.
@@ -305,6 +384,24 @@ const fargateTaskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
   ephemeralStorageGiB: 100,
 });
 ```
+
+To specify the process namespace to use for the containers in the task, use the `pidMode` property:
+
+```ts
+const fargateTaskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
+  runtimePlatform: {
+    operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
+    cpuArchitecture: ecs.CpuArchitecture.ARM64,
+  },
+  memoryLimitMiB: 512,
+  cpu: 256,
+  pidMode: ecs.PidMode.TASK,
+});
+```
+
+**Note:** `pidMode` is only supported for tasks that are hosted on AWS Fargate if the tasks are using platform version 1.4.0
+or later (Linux). Only the `task` option is supported for Linux containers. `pidMode` isn't supported for Windows containers on Fargate.
+If `pidMode` is specified for a Fargate task, then `runtimePlatform.operatingSystemFamily` must also be specified.
 
 To add containers to a task definition, call `addContainer()`:
 
@@ -372,6 +469,23 @@ container.addPortMappings({
 });
 ```
 
+Sometimes it is useful to be able to configure port ranges for a container, e.g. to run applications such as game servers
+and real-time streaming which typically require multiple ports to be opened simultaneously. This feature is supported on
+both Linux and Windows operating systems for both the EC2 and AWS Fargate launch types. There is a maximum limit of 100
+port ranges per container, and you cannot specify overlapping port ranges.
+
+Docker recommends that you turn off the `docker-proxy` in the Docker daemon config file when you have a large number of ports.
+For more information, see [Issue #11185](https://github.com/moby/moby/issues/11185) on the GitHub website.
+
+```ts
+declare const container: ecs.ContainerDefinition;
+
+container.addPortMappings({
+    containerPort: ecs.ContainerDefinition.CONTAINER_PORT_USE_RANGE,
+    containerPortRange: '8080-8081',
+});
+```
+
 To add data volumes to a task definition, call `addVolume()`:
 
 ```ts
@@ -423,6 +537,20 @@ const taskDef = new ecs.TaskDefinition(this, 'TaskDef', {
 taskDef.grantRun(role);
 ```
 
+To deploy containerized applications that require the allocation of standard input (stdin) or a terminal (tty), use the `interactive` property.
+
+This parameter corresponds to `OpenStdin` in the [Create a container](https://docs.docker.com/engine/api/v1.35/#tag/Container/operation/ContainerCreate) section of the [Docker Remote API](https://docs.docker.com/engine/api/v1.35/)
+and the `--interactive` option to [docker run](https://docs.docker.com/engine/reference/run/#security-configuration).
+
+```ts
+declare const taskDefinition: ecs.TaskDefinition;
+
+taskDefinition.addContainer("Container", {
+  image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
+  interactive: true,
+});
+```
+
 ### Images
 
 Images supply the software that runs inside the container. Images can be
@@ -435,7 +563,7 @@ obtained from either DockerHub or from ECR repositories, built directly from a l
 - `ecs.ContainerImage.fromAsset('./image')`: build and upload an
   image directly from a `Dockerfile` in your source directory.
 - `ecs.ContainerImage.fromDockerImageAsset(asset)`: uses an existing
-  `@aws-cdk/aws-ecr-assets.DockerImageAsset` as a container image.
+  `aws-cdk-lib/aws-ecr-assets.DockerImageAsset` as a container image.
 - `ecs.ContainerImage.fromTarball(file)`: use an existing tarball.
 - `new ecs.TagParameterContainerImage(repository)`: use the given ECR repository as the image
   but a CloudFormation parameter as the tag.
@@ -473,8 +601,7 @@ newContainer.addSecret('API_KEY', ecs.Secret.fromSecretsManager(secret));
 newContainer.addSecret('DB_PASSWORD', ecs.Secret.fromSecretsManager(secret, 'password'));
 ```
 
-The task execution role is automatically granted read permissions on the secrets/parameters. Support for environment
-files is restricted to the EC2 launch type for files hosted on S3. Further details provided in the AWS documentation
+The task execution role is automatically granted read permissions on the secrets/parameters. Further details provided in the AWS documentation
 about [specifying environment variables](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/taskdef-envfiles.html).
 
 ### Linux parameters
@@ -515,6 +642,56 @@ taskDefinition.addContainer('container', {
 });
 ```
 
+### Restart policy
+
+To enable a restart policy for the container, set `enableRestartPolicy` to true and also specify
+`restartIgnoredExitCodes` and `restartAttemptPeriod` if necessary.
+
+```ts
+declare const taskDefinition: ecs.TaskDefinition;
+
+taskDefinition.addContainer('container', {
+  image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
+  enableRestartPolicy: true,
+  restartIgnoredExitCodes: [0, 127],
+  restartAttemptPeriod: Duration.seconds(360),
+});
+```
+
+### Enable Fault Injection
+You can utilize fault injection with Amazon ECS on both Amazon EC2 and Fargate to test how their application responds to certain impairment scenarios. These tests provide information you can use to optimize your application's performance and resiliency.
+
+When fault injection is enabled, the Amazon ECS container agent allows tasks access to new fault injection endpoints.
+Fault injection only works with tasks using the `AWS_VPC` or `HOST` network modes.
+
+For more infomation, see [Use fault injection with your Amazon ECS and Fargate workloads](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fault-injection.html).
+
+To enable Fault Injection for the task definiton, set `enableFaultInjection` to true.
+
+```ts
+new ecs.Ec2TaskDefinition(this, 'Ec2TaskDefinition', {
+  enableFaultInjection: true,
+});
+```
+
+## Docker labels
+
+You can add labels to the container with the `dockerLabels` property or with the `addDockerLabel` method:
+
+```ts
+declare const taskDefinition: ecs.TaskDefinition;
+
+const container = taskDefinition.addContainer('cont', {
+  image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
+  memoryLimitMiB: 1024,
+  dockerLabels: {
+    foo: 'bar',
+  },
+});
+
+container.addDockerLabel('label', 'value');
+```
+
 ### Using Windows containers on Fargate
 
 AWS Fargate supports Amazon ECS Windows containers. For more details, please see this [blog post](https://aws.amazon.com/tw/blogs/containers/running-windows-containers-with-amazon-ecs-on-aws-fargate/)
@@ -534,6 +711,44 @@ taskDefinition.addContainer('windowsservercore', {
   logging: ecs.LogDriver.awsLogs({ streamPrefix: 'win-iis-on-fargate' }),
   portMappings: [{ containerPort: 80 }],
   image: ecs.ContainerImage.fromRegistry('mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2019'),
+});
+```
+
+### Using Windows authentication with gMSA
+
+Amazon ECS supports Active Directory authentication for Linux containers through a special kind of service account called a group Managed Service Account (gMSA). For more details, please see the [product documentation on how to implement on Windows containers](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/windows-gmsa.html), or this [blog post on how to implement on  Linux containers](https://aws.amazon.com/blogs/containers/using-windows-authentication-with-gmsa-on-linux-containers-on-amazon-ecs/).
+
+There are two types of CredentialSpecs, domained-join or domainless. Both types support creation from a S3 bucket, a SSM parameter, or by directly specifying a location for the file in the constructor.
+
+A domian-joined gMSA container looks like:
+
+```ts
+// Make sure the task definition's execution role has permissions to read from the S3 bucket or SSM parameter where the CredSpec file is stored.
+declare const parameter: ssm.IParameter;
+declare const taskDefinition: ecs.TaskDefinition;
+
+// Domain-joined gMSA container from a SSM parameter
+taskDefinition.addContainer('gmsa-domain-joined-container', {
+  image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
+  cpu: 128,
+  memoryLimitMiB: 256,
+  credentialSpecs: [ecs.DomainJoinedCredentialSpec.fromSsmParameter(parameter)],
+});
+```
+
+A domianless gMSA container looks like:
+
+```ts
+// Make sure the task definition's execution role has permissions to read from the S3 bucket or SSM parameter where the CredSpec file is stored.
+declare const bucket: s3.Bucket;
+declare const taskDefinition: ecs.TaskDefinition;
+
+// Domainless gMSA container from a S3 bucket object.
+taskDefinition.addContainer('gmsa-domainless-container', {
+  image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
+  cpu: 128,
+  memoryLimitMiB: 256,
+  credentialSpecs: [ecs.DomainlessCredentialSpec.fromS3Bucket(bucket, 'credSpec')],
 });
 ```
 
@@ -574,6 +789,7 @@ const service = new ecs.FargateService(this, 'Service', {
   cluster,
   taskDefinition,
   desiredCount: 5,
+  minHealthyPercent: 100,
 });
 ```
 
@@ -587,18 +803,50 @@ const service = new ecs.ExternalService(this, 'Service', {
   cluster,
   taskDefinition,
   desiredCount: 5,
+  minHealthyPercent: 100,
 });
 ```
 
 `Services` by default will create a security group if not provided.
 If you'd like to specify which security groups to use you can override the `securityGroups` property.
 
+By default, the service will use the revision of the passed task definition generated when the `TaskDefinition`
+is deployed by CloudFormation. However, this may not be desired if the revision is externally managed,
+for example through CodeDeploy.
+
+To set a specific revision number or the special `latest` revision, use the `taskDefinitionRevision` parameter:
+
+```ts
+declare const cluster: ecs.Cluster;
+declare const taskDefinition: ecs.TaskDefinition;
+
+new ecs.ExternalService(this, 'Service', {
+  cluster,
+  taskDefinition,
+  desiredCount: 5,
+  minHealthyPercent: 100,
+  taskDefinitionRevision: ecs.TaskDefinitionRevision.of(1),
+});
+
+new ecs.ExternalService(this, 'Service', {
+  cluster,
+  taskDefinition,
+  desiredCount: 5,
+  minHealthyPercent: 100,
+  taskDefinitionRevision: ecs.TaskDefinitionRevision.LATEST,
+});
+```
+
 ### Deployment circuit breaker and rollback
 
 Amazon ECS [deployment circuit breaker](https://aws.amazon.com/tw/blogs/containers/announcing-amazon-ecs-deployment-circuit-breaker/)
-automatically rolls back unhealthy service deployments without the need for manual intervention. Use `circuitBreaker` to enable
-deployment circuit breaker and optionally enable `rollback` for automatic rollback. See [Using the deployment circuit breaker](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-ecs.html)
-for more details.
+automatically rolls back unhealthy service deployments, eliminating the need for manual intervention.
+
+Use `circuitBreaker` to enable the deployment circuit breaker which determines whether a service deployment
+will fail if the service can't reach a steady state.
+You can optionally enable `rollback` for automatic rollback.
+
+See [Using the deployment circuit breaker](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-ecs.html) for more details.
 
 ```ts
 declare const cluster: ecs.Cluster;
@@ -606,11 +854,159 @@ declare const taskDefinition: ecs.TaskDefinition;
 const service = new ecs.FargateService(this, 'Service', {
   cluster,
   taskDefinition,
-  circuitBreaker: { rollback: true },
+  minHealthyPercent: 100,
+  circuitBreaker: {
+    enable: true,
+    rollback: true
+  },
 });
 ```
 
 > Note: ECS Anywhere doesn't support deployment circuit breakers and rollback.
+
+### Deployment alarms
+
+Amazon ECS [deployment alarms]
+(https://aws.amazon.com/blogs/containers/automate-rollbacks-for-amazon-ecs-rolling-deployments-with-cloudwatch-alarms/)
+allow monitoring and automatically reacting to changes during a rolling update
+by using Amazon CloudWatch metric alarms.
+
+Amazon ECS starts monitoring the configured deployment alarms as soon as one or
+more tasks of the updated service are in a running state. The deployment process
+continues until the primary deployment is healthy and has reached the desired
+count and the active deployment has been scaled down to 0. Then, the deployment
+remains in the IN_PROGRESS state for an additional "bake time." The length the
+bake time is calculated based on the evaluation periods and period of the alarms.
+After the bake time, if none of the alarms have been activated, then Amazon ECS
+considers this to be a successful update and deletes the active deployment and
+changes the status of the primary deployment to COMPLETED.
+
+```ts
+import * as cw from 'aws-cdk-lib/aws-cloudwatch';
+
+declare const cluster: ecs.Cluster;
+declare const taskDefinition: ecs.TaskDefinition;
+declare const elbAlarm: cw.Alarm;
+
+const service = new ecs.FargateService(this, 'Service', {
+  cluster,
+  taskDefinition,
+  minHealthyPercent: 100,
+  deploymentAlarms: {
+    alarmNames: [elbAlarm.alarmName],
+    behavior: ecs.AlarmBehavior.ROLLBACK_ON_ALARM,
+  },
+});
+
+// Defining a deployment alarm after the service has been created
+const cpuAlarmName =  'MyCpuMetricAlarm';
+new cw.Alarm(this, 'CPUAlarm', {
+  alarmName: cpuAlarmName,
+  metric: service.metricCpuUtilization(),
+  evaluationPeriods: 2,
+  threshold: 80,
+});
+service.enableDeploymentAlarms([cpuAlarmName], {
+  behavior: ecs.AlarmBehavior.FAIL_ON_ALARM,
+});
+```
+
+> Note: Deployment alarms are only available when `deploymentController` is set
+> to `DeploymentControllerType.ECS`, which is the default.
+
+#### Troubleshooting circular dependencies
+
+I saw this info message during synth time. What do I do?
+
+```text
+Deployment alarm ({"Ref":"MyAlarmABC1234"}) enabled on MyEcsService may cause a
+circular dependency error when this stack deploys. The alarm name references the
+alarm's logical id, or another resource. See the 'Deployment alarms' section in
+the module README for more details.
+```
+
+If your app deploys successfully with this message, you can disregard it. But it
+indicates that you could encounter a circular dependency error when you try to
+deploy. If you want to alarm on metrics produced by the service, there will be a
+circular dependency between the service and its deployment alarms. In this case,
+there are two options to avoid the circular dependency.
+
+1. Define the physical name for the alarm. Use a defined physical name that is
+   unique within the deployment environment for the alarm name when creating the
+   alarm, and re-use the defined name. This name could be a hardcoded string, a
+   string generated based on the environment, or could reference another
+   resource that does not depend on the service.
+2. Define the physical name for the service. Then, don't use
+   `metricCpuUtilization()` or similar methods. Create the metric object
+   separately by referencing the service metrics using this name.
+
+Option 1, defining a physical name for the alarm:
+```ts
+import * as cw from 'aws-cdk-lib/aws-cloudwatch';
+
+declare const cluster: ecs.Cluster;
+declare const taskDefinition: ecs.TaskDefinition;
+
+const service = new ecs.FargateService(this, 'Service', {
+  cluster,
+  taskDefinition,
+});
+
+const cpuAlarmName =  'MyCpuMetricAlarm';
+const myAlarm = new cw.Alarm(this, 'CPUAlarm', {
+  alarmName: cpuAlarmName,
+  metric: service.metricCpuUtilization(),
+  evaluationPeriods: 2,
+  threshold: 80,
+});
+
+// Using `myAlarm.alarmName` here will cause a circular dependency
+service.enableDeploymentAlarms([cpuAlarmName], {
+  behavior: ecs.AlarmBehavior.FAIL_ON_ALARM,
+});
+```
+
+Option 2, defining a physical name for the service:
+
+```ts
+import * as cw from 'aws-cdk-lib/aws-cloudwatch';
+
+declare const cluster: ecs.Cluster;
+declare const taskDefinition: ecs.TaskDefinition;
+const serviceName = 'MyFargateService';
+const service = new ecs.FargateService(this, 'Service', {
+  serviceName,
+  cluster,
+  taskDefinition,
+  minHealthyPercent: 100,
+});
+
+const cpuMetric = new cw.Metric({
+  metricName: 'CPUUtilization',
+  namespace: 'AWS/ECS',
+  period: Duration.minutes(5),
+  statistic: 'Average',
+  dimensionsMap: {
+    ClusterName: cluster.clusterName,
+    // Using `service.serviceName` here will cause a circular dependency
+    ServiceName: serviceName,
+  },
+});
+const myAlarm = new cw.Alarm(this, 'CPUAlarm', {
+  alarmName: 'cpuAlarmName',
+  metric: cpuMetric,
+  evaluationPeriods: 2,
+  threshold: 80,
+});
+
+service.enableDeploymentAlarms([myAlarm.alarmName], {
+  behavior: ecs.AlarmBehavior.FAIL_ON_ALARM,
+});
+```
+
+This issue only applies if the metrics to alarm on are emitted by the service
+itself. If the metrics are emitted by a different resource, that does not depend
+on the service, there will be no restrictions on the alarm name.
 
 ### Include an application/network load balancer
 
@@ -620,7 +1016,7 @@ const service = new ecs.FargateService(this, 'Service', {
 declare const vpc: ec2.Vpc;
 declare const cluster: ecs.Cluster;
 declare const taskDefinition: ecs.TaskDefinition;
-const service = new ecs.FargateService(this, 'Service', { cluster, taskDefinition });
+const service = new ecs.FargateService(this, 'Service', { cluster, taskDefinition, minHealthyPercent: 100 });
 
 const lb = new elbv2.ApplicationLoadBalancer(this, 'LB', { vpc, internetFacing: true });
 const listener = lb.addListener('Listener', { port: 80 });
@@ -647,7 +1043,7 @@ Alternatively, you can also create all load balancer targets to be registered in
 declare const cluster: ecs.Cluster;
 declare const taskDefinition: ecs.TaskDefinition;
 declare const vpc: ec2.Vpc;
-const service = new ecs.FargateService(this, 'Service', { cluster, taskDefinition });
+const service = new ecs.FargateService(this, 'Service', { cluster, taskDefinition, minHealthyPercent: 100 });
 
 const lb = new elbv2.ApplicationLoadBalancer(this, 'LB', { vpc, internetFacing: true });
 const listener = lb.addListener('Listener', { port: 80 });
@@ -686,7 +1082,7 @@ for the alternatives.
 declare const cluster: ecs.Cluster;
 declare const taskDefinition: ecs.TaskDefinition;
 declare const vpc: ec2.Vpc;
-const service = new ecs.Ec2Service(this, 'Service', { cluster, taskDefinition });
+const service = new ecs.Ec2Service(this, 'Service', { cluster, taskDefinition, minHealthyPercent: 100 });
 
 const lb = new elb.LoadBalancer(this, 'LB', { vpc });
 lb.addListener({ externalPort: 80 });
@@ -699,7 +1095,7 @@ Similarly, if you want to have more control over load balancer targeting:
 declare const cluster: ecs.Cluster;
 declare const taskDefinition: ecs.TaskDefinition;
 declare const vpc: ec2.Vpc;
-const service = new ecs.Ec2Service(this, 'Service', { cluster, taskDefinition });
+const service = new ecs.Ec2Service(this, 'Service', { cluster, taskDefinition, minHealthyPercent: 100 });
 
 const lb = new elb.LoadBalancer(this, 'LB', { vpc });
 lb.addListener({ externalPort: 80 });
@@ -770,7 +1166,7 @@ See that section for details.
 ## Integration with CloudWatch Events
 
 To start an Amazon ECS task on an Amazon EC2-backed Cluster, instantiate an
-`@aws-cdk/aws-events-targets.EcsTask` instead of an `Ec2Service`:
+`aws-cdk-lib/aws-events-targets.EcsTask` instead of an `Ec2Service`:
 
 ```ts
 declare const cluster: ecs.Cluster;
@@ -784,7 +1180,7 @@ taskDefinition.addContainer('TheContainer', {
 
 // An Rule that describes the event trigger (in this case a scheduled run)
 const rule = new events.Rule(this, 'Rule', {
-  schedule: events.Schedule.expression('rate(1 min)'),
+  schedule: events.Schedule.expression('rate(1 minute)'),
 });
 
 // Pass an environment variable to the container 'TheContainer' in the task
@@ -824,7 +1220,11 @@ const taskDefinition = new ecs.Ec2TaskDefinition(this, 'TaskDef');
 taskDefinition.addContainer('TheContainer', {
   image: ecs.ContainerImage.fromRegistry('example-image'),
   memoryLimitMiB: 256,
-  logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'EventDemo' }),
+  logging: ecs.LogDrivers.awsLogs({
+    streamPrefix: 'EventDemo',
+    mode: ecs.AwsLogDriverMode.NON_BLOCKING,
+    maxBufferSize: Size.mebibytes(25),
+  }),
 });
 ```
 
@@ -945,6 +1345,31 @@ taskDefinition.addContainer('TheContainer', {
 });
 ```
 
+When forwarding logs to CloudWatch Logs using Fluent Bit, you can set the retention period for the newly created Log Group by specifying the `log_retention_days` parameter.
+If a Fluent Bit container has not been added, CDK will automatically add it to the task definition, and the necessary IAM permissions will be added to the task role.
+If you are adding the Fluent Bit container manually, ensure to add the `logs:PutRetentionPolicy` policy to the task role.
+
+```ts
+const taskDefinition = new ecs.Ec2TaskDefinition(this, 'TaskDef');
+taskDefinition.addContainer('TheContainer', {
+  image: ecs.ContainerImage.fromRegistry('example-image'),
+  memoryLimitMiB: 256,
+  logging: ecs.LogDrivers.firelens({
+    options: {
+      Name: 'cloudwatch',
+      region: 'us-west-2',
+      log_group_name: 'firelens-fluent-bit',
+      log_stream_prefix: 'from-fluent-bit',
+      auto_create_group: 'true',
+      log_retention_days: '1',
+    },
+  }),
+});
+```
+
+> Visit [Fluent Bit CloudWatch Configuration Parameters](https://docs.fluentbit.io/manual/pipeline/outputs/cloudwatch#configuration-parameters)
+for more details.
+
 ### Generic Log Driver
 
 A generic log driver object exists to provide a lower level abstraction of the log driver configuration.
@@ -1006,6 +1431,7 @@ specificContainer.addPortMappings({
 new ecs.Ec2Service(this, 'Service', {
   cluster,
   taskDefinition,
+  minHealthyPercent: 100,
   cloudMapOptions: {
     // Create SRV records - useful for bridge networking
     dnsRecordType: cloudmap.DnsRecordType.SRV,
@@ -1063,6 +1489,7 @@ taskDefinition.addContainer('web', {
 new ecs.FargateService(this, 'FargateService', {
   cluster,
   taskDefinition,
+  minHealthyPercent: 100,
   capacityProviderStrategies: [
     {
       capacityProvider: 'FARGATE_SPOT',
@@ -1091,7 +1518,7 @@ rather manage scaling behavior yourself set `enableManagedScaling` to `false`.
 
 Additionally [Managed Termination Protection](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/cluster-auto-scaling.html#managed-termination-protection) is enabled by default to
 prevent scale-in behavior from terminating instances that have non-daemon tasks
-running on them. This is ideal for tasks that should be ran to completion. If your
+running on them. This is ideal for tasks that can be run to completion. If your
 tasks are safe to interrupt then this protection can be disabled by setting
 `enableManagedTerminationProtection` to `false`. Managed Scaling must be enabled for
 Managed Termination Protection to work.
@@ -1103,6 +1530,11 @@ Managed Termination Protection to work.
 > Provider. If you'd rather not disable Managed Termination Protection, you can [manually
 > delete the Auto Scaling Group](https://docs.aws.amazon.com/autoscaling/ec2/userguide/as-process-shutdown.html).
 > For other workarounds, see [this GitHub issue](https://github.com/aws/aws-cdk/issues/18179).
+
+Managed instance draining facilitates graceful termination of Amazon ECS instances.
+This allows your service workloads to stop safely and be rescheduled to non-terminating instances.
+Infrastructure maintenance and updates are preformed without disruptions to workloads.
+To use managed instance draining, set enableManagedDraining to true.
 
 ```ts
 declare const vpc: ec2.Vpc;
@@ -1121,6 +1553,7 @@ const autoScalingGroup = new autoscaling.AutoScalingGroup(this, 'ASG', {
 
 const capacityProvider = new ecs.AsgCapacityProvider(this, 'AsgCapacityProvider', {
   autoScalingGroup,
+  instanceWarmupPeriod: 300,
 });
 cluster.addAsgCapacityProvider(capacityProvider);
 
@@ -1134,6 +1567,7 @@ taskDefinition.addContainer('web', {
 new ecs.Ec2Service(this, 'EC2Service', {
   cluster,
   taskDefinition,
+  minHealthyPercent: 100,
   capacityProviderStrategies: [
     {
       capacityProvider: capacityProvider.capacityProviderName,
@@ -1221,7 +1655,7 @@ to work, you need to have the SSM plugin for the AWS CLI installed locally. For 
 [Install Session Manager plugin for AWS CLI](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html).
 
 To enable the ECS Exec feature for your containers, set the boolean flag `enableExecuteCommand` to `true` in
-your `Ec2Service` or `FargateService`.
+your `Ec2Service`, `FargateService` or `ExternalService`.
 
 ```ts
 declare const cluster: ecs.Cluster;
@@ -1230,6 +1664,7 @@ declare const taskDefinition: ecs.TaskDefinition;
 const service = new ecs.Ec2Service(this, 'Service', {
   cluster,
   taskDefinition,
+  minHealthyPercent: 100,
   enableExecuteCommand: true,
 });
 ```
@@ -1303,6 +1738,7 @@ cluster.addDefaultCloudMapNamespace({
 const service = new ecs.FargateService(this, 'Service', {
   cluster,
   taskDefinition,
+  minHealthyPercent: 100,
   serviceConnectConfiguration: {
     services: [
       {
@@ -1327,6 +1763,7 @@ declare const taskDefinition: ecs.TaskDefinition;
 const service = new ecs.FargateService(this, 'Service', {
   cluster,
   taskDefinition,
+  minHealthyPercent: 100,
 });
 service.enableServiceConnect();
 ```
@@ -1340,6 +1777,7 @@ declare const taskDefinition: ecs.TaskDefinition;
 const customService = new ecs.FargateService(this, 'CustomizedService', {
   cluster,
   taskDefinition,
+  minHealthyPercent: 100,
   serviceConnectConfiguration: {
     logDriver: ecs.LogDrivers.awsLogs({
       streamPrefix: 'sc-traffic',
@@ -1355,6 +1793,118 @@ const customService = new ecs.FargateService(this, 'CustomizedService', {
     ],
   },
 });
+```
+
+To set a timeout for service connect, use `idleTimeout` and `perRequestTimeout`.
+
+**Note**: If `idleTimeout` is set to a time that is less than `perRequestTimeout`, the connection will close when
+the `idleTimeout` is reached and not the `perRequestTimeout`.
+
+```ts
+declare const cluster: ecs.Cluster;
+declare const taskDefinition: ecs.TaskDefinition;
+
+const service = new ecs.FargateService(this, 'Service', {
+  cluster,
+  taskDefinition,
+  minHealthyPercent: 100,
+  serviceConnectConfiguration: {
+    services: [
+      {
+        portMappingName: 'api',
+        idleTimeout: Duration.minutes(5),
+        perRequestTimeout: Duration.minutes(5),
+      },
+    ],
+  },
+});
+```
+
+> Visit [Amazon ECS support for configurable timeout for services running with Service Connect](https://aws.amazon.com/about-aws/whats-new/2024/01/amazon-ecs-configurable-timeout-service-connect/) for more details.
+
+## ServiceManagedVolume
+
+Amazon ECS now supports the attachment of Amazon Elastic Block Store (EBS) volumes to ECS tasks,
+allowing you to utilize persistent, high-performance block storage with your ECS services.
+This feature supports various use cases, such as using EBS volumes as extended ephemeral storage or
+loading data from EBS snapshots.
+You can also specify `encrypted: true` so that ECS will manage the KMS key. If you want to use your own KMS key, you may do so by providing both `encrypted: true` and `kmsKeyId`.
+
+You can only attach a single volume for each task in the ECS Service.
+
+To add an empty EBS Volume to an ECS Service, call service.addVolume().
+
+```ts
+declare const cluster: ecs.Cluster;
+const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef');
+
+const container = taskDefinition.addContainer('web', {
+  image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+  portMappings: [{
+    containerPort: 80,
+    protocol: ecs.Protocol.TCP,
+  }],
+});
+
+const volume = new ecs.ServiceManagedVolume(this, 'EBSVolume', {
+  name: 'ebs1',
+  managedEBSVolume: {
+    size: Size.gibibytes(15),
+    volumeType: ec2.EbsDeviceVolumeType.GP3,
+    fileSystemType: ecs.FileSystemType.XFS,
+    tagSpecifications: [{
+      tags: {
+        purpose: 'production',
+      },
+      propagateTags: ecs.EbsPropagatedTagSource.SERVICE,
+    }],
+  },
+});
+
+volume.mountIn(container, {
+  containerPath: '/var/lib',
+  readOnly: false,
+});
+
+taskDefinition.addVolume(volume);
+
+const service = new ecs.FargateService(this, 'FargateService', {
+  cluster,
+  taskDefinition,
+  minHealthyPercent: 100,
+});
+
+service.addVolume(volume);
+```
+
+To create an EBS volume from an existing snapshot by specifying the `snapShotId` while adding a volume to the service.
+
+```ts
+declare const container: ecs.ContainerDefinition;
+declare const cluster: ecs.Cluster;
+declare const taskDefinition: ecs.TaskDefinition;
+
+const volumeFromSnapshot = new ecs.ServiceManagedVolume(this, 'EBSVolume', {
+  name: 'nginx-vol',
+  managedEBSVolume: {
+    snapShotId: 'snap-066877671789bd71b',
+    volumeType: ec2.EbsDeviceVolumeType.GP3,
+    fileSystemType: ecs.FileSystemType.XFS,
+  },
+});
+
+volumeFromSnapshot.mountIn(container, {
+  containerPath: '/var/lib',
+  readOnly: false,
+});
+taskDefinition.addVolume(volumeFromSnapshot);
+const service = new ecs.FargateService(this, 'FargateService', {
+  cluster,
+  taskDefinition,
+  minHealthyPercent: 100,
+});
+
+service.addVolume(volumeFromSnapshot);
 ```
 
 ## Enable pseudo-terminal (TTY) allocation

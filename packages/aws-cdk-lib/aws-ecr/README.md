@@ -1,6 +1,5 @@
 # Amazon ECR Construct Library
 
-
 This package contains constructs for working with Amazon Elastic Container Registry.
 
 ## Repositories
@@ -14,7 +13,10 @@ const repository = new ecr.Repository(this, 'Repository');
 
 ## Image scanning
 
-Amazon ECR image scanning helps in identifying software vulnerabilities in your container images. You can manually scan container images stored in Amazon ECR, or you can configure your repositories to scan images when you push them to a repository. To create a new repository to scan on push, simply enable `imageScanOnPush` in the properties
+Amazon ECR image scanning helps in identifying software vulnerabilities in your container images.
+You can manually scan container images stored in Amazon ECR, or you can configure your repositories
+to scan images when you push them to a repository. To create a new repository to scan on push, simply
+enable `imageScanOnPush` in the properties.
 
 ```ts
 const repository = new ecr.Repository(this, 'Repo', {
@@ -76,6 +78,8 @@ The grantPush method grants the specified IAM entity (the grantee) permission to
 Here is an example of granting a user push permissions:
 
 ```ts
+declare const repository: ecr.Repository;
+
 const role = new iam.Role(this, 'Role', {
   assumedBy: new iam.ServicePrincipal('codebuild.amazonaws.com'),
 });
@@ -91,6 +95,8 @@ The grantPull method grants the specified IAM entity (the grantee) permission to
 - 'ecr:GetAuthorizationToken'
 
 ```ts
+declare const repository: ecr.Repository;
+
 const role = new iam.Role(this, 'Role', {
   assumedBy: new iam.ServicePrincipal('codebuild.amazonaws.com'),
 });
@@ -103,6 +109,8 @@ The grantPullPush method grants the specified IAM entity (the grantee) permissio
 Here is an example of granting a user both pull and push permissions:
 
 ```ts
+declare const repository: ecr.Repository;
+
 const role = new iam.Role(this, 'Role', {
   assumedBy: new iam.ServicePrincipal('codebuild.amazonaws.com'),
 });
@@ -159,6 +167,14 @@ repository.addLifecycleRule({ tagPrefixList: ['prod'], maxImageCount: 9999 });
 repository.addLifecycleRule({ maxImageAge: Duration.days(30) });
 ```
 
+When using `tagPatternList`, an image is successfully matched if it matches
+the wildcard filter.
+
+```ts
+declare const repository: ecr.Repository;
+repository.addLifecycleRule({ tagPatternList: ['prod*'], maxImageCount: 9999 });
+```
+
 ### Repository deletion
 
 When a repository is removed from a stack (or the stack is deleted), the ECR
@@ -168,12 +184,13 @@ policy is set to `RemovalPolicy.DESTROY`, the repository will be deleted as long
 as it does not contain any images.
 
 To override this and force all images to get deleted during repository deletion,
-enable the`autoDeleteImages` option.
+enable the `emptyOnDelete` option as well as setting the removal policy to 
+`RemovalPolicy.DESTROY`.
 
 ```ts
 const repository = new ecr.Repository(this, 'MyTempRepo', {
-  removalPolicy: RemovalPolicy.DESTROY,
-  autoDeleteImages: true,
+      removalPolicy: RemovalPolicy.DESTROY,
+      emptyOnDelete: true,
 });
 ```
 
@@ -190,4 +207,24 @@ repository.addToResourcePolicy(new iam.PolicyStatement({
   // resources: ['*'], // not currently allowed!
   principals: [new iam.AnyPrincipal()],
 }));
+```
+
+## CloudWatch event rules
+
+You can publish repository events to a CloudWatch event rule with `onEvent`:
+
+```ts
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
+
+const repo = new ecr.Repository(this, 'Repo');
+const lambdaHandler = new lambda.Function(this, 'LambdaFunction', {
+  runtime: lambda.Runtime.PYTHON_3_12,
+  code: lambda.Code.fromInline('# dummy func'),
+  handler: 'index.handler',
+});
+
+repo.onEvent('OnEventTargetLambda', {
+  target: new LambdaFunction(lambdaHandler),
+});
 ```

@@ -1,6 +1,5 @@
 # AWS Lambda Event Sources
 
-
 An event source mapping is an AWS Lambda resource that reads from an event source and invokes a Lambda function.
 You can use event source mappings to process items from a stream or queue in services that don't invoke Lambda
 functions directly. Lambda provides event source mappings for the following services. Read more about lambda
@@ -49,9 +48,6 @@ queue parameters. The following parameters will impact Amazon SQS's polling
 behavior:
 
 * __visibilityTimeout__: May impact the period between retries.
-* __receiveMessageWaitTime__: Will determine [long
-  poll](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-long-polling.html)
-  duration. The default value is 20 seconds.
 * __batchSize__: Determines how many records are buffered before invoking your lambda function.
 * __maxBatchingWindow__: The maximum amount of time to gather records before invoking the lambda. This increases the likelihood of a full batch at the cost of delayed processing.
 * __maxConcurrency__: The maximum concurrency setting limits the number of concurrent instances of the function that an Amazon SQS event source can invoke.
@@ -62,7 +58,6 @@ import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 
 const queue = new sqs.Queue(this, 'MyQueue', {
   visibilityTimeout: Duration.seconds(30),      // default,
-  receiveMessageWaitTime: Duration.seconds(20), // default
 });
 declare const fn: lambda.Function;
 
@@ -92,6 +87,24 @@ const bucket = new s3.Bucket(this, 'mybucket');
 declare const fn: lambda.Function;
 
 fn.addEventSource(new S3EventSource(bucket, {
+  events: [ s3.EventType.OBJECT_CREATED, s3.EventType.OBJECT_REMOVED ],
+  filters: [ { prefix: 'subdir/' } ], // optional
+}));
+```
+
+In the example above, `S3EventSource` is accepting `Bucket` type as parameter.
+However, Functions like `from_bucket_name` and `from_bucket_arn` will return `IBucket` 
+and is not compliant with `S3EventSource`. If this is the case, please consider using
+`S3EventSourceV2` instead, this class accepts `IBucket`.
+
+```ts
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import { S3EventSourceV2 } from 'aws-cdk-lib/aws-lambda-event-sources';
+
+const bucket = s3.Bucket.fromBucketName(this, 'Bucket', 'amzn-s3-demo-bucket');
+declare const fn: lambda.Function;
+
+fn.addEventSource(new S3EventSourceV2(bucket, {
   events: [ s3.EventType.OBJECT_CREATED, s3.EventType.OBJECT_REMOVED ],
   filters: [ { prefix: 'subdir/' } ], // optional
 }));
@@ -156,6 +169,7 @@ and add it to your Lambda function. The following parameters will impact Amazon 
 * __startingPosition__: Will determine where to being consumption, either at the most recent ('LATEST') record or the oldest record ('TRIM_HORIZON'). 'TRIM_HORIZON' will ensure you process all available data, while 'LATEST' will ignore all records that arrived prior to attaching the event source.
 * __tumblingWindow__: The duration in seconds of a processing window when using streams.
 * __enabled__: If the DynamoDB Streams event source mapping should be enabled. The default is true.
+* __filters__: Filters to apply before sending a change event from a DynamoDB table to a Lambda function. Events that are filtered out are not sent to the Lambda function.
 
 ```ts
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
@@ -175,6 +189,30 @@ fn.addEventSource(new DynamoEventSource(table, {
 }));
 ```
 
+The following code sets up a Lambda function with a DynamoDB event source. A filter is applied to only send DynamoDB events to 
+the Lambda function when the `id` column is a boolean that equals `true`.
+
+```ts
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+
+declare const table: dynamodb.Table;
+
+declare const fn: lambda.Function;
+fn.addEventSource(new DynamoEventSource(table, {
+  startingPosition: lambda.StartingPosition.LATEST,
+  filters: [
+    lambda.FilterCriteria.filter({
+      eventName: lambda.FilterRule.isEqual('INSERT'),
+      dynamodb: {
+        NewImage: {
+          id: { BOOL: lambda.FilterRule.isEqual(true) },
+        },
+      },
+    }),
+  ],
+}));
+```
 ## Kinesis
 
 You can write Lambda functions to process streaming data in Amazon Kinesis Streams. For more information about Amazon Kinesis, see [Amazon Kinesis
@@ -274,6 +312,112 @@ myFunction.addEventSource(new SelfManagedKafkaEventSource({
 ```
 
 If your self managed Kafka cluster is only reachable via VPC also configure `vpc` `vpcSubnets` and `securityGroup`.
+
+You can specify [event filtering](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventfiltering.html#filtering-msk-smak)
+for managed and self managed Kafka clusters using the `filters` property:
+
+```ts
+import { ManagedKafkaEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+
+// Your MSK cluster arn
+const clusterArn = 'arn:aws:kafka:us-east-1:0123456789019:cluster/SalesCluster/abcd1234-abcd-cafe-abab-9876543210ab-4';
+
+// The Kafka topic you want to subscribe to
+const topic = 'some-cool-topic';
+
+declare const myFunction: lambda.Function;
+myFunction.addEventSource(new ManagedKafkaEventSource({
+  clusterArn,
+  topic,
+  startingPosition: lambda.StartingPosition.TRIM_HORIZON,
+  filters: [
+    lambda.FilterCriteria.filter({
+      stringEquals: lambda.FilterRule.isEqual('test'),
+    }),
+  ],
+}));
+```
+
+By default, Lambda will encrypt Filter Criteria using AWS managed keys. But if you want to use a self managed KMS key to encrypt the filters, You can specify the self managed key using the `filterEncryption` property.
+
+```ts
+import { ManagedKafkaEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+import { Key } from 'aws-cdk-lib/aws-kms';
+
+// Your MSK cluster arn
+const clusterArn = 'arn:aws:kafka:us-east-1:0123456789019:cluster/SalesCluster/abcd1234-abcd-cafe-abab-9876543210ab-4';
+
+// The Kafka topic you want to subscribe to
+const topic = 'some-cool-topic';
+
+// Your self managed KMS key
+const myKey = Key.fromKeyArn(
+  this,
+  'SourceBucketEncryptionKey',
+  'arn:aws:kms:us-east-1:123456789012:key/<key-id>',
+);
+
+declare const myFunction: lambda.Function;
+myFunction.addEventSource(new ManagedKafkaEventSource({
+  clusterArn,
+  topic,
+  startingPosition: lambda.StartingPosition.TRIM_HORIZON,
+  filters: [
+    lambda.FilterCriteria.filter({
+      stringEquals: lambda.FilterRule.isEqual('test'),
+    }),
+  ],
+  filterEncryption: myKey,
+}));
+```
+
+You can also specify an S3 bucket as an "on failure" destination:
+
+```ts
+import { ManagedKafkaEventSource, S3OnFailureDestination } from 'aws-cdk-lib/aws-lambda-event-sources';
+import { IBucket } from 'aws-cdk-lib/aws-s3';
+
+// Your MSK cluster arn
+const clusterArn = 'arn:aws:kafka:us-east-1:0123456789019:cluster/SalesCluster/abcd1234-abcd-cafe-abab-9876543210ab-4';
+
+// The Kafka topic you want to subscribe to
+const topic = 'some-cool-topic';
+
+declare const bucket: IBucket;
+declare const myFunction: lambda.Function;
+
+const s3OnFailureDestination = new S3OnFailureDestination(bucket);
+
+myFunction.addEventSource(new ManagedKafkaEventSource({
+  clusterArn,
+  topic,
+  startingPosition: lambda.StartingPosition.TRIM_HORIZON,
+  onFailure: s3OnFailureDestination,
+}));
+```
+
+Set configuration for provisioned pollers that read from the event source.
+
+```ts
+import { ManagedKafkaEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+
+// Your MSK cluster arn
+declare const clusterArn: string
+
+// The Kafka topic you want to subscribe to
+const topic = 'some-cool-topic';
+
+declare const myFunction: lambda.Function;
+myFunction.addEventSource(new ManagedKafkaEventSource({
+  clusterArn,
+  topic,
+  startingPosition: lambda.StartingPosition.TRIM_HORIZON,
+  provisionedPollerConfig: {
+    minimumPollers: 1,
+    maximumPollers: 3,
+  },
+}));
+```
 
 ## Roadmap
 

@@ -5,15 +5,19 @@ import { CloudFormationInit } from './cfn-init';
 import { Connections, IConnectable } from './connections';
 import { CfnInstance } from './ec2.generated';
 import { InstanceType } from './instance-types';
+import { IKeyPair } from './key-pair';
+import { CpuCredits, InstanceInitiatedShutdownBehavior } from './launch-template';
 import { IMachineImage, OperatingSystemType } from './machine-image';
+import { IPlacementGroup } from './placement-group';
 import { instanceBlockDeviceMappings } from './private/ebs-util';
 import { ISecurityGroup, SecurityGroup } from './security-group';
 import { UserData } from './user-data';
 import { BlockDevice } from './volume';
 import { IVpc, Subnet, SubnetSelection } from './vpc';
 import * as iam from '../../aws-iam';
-import { Annotations, Aspects, Duration, Fn, IResource, Lazy, Resource, Stack, Tags } from '../../core';
+import { Annotations, AspectPriority, Aspects, Duration, FeatureFlags, Fn, IResource, Lazy, Resource, Stack, Tags, Token } from '../../core';
 import { md5hash } from '../../core/lib/helpers-internal';
+import * as cxapi from '../../cx-api';
 
 /**
  * Name tag constant
@@ -76,8 +80,16 @@ export interface InstanceProps {
    * Name of SSH keypair to grant access to instance
    *
    * @default - No SSH access will be possible.
+   * @deprecated - Use `keyPair` instead - https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_ec2-readme.html#using-an-existing-ec2-key-pair
    */
   readonly keyName?: string;
+
+  /**
+   * The SSH keypair to grant access to the instance.
+   *
+   * @default - No SSH access will be possible.
+   */
+  readonly keyPair?: IKeyPair;
 
   /**
    * Where to place the instance within the VPC
@@ -100,6 +112,14 @@ export interface InstanceProps {
    * @default true
    */
   readonly allowAllOutbound?: boolean;
+
+  /**
+   * Whether the instance could initiate IPv6 connections to anywhere by default.
+   * This property is only used when you do not provide a security group.
+   *
+   * @default false
+   */
+  readonly allowAllIpv6Outbound?: boolean;
 
   /**
    * The length of time to wait for the resourceSignalCount
@@ -158,7 +178,7 @@ export interface InstanceProps {
    * UserData, which will cause CloudFormation to replace it if the UserData
    * changes.
    *
-   * @default - true iff `initOptions` is specified, false otherwise.
+   * @default - true if `initOptions` is specified, false otherwise.
    */
   readonly userDataCausesReplacement?: boolean;
 
@@ -166,6 +186,7 @@ export interface InstanceProps {
    * An IAM role to associate with the instance profile assigned to this Auto Scaling Group.
    *
    * The role must be assumable by the service principal `ec2.amazonaws.com`:
+   * Note: You can provide an instanceProfile or a role, but not both.
    *
    * @example
    * const role = new iam.Role(this, 'MyRole', {
@@ -175,6 +196,15 @@ export interface InstanceProps {
    * @default - A role will automatically be created, it can be accessed via the `role` property
    */
   readonly role?: iam.IRole;
+
+  /**
+   * The instance profile used to pass role information to EC2 instances.
+   *
+   * Note: You can provide an instanceProfile or a role, but not both.
+   *
+   * @default - No instance profile
+   */
+  readonly instanceProfile?: iam.IInstanceProfile;
 
   /**
    * The name of the instance
@@ -275,9 +305,97 @@ export interface InstanceProps {
   /**
    * Whether to associate a public IP address to the primary network interface attached to this instance.
    *
+   * You cannot specify this property and `ipv6AddressCount` at the same time.
+   *
    * @default - public IP address is automatically assigned based on default behavior
    */
   readonly associatePublicIpAddress?: boolean;
+
+  /**
+   * Specifying the CPU credit type for burstable EC2 instance types (T2, T3, T3a, etc).
+   * The unlimited CPU credit option is not supported for T3 instances with a dedicated host.
+   *
+   * @default - T2 instances are standard, while T3, T4g, and T3a instances are unlimited.
+   */
+  readonly creditSpecification?: CpuCredits;
+
+  /**
+   * Indicates whether the instance is optimized for Amazon EBS I/O.
+   *
+   * This optimization provides dedicated throughput to Amazon EBS and an optimized configuration stack to provide optimal Amazon EBS I/O performance.
+   * This optimization isn't available with all instance types.
+   * Additional usage charges apply when using an EBS-optimized instance.
+   *
+   * @default false
+   */
+  readonly ebsOptimized?: boolean;
+
+  /**
+   * If true, the instance will not be able to be terminated using the Amazon EC2 console, CLI, or API.
+   *
+   * To change this attribute after launch, use [ModifyInstanceAttribute](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_ModifyInstanceAttribute.html).
+   * Alternatively, if you set InstanceInitiatedShutdownBehavior to terminate, you can terminate the instance
+   * by running the shutdown command from the instance.
+   *
+   * @see http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-instance.html#cfn-ec2-instance-disableapitermination
+   *
+   * @default false
+   */
+  readonly disableApiTermination?: boolean;
+
+  /**
+   * Indicates whether an instance stops or terminates when you initiate shutdown from the instance
+   * (using the operating system command for system shutdown).
+   *
+   * @see https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/terminating-instances.html#Using_ChangingInstanceInitiatedShutdownBehavior
+   *
+   * @default InstanceInitiatedShutdownBehavior.STOP
+   */
+  readonly instanceInitiatedShutdownBehavior?: InstanceInitiatedShutdownBehavior;
+
+  /**
+   * The placement group that you want to launch the instance into.
+   *
+   * @default - no placement group will be used for this instance.
+   */
+  readonly placementGroup?: IPlacementGroup;
+
+  /**
+   * Whether the instance is enabled for AWS Nitro Enclaves.
+   *
+   * Nitro Enclaves requires a Nitro-based virtualized parent instance with specific Intel/AMD with at least 4 vCPUs
+   * or Graviton with at least 2 vCPUs instance types and Linux/Windows host OS,
+   * while the enclave itself supports only Linux OS.
+   *
+   * You can't set both `enclaveEnabled` and `hibernationEnabled` to true on the same instance.
+   *
+   * @see https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html#nitro-enclave-reqs
+   *
+   * @default - false
+   */
+  readonly enclaveEnabled?: boolean;
+
+  /**
+   * Whether the instance is enabled for hibernation.
+   *
+   * You can't set both `enclaveEnabled` and `hibernationEnabled` to true on the same instance.
+   *
+   * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-instance-hibernationoptions.html
+   *
+   * @default - false
+   */
+  readonly hibernationEnabled?: boolean;
+
+  /**
+   * The number of IPv6 addresses to associate with the primary network interface.
+   *
+   * Amazon EC2 chooses the IPv6 addresses from the range of your subnet.
+   *
+   * You cannot specify this property and `associatePublicIpAddress` at the same time.
+   *
+   * @default - For instances associated with an IPv6 subnet, use 1; otherwise, use 0.
+   */
+  readonly ipv6AddressCount?: number;
 }
 
 /**
@@ -349,30 +467,52 @@ export class Instance extends Resource implements IInstance {
       throw new Error('Setting \'initOptions\' requires that \'init\' is also set');
     }
 
+    if (props.keyName && props.keyPair) {
+      throw new Error('Cannot specify both of \'keyName\' and \'keyPair\'; prefer \'keyPair\'');
+    }
+
+    // if credit specification is set, then the instance type must be burstable
+    if (props.creditSpecification && !props.instanceType.isBurstable()) {
+      throw new Error(`creditSpecification is supported only for T4g, T3a, T3, T2 instance type, got: ${props.instanceType.toString()}`);
+    }
+
     if (props.securityGroup) {
       this.securityGroup = props.securityGroup;
     } else {
       this.securityGroup = new SecurityGroup(this, 'InstanceSecurityGroup', {
         vpc: props.vpc,
         allowAllOutbound: props.allowAllOutbound !== false,
+        allowAllIpv6Outbound: props.allowAllIpv6Outbound,
       });
     }
     this.connections = new Connections({ securityGroups: [this.securityGroup] });
     this.securityGroups.push(this.securityGroup);
     Tags.of(this).add(NAME_TAG, props.instanceName || this.node.path);
 
-    this.role = props.role || new iam.Role(this, 'InstanceRole', {
-      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
-    });
+    if (props.instanceProfile && props.role) {
+      throw new Error('You cannot provide both instanceProfile and role');
+    }
+
+    let iamInstanceProfile: string | undefined = undefined;
+    if (props.instanceProfile?.role) {
+      this.role = props.instanceProfile.role;
+      iamInstanceProfile = props.instanceProfile.instanceProfileName;
+    } else {
+      this.role = props.role || new iam.Role(this, 'InstanceRole', {
+        assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+      });
+
+      const iamProfile = new iam.CfnInstanceProfile(this, 'InstanceProfile', {
+        roles: [this.role.roleName],
+      });
+      iamInstanceProfile = iamProfile.ref;
+    }
+
     this.grantPrincipal = this.role;
 
     if (props.ssmSessionPermissions) {
       this.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
     }
-
-    const iamProfile = new iam.CfnInstanceProfile(this, 'InstanceProfile', {
-      roles: [this.role.roleName],
-    });
 
     // use delayed evaluation
     const imageConfig = props.machineImage.getImage(this);
@@ -407,26 +547,62 @@ export class Instance extends Resource implements IInstance {
 
     // network interfaces array is set to configure the primary network interface if associatePublicIpAddress is true or false
     const networkInterfaces = props.associatePublicIpAddress !== undefined
-      ? [{ deviceIndex: '0', associatePublicIpAddress: props.associatePublicIpAddress, subnetId: subnet.subnetId, groupSet: securityGroupsToken }]
-      : undefined;
+      ? [{
+        deviceIndex: '0',
+        associatePublicIpAddress: props.associatePublicIpAddress,
+        subnetId: subnet.subnetId,
+        groupSet: securityGroupsToken,
+        privateIpAddress: props.privateIpAddress,
+      }] : undefined;
 
-    // if network interfaces array is configured then subnetId and securityGroupIds are configured on the network interface
-    // level and there is no need to configure them on the instance level
+    if (props.keyPair && !props.keyPair._isOsCompatible(imageConfig.osType)) {
+      throw new Error(`${props.keyPair.type} keys are not compatible with the chosen AMI`);
+    }
+
+    if (props.enclaveEnabled && props.hibernationEnabled) {
+      throw new Error('You can\'t set both `enclaveEnabled` and `hibernationEnabled` to true on the same instance');
+    }
+
+    if (
+      props.ipv6AddressCount !== undefined &&
+      !Token.isUnresolved(props.ipv6AddressCount) &&
+      (props.ipv6AddressCount < 0 || !Number.isInteger(props.ipv6AddressCount))
+    ) {
+      throw new Error(`\'ipv6AddressCount\' must be a non-negative integer, got: ${props.ipv6AddressCount}`);
+    }
+
+    if (
+      props.ipv6AddressCount !== undefined &&
+      props.associatePublicIpAddress !== undefined) {
+      throw new Error('You can\'t set both \'ipv6AddressCount\' and \'associatePublicIpAddress\'');
+    }
+
+    // if network interfaces array is configured then subnetId, securityGroupIds,
+    // and privateIpAddress are configured on the network interface level and
+    // there is no need to configure them on the instance level
     this.instance = new CfnInstance(this, 'Resource', {
       imageId: imageConfig.imageId,
-      keyName: props.keyName,
+      keyName: props.keyPair?.keyPairName ?? props?.keyName,
       instanceType: props.instanceType.toString(),
       subnetId: networkInterfaces ? undefined : subnet.subnetId,
       securityGroupIds: networkInterfaces ? undefined : securityGroupsToken,
       networkInterfaces,
-      iamInstanceProfile: iamProfile.ref,
+      iamInstanceProfile,
       userData: userDataToken,
       availabilityZone: subnet.availabilityZone,
       sourceDestCheck: props.sourceDestCheck,
       blockDeviceMappings: props.blockDevices !== undefined ? instanceBlockDeviceMappings(this, props.blockDevices) : undefined,
-      privateIpAddress: props.privateIpAddress,
+      privateIpAddress: networkInterfaces ? undefined : props.privateIpAddress,
       propagateTagsToVolumeOnCreation: props.propagateTagsToVolumeOnCreation,
       monitoring: props.detailedMonitoring,
+      creditSpecification: props.creditSpecification ? { cpuCredits: props.creditSpecification } : undefined,
+      ebsOptimized: props.ebsOptimized,
+      disableApiTermination: props.disableApiTermination,
+      instanceInitiatedShutdownBehavior: props.instanceInitiatedShutdownBehavior,
+      placementGroupName: props.placementGroup?.placementGroupName,
+      enclaveOptions: props.enclaveEnabled !== undefined ? { enabled: props.enclaveEnabled } : undefined,
+      hibernationOptions: props.hibernationEnabled !== undefined ? { configured: props.hibernationEnabled } : undefined,
+      ipv6AddressCount: props.ipv6AddressCount,
     });
     this.instance.node.addDependency(this.role);
 
@@ -450,11 +626,22 @@ export class Instance extends Resource implements IInstance {
     this.instancePublicDnsName = this.instance.attrPublicDnsName;
     this.instancePublicIp = this.instance.attrPublicIp;
 
-    if (props.init) {
-      this.applyCloudFormationInit(props.init, props.initOptions);
-    }
+    // When feature flag is true, if both the resourceSignalTimeout and initOptions.timeout are set,
+    // the timeout is summed together. This logic is done in applyCloudFormationInit.
+    // This is because applyUpdatePolicies overwrites the timeout when both timeout fields are specified.
+    if (FeatureFlags.of(this).isEnabled(cxapi.EC2_SUM_TIMEOUT_ENABLED)) {
+      this.applyUpdatePolicies(props);
 
-    this.applyUpdatePolicies(props);
+      if (props.init) {
+        this.applyCloudFormationInit(props.init, props.initOptions);
+      }
+    } else {
+      if (props.init) {
+        this.applyCloudFormationInit(props.init, props.initOptions);
+      }
+
+      this.applyUpdatePolicies(props);
+    }
 
     // Trigger replacement (via new logical ID) on user data change, if specified or cfn-init is being used.
     //
@@ -482,7 +669,7 @@ export class Instance extends Resource implements IInstance {
     }));
 
     if (props.requireImdsv2) {
-      Aspects.of(this).add(new InstanceRequireImdsv2Aspect());
+      Aspects.of(this).add(new InstanceRequireImdsv2Aspect(), { priority: AspectPriority.MUTATING });
     }
   }
 
@@ -519,7 +706,7 @@ export class Instance extends Resource implements IInstance {
    * - Add commands to the instance UserData to run `cfn-init` and `cfn-signal`.
    * - Update the instance's CreationPolicy to wait for the `cfn-signal` commands.
    */
-  private applyCloudFormationInit(init: CloudFormationInit, options: ApplyCloudFormationInitOptions = {}) {
+  public applyCloudFormationInit(init: CloudFormationInit, options: ApplyCloudFormationInitOptions = {}) {
     init.attach(this.instance, {
       platform: this.osType,
       instanceRole: this.role,
@@ -563,6 +750,7 @@ export class Instance extends Resource implements IInstance {
       this.instance.cfnOptions.creationPolicy = {
         ...this.instance.cfnOptions.creationPolicy,
         resourceSignal: {
+          ...this.instance.cfnOptions.creationPolicy?.resourceSignal,
           timeout: props.resourceSignalTimeout && props.resourceSignalTimeout.toIsoString(),
         },
       };

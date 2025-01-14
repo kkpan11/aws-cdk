@@ -126,6 +126,21 @@ describe('deployment', () => {
     });
   });
 
+  test('"stage" can be set on the deployment', () => {
+    // GIVEN
+    const stack = new Stack();
+    const api = new apigateway.RestApi(stack, 'api', { deploy: false, cloudWatchRole: false });
+    api.root.addMethod('GET');
+
+    // WHEN
+    new apigateway.Deployment(stack, 'deployment', { api, stageName: 'dev' });
+
+    // THEN
+    Template.fromStack(stack).hasResourceProperties('AWS::ApiGateway::Deployment', {
+      StageName: 'dev',
+    });
+  });
+
   describe('logical ID of the deployment resource is salted', () => {
     test('before salting', () => {
       // GIVEN
@@ -198,12 +213,12 @@ describe('deployment', () => {
     const stack2 = new Stack();
     const handler1 = new lambda.Function(stack1, 'handler1', {
       code: lambda.Code.fromAsset(path.join(__dirname, 'lambda')),
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
       handler: 'index.handler',
     });
     const handler2 = new lambda.Function(stack2, 'handler2', {
       code: lambda.Code.fromAsset(path.join(__dirname, 'lambda')),
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
       handler: 'index.handler',
     });
 

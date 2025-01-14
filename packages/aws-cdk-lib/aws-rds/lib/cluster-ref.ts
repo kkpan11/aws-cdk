@@ -2,6 +2,7 @@ import { IClusterEngine } from './cluster-engine';
 import { Endpoint } from './endpoint';
 import { DatabaseProxy, DatabaseProxyOptions } from './proxy';
 import * as ec2 from '../../aws-ec2';
+import * as iam from '../../aws-iam';
 import * as secretsmanager from '../../aws-secretsmanager';
 import { IResource } from '../../core';
 
@@ -50,9 +51,30 @@ export interface IDatabaseCluster extends IResource, ec2.IConnectable, secretsma
   readonly engine?: IClusterEngine;
 
   /**
+   * The ARN of the database cluster
+   */
+  readonly clusterArn: string;
+
+  /**
    * Add a new db proxy to this cluster.
    */
   addProxy(id: string, options: DatabaseProxyOptions): DatabaseProxy;
+
+  /**
+   * Grant the given identity connection access to the Cluster.
+   *
+   * @param grantee the Principal to grant the permissions to
+   * @param dbUser the name of the database user to allow connecting
+   *
+   */
+  grantConnect(grantee: iam.IGrantable, dbUser: string): iam.Grant;
+
+  /**
+   * Grant the given identity to access to the Data API.
+   *
+   * @param grantee The principal to grant access to
+   */
+  grantDataApiAccess(grantee: iam.IGrantable): iam.Grant;
 }
 
 /**
@@ -122,4 +144,18 @@ export interface DatabaseClusterAttributes {
    * @default - the imported Cluster's engine is unknown
    */
   readonly engine?: IClusterEngine;
+
+  /**
+   * The secret attached to the database cluster
+   *
+   * @default - the imported Cluster's secret is unknown
+   */
+  readonly secret?: secretsmanager.ISecret;
+
+  /**
+   * Whether the Data API for the cluster is enabled.
+   *
+   * @default false
+   */
+  readonly dataApiEnabled?: boolean;
 }

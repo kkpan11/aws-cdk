@@ -418,7 +418,7 @@ export enum TLSSecurityPolicy {
   /** Cipher suite TLS 1.0 */
   TLS_1_0 = 'Policy-Min-TLS-1-0-2019-07',
   /** Cipher suite TLS 1.2 */
-  TLS_1_2 = 'Policy-Min-TLS-1-2-2019-07'
+  TLS_1_2 = 'Policy-Min-TLS-1-2-2019-07',
 }
 
 /**
@@ -1457,8 +1457,8 @@ export class Domain extends DomainBase implements IDomain, ec2.IConnectable {
 
   private readonly domain: CfnDomain;
 
-  private accessPolicy?: ElasticsearchAccessPolicy
-  private encryptionAtRestOptions?: EncryptionAtRestOptions
+  private accessPolicy?: ElasticsearchAccessPolicy;
+  private encryptionAtRestOptions?: EncryptionAtRestOptions;
 
   private readonly _connections: ec2.Connections | undefined;
 

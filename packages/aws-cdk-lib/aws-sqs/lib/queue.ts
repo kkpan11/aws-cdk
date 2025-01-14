@@ -1,10 +1,10 @@
 import { Construct } from 'constructs';
-import { IQueue, QueueAttributes, QueueBase } from './queue-base';
+import { IQueue, QueueAttributes, QueueBase, QueueEncryption } from './queue-base';
 import { CfnQueue } from './sqs.generated';
 import { validateProps } from './validate-props';
 import * as iam from '../../aws-iam';
 import * as kms from '../../aws-kms';
-import { Duration, RemovalPolicy, Stack, Token, ArnFormat } from '../../core';
+import { Duration, RemovalPolicy, Stack, Token, ArnFormat, Annotations } from '../../core';
 
 /**
  * Properties for creating a new Queue
@@ -178,6 +178,14 @@ export interface QueueProps {
    * @default false
    */
   readonly enforceSSL?: boolean;
+
+  /**
+   * The string that includes the parameters for the permissions for the dead-letter queue
+   * redrive permission and which source queues can specify dead-letter queues.
+   *
+   * @default - All source queues can designate this queue as their dead-letter queue.
+   */
+  readonly redriveAllowPolicy?: RedriveAllowPolicy;
 }
 
 /**
@@ -190,39 +198,37 @@ export interface DeadLetterQueue {
   readonly queue: IQueue;
 
   /**
-   * The number of times a message can be unsuccesfully dequeued before being moved to the dead-letter queue.
+   * The number of times a message can be unsuccessfully dequeued before being moved to the dead-letter queue.
    */
   readonly maxReceiveCount: number;
 }
 
 /**
- * What kind of encryption to apply to this queue
+ * Permission settings for the dead letter source queue
  */
-export enum QueueEncryption {
+export interface RedriveAllowPolicy {
   /**
-   * Messages in the queue are not encrypted
-   */
-  UNENCRYPTED = 'NONE',
-
-  /**
-   * Server-side KMS encryption with a KMS key managed by SQS.
-   */
-  KMS_MANAGED = 'KMS_MANAGED',
-
-  /**
-   * Server-side encryption with a KMS key managed by the user.
+   * Permission settings for source queues that can designate this queue as their dead-letter queue.
    *
-   * If `encryptionKey` is specified, this key will be used, otherwise, one will be defined.
+   * @default - `RedrivePermission.BY_QUEUE` if `sourceQueues` is specified,`RedrivePermission.ALLOW_ALL` otherwise.
    */
-  KMS = 'KMS',
+  readonly redrivePermission?: RedrivePermission;
 
   /**
-   * Server-side encryption key managed by SQS (SSE-SQS).
+   * Source queues that can designate this queue as their dead-letter queue.
    *
-   * To learn more about SSE-SQS on Amazon SQS, please visit the
-   * [Amazon SQS documentation](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-server-side-encryption.html).
+   * When `redrivePermission` is set to `RedrivePermission.BY_QUEUE`, this parameter is required.
+   *
+   * You can specify up to 10 source queues.
+   * To allow more than 10 source queues to specify dead-letter queues, set the `redrivePermission` to
+   * `RedrivePermission.ALLOW_ALL`.
+   *
+   * When `redrivePermission` is either `RedrivePermission.ALLOW_ALL` or `RedrivePermission.DENY_ALL`,
+   * this parameter cannot be set.
+   *
+   * @default - Required when `redrivePermission` is `RedrivePermission.BY_QUEUE`, cannot be defined otherwise.
    */
-  SQS_MANAGED = 'SQS_MANAGED'
+  readonly sourceQueues?: IQueue[];
 }
 
 /**
@@ -251,6 +257,24 @@ export enum FifoThroughputLimit {
    * Throughput quota applies per message group id
    */
   PER_MESSAGE_GROUP_ID = 'perMessageGroupId',
+}
+
+/**
+ * The permission type that defines which source queues can specify the current queue as the dead-letter queue
+ */
+export enum RedrivePermission {
+  /**
+   * Any source queues in this AWS account in the same Region can specify this queue as the dead-letter queue
+   */
+  ALLOW_ALL = 'allowAll',
+  /**
+   * No source queues can specify this queue as the dead-letter queue
+   */
+  DENY_ALL = 'denyAll',
+  /**
+   * Only queues specified by the `sourceQueueArns` parameter can specify this queue as the dead-letter queue
+   */
+  BY_QUEUE = 'byQueue',
 }
 
 /**
@@ -286,6 +310,9 @@ export class Queue extends QueueBase {
         ? kms.Key.fromKeyArn(this, 'Key', attrs.keyArn)
         : undefined;
       public readonly fifo: boolean = this.determineFifo();
+      public readonly encryptionType = attrs.keyArn
+        ? QueueEncryption.KMS
+        : undefined;
 
       protected readonly autoCreatePolicy = false;
 
@@ -309,7 +336,9 @@ export class Queue extends QueueBase {
       }
     }
 
-    return new Import(scope, id);
+    return new Import(scope, id, {
+      environmentFromArn: attrs.queueArn,
+    });
   }
 
   /**
@@ -338,6 +367,11 @@ export class Queue extends QueueBase {
   public readonly fifo: boolean;
 
   /**
+   * Whether the contents of the queue are encrypted, and by what type of key.
+   */
+  public readonly encryptionType?: QueueEncryption;
+
+  /**
    * If this queue is configured with a dead-letter queue, this is the dead-letter queue settings.
    */
   public readonly deadLetterQueue?: DeadLetterQueue;
@@ -351,6 +385,20 @@ export class Queue extends QueueBase {
 
     validateProps(props);
 
+    if (props.redriveAllowPolicy) {
+      const { redrivePermission, sourceQueues } = props.redriveAllowPolicy;
+      if (redrivePermission === RedrivePermission.BY_QUEUE) {
+        if (!sourceQueues || sourceQueues.length === 0) {
+          throw new Error('At least one source queue must be specified when RedrivePermission is set to \'byQueue\'');
+        }
+        if (sourceQueues && sourceQueues.length > 10) {
+          throw new Error('Up to 10 sourceQueues can be specified. Set RedrivePermission to \'allowAll\' to specify more');
+        }
+      } else if (redrivePermission && sourceQueues) {
+        throw new Error('sourceQueues cannot be configured when RedrivePermission is set to \'allowAll\' or \'denyAll\'');
+      }
+    }
+
     const redrivePolicy = props.deadLetterQueue
       ? {
         deadLetterTargetArn: props.deadLetterQueue.queue.queueArn,
@@ -358,7 +406,16 @@ export class Queue extends QueueBase {
       }
       : undefined;
 
-    const { encryptionMasterKey, encryptionProps } = _determineEncryptionProps.call(this);
+    // When `redriveAllowPolicy` is provided, `redrivePermission` defaults to allow all queues (`ALLOW_ALL`);
+    const redriveAllowPolicy = props.redriveAllowPolicy ? {
+      redrivePermission: props.redriveAllowPolicy.redrivePermission
+      // When `sourceQueues` is provided in `redriveAllowPolicy`, `redrivePermission` defaults to allow specified queues (`BY_QUEUE`);
+      // otherwise, it defaults to allow all queues (`ALLOW_ALL`).
+        ?? (props.redriveAllowPolicy.sourceQueues ? RedrivePermission.BY_QUEUE : RedrivePermission.ALLOW_ALL),
+      sourceQueueArns: props.redriveAllowPolicy.sourceQueues?.map(q => q.queueArn),
+    } : undefined;
+
+    const { encryptionMasterKey, encryptionProps, encryptionType } = _determineEncryptionProps.call(this);
 
     const fifoProps = this.determineFifoProps(props);
     this.fifo = fifoProps.fifoQueue || false;
@@ -368,6 +425,7 @@ export class Queue extends QueueBase {
       ...fifoProps,
       ...encryptionProps,
       redrivePolicy,
+      redriveAllowPolicy,
       delaySeconds: props.deliveryDelay && props.deliveryDelay.toSeconds(),
       maximumMessageSize: props.maxMessageSizeBytes,
       messageRetentionPeriod: props.retentionPeriod && props.retentionPeriod.toSeconds(),
@@ -384,8 +442,13 @@ export class Queue extends QueueBase {
     this.encryptionMasterKey = encryptionMasterKey;
     this.queueUrl = queue.ref;
     this.deadLetterQueue = props.deadLetterQueue;
+    this.encryptionType = encryptionType;
 
-    function _determineEncryptionProps(this: Queue): { encryptionProps: EncryptionProps, encryptionMasterKey?: kms.IKey } {
+    function _determineEncryptionProps(this: Queue): {
+      encryptionProps: EncryptionProps;
+      encryptionMasterKey?: kms.IKey;
+      encryptionType: QueueEncryption | undefined;
+    } {
       let encryption = props.encryption;
 
       if (encryption === QueueEncryption.SQS_MANAGED && props.encryptionMasterKey) {
@@ -393,15 +456,23 @@ export class Queue extends QueueBase {
       }
 
       if (encryption !== QueueEncryption.KMS && props.encryptionMasterKey) {
+        if (encryption !== undefined) {
+          Annotations.of(this).addWarningV2('@aws-cdk/aws-sqs:queueEncryptionChangedToKMS', [
+            `encryption: Automatically changed to QueueEncryption.KMS, was: QueueEncryption.${Object.keys(QueueEncryption)[Object.values(QueueEncryption).indexOf(encryption)]}`,
+            'When encryptionMasterKey is provided, always set `encryption: QueueEncryption.KMS`',
+          ].join('\n'));
+        }
+
         encryption = QueueEncryption.KMS; // KMS is implied by specifying an encryption key
       }
 
       if (!encryption) {
-        return { encryptionProps: {} };
+        return { encryptionProps: {}, encryptionType: encryption };
       }
 
       if (encryption === QueueEncryption.UNENCRYPTED) {
         return {
+          encryptionType: encryption,
           encryptionProps: {
             sqsManagedSseEnabled: false,
           },
@@ -410,6 +481,7 @@ export class Queue extends QueueBase {
 
       if (encryption === QueueEncryption.KMS_MANAGED) {
         return {
+          encryptionType: encryption,
           encryptionProps: {
             kmsMasterKeyId: 'alias/aws/sqs',
             kmsDataKeyReusePeriodSeconds: props.dataKeyReuse && props.dataKeyReuse.toSeconds(),
@@ -423,6 +495,7 @@ export class Queue extends QueueBase {
         });
 
         return {
+          encryptionType: encryption,
           encryptionMasterKey: masterKey,
           encryptionProps: {
             kmsMasterKeyId: masterKey.keyArn,
@@ -433,6 +506,7 @@ export class Queue extends QueueBase {
 
       if (encryption === QueueEncryption.SQS_MANAGED) {
         return {
+          encryptionType: encryption,
           encryptionProps: {
             sqsManagedSseEnabled: true,
           },
@@ -486,7 +560,11 @@ export class Queue extends QueueBase {
       contentBasedDeduplication: props.contentBasedDeduplication,
       deduplicationScope: props.deduplicationScope,
       fifoThroughputLimit: props.fifoThroughputLimit,
-      fifoQueue,
+
+      // This value will be passed directly into the L1 props, but the underlying `AWS::SQS::Queue`
+      // does not accept `FifoQueue: false`. It must either be `true` or absent. So change a `false` into
+      // an `undefined`.
+      fifoQueue: fifoQueue ? true : undefined,
     };
   }
 

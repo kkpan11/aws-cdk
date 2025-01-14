@@ -11,8 +11,14 @@ The CDK is released under the [Apache license](http://aws.amazon.com/apache2.0/)
 Any code you submit will be released under that license.
 
 This document describes how to set up a development environment and submit your changes. Please
-let us know if it's not up-to-date (even better, submit a PR with your  corrections ;-)).
+let us know if it's not up-to-date (even better, submit a PR with your corrections ;-)).
 
+- [Where To Contribute](#where-to-contribute)
+  - [Demonstrating Value](#demonstrating-value)
+  - [Publishing Your Own Package](#publishing-your-own-package)
+    - [Trust and Third Party Packages](#trust-and-third-party-packages)
+    - [Third Party Package Administration](#third-party-package-administration)
+- [Quick Start](#quick-start)
 - [Getting Started](#getting-started)
   - [Local setup](#setup)
   - [Dev Container](#dev-container)
@@ -27,9 +33,8 @@ let us know if it's not up-to-date (even better, submit a PR with your  correcti
   - [Rosetta](#rosetta)
 - [Tools](#tools-advanced)
   - [Linters](#linters)
-  - [cfn2ts](#cfn2ts)
   - [scripts/foreach.sh](#scriptsforeachsh)
-  - [Jetbrains support (WebStorm/IntelliJ)](#jetbrains-support-webstormintellij)
+  - [JetBrains support (WebStorm/IntelliJ)](#jetbrains-support-webstormintellij)
   - [Linking against this repository](#linking-against-this-repository)
   - [Running integration tests in parallel](#running-integration-tests-in-parallel)
   - [Visualizing dependencies in a CloudFormation Template](#visualizing-dependencies-in-a-cloudformation-template)
@@ -47,6 +52,147 @@ let us know if it's not up-to-date (even better, submit a PR with your  correcti
 - [Badges (Pilot Program)](#badges-pilot-program)
 - [Related Repositories](#related-repositories)
 
+## Contribution Workflow Diagram
+```mermaid
+flowchart TD
+    A(Identify Desired Functionality) --> B(Search For Existing Artifacts)
+    B --> C[External Packages]
+    B --> D[Relevant Issues And PRs]
+    C --> E{"Does A High Quality
+            Solution Exist?"}
+    D --> F{"Is There A PR In Progress"}
+    E --> |Yes| G(("Ask How You
+                    Can Help"))
+    F --> |Yes| G
+    E --> |No| H(Evaluate Where To Contribute)
+    F --> |No| H
+    H --> I{"Is There Clear Evidence
+            For Inclusion In AWS-CDK"}
+    I --> |Yes| subEvidence
+    I --> |No| J{"Do You Want To Pursue Eventual
+                  Inclusion In AWS-CDK"}
+    J --> |No| L(("Create Private
+                  Implementation"))
+    J --> |Yes| K((Publish A Package))
+    subEvidence --> M(Make Pull Request)
+    M --> N{"Passes CI Checks, Linters,
+            And Follows Design Guidelines"}
+    N --> O(Review)
+    O --> |Accepted| R(Hooray!)
+    O --> P(Changes Requested)
+    P --> Q(Make Changes)
+    Q --> O
+    O --> |Refused| K
+
+subgraph subEvidence[Gather Evidence]
+    direction LR
+    engagement[Engagement from Multiple users]
+    core[Intersects With Core Framework Concerns]
+    quality["Clear, Well Defined, Solution With
+            Limited Scope And Clear Boundaries"]
+    external[External Packages]
+    issues[Relevant Issues And PRs]
+end
+```
+
+## Where to Contribute
+
+Contributions are accepted through a number of channels, including direct pull requests to the aws/aws-cdk repository. However, this may not be the ideal method depending on the circumstances of your proposed additions or changes. The aws-cdk team has limited availability for reviews, which means that sometimes, if making your change available for immediate use by yourself is your goal, it may be better to publish it in your own package or otherwise bypass the CDK team's review and feedback cycle. That being said, if your contribution contains changes that are desired by a large number of cdk users, we absolutely want to make sure those changes are included in the aws-cdk core packages.
+
+Here are some things we look at when evaluating a contribution:
+
+1. Signal - Is there a GitHub issue, or possibly multiple related ones, that the contribution addresses. Do the issues have a lot of engagement, such as comments, +1 reactions, etc that indicate that many users are affected by it?
+1. Size - Is the contribution limited to a relatively self-contained surface area? Is it broken up into the smallest possible unit of functionality that makes sense?
+1. Priority - Does the contribution address an issue in, or add a new feature of, a service that has a high priority for coverage? These are generally core services most commonly used on AWS such as IAM, EC2, Lambda, and ECS.
+1. Quality - Does the contribution take into account all of the guidance provided in our documentation regarding [design patterns](./docs/DESIGN_GUIDELINES.md), test coverage, and best practices as it relates to code within the aws-cdk repository? Does it also make an effort to follow patterns commonly used within the aws-cdk repository and not deviate unnecessarily from these conventions?
+1. Breaking Changes - Does the contribution introduce any risk for breaking existing users applications? Specifically, does it require any code changes or can it trigger any resource replacement in CloudFormation that would result in downtime?
+
+### Demonstrating Value
+
+When you create a pull-request, make sure to include justification related to all of the relevant criteria within the PR description in order to make it clear to reviewers why your contribution should be accepted. Specifically, provide justification for why this is functionality that should live within the core aws-cdk packages and be maintained by the cdk team. Are there technical reasons why this functionality could not be vended separately etc? If we are not convinced that the functionality should be part of the core framework, and therefore close your pull request, here are some ways you can go about gathering evidence to convince us otherwise.
+
+1. Link any relevant issues that you find and note their engagement by other users.
+1. Describe common use cases that are not currently well served that your contribution addresses.
+1. Link to any third party packages, including any published by you, and other prior art providing the same functionality.
+1. Iterate the steps you have taken to ensure that the contribution is well thought out and stable.
+1. Include any alternative solutions you explored and your reasoning as to why they weren't chosen.
+
+All of this information will help make it clear to reviewers why your contribution should be accepted. If a reviewer is still not convinced that the contribution is necessary or effective, an alternative route should be pursued.
+
+### Publishing Your Own Package
+
+This is by far the strongest signal you can give to the CDK team that a feature should be included within the core aws-cdk packages. A package published on npm, PyPI, Maven Central, NuGet, and GitHub (for Go) that has good documentation, a clear purpose, and an active group of users is a good indication that the functionality it provides is useful and should be examined for inclusion in the core aws-cdk packages. This may not be the goal of any given package, and some constructs and features do not provide functionality that should ever be vended as part of the core framework. However, if a package you own does include functionality that you and other users believe should be vended as part of the core CDK, we encourage making a pull request, or RFC if appropriate, proposing its inclusion.
+
+#### Trust and Third Party Packages 
+
+An argument we commonly hear why contributors don't want to publish their contributions in their own packages, is that organizations have restrictions on what packages they allow to be used and these restrictions commonly include limiting usage of packages to those owned and distributed only from trusted sources. We recognize trust is an important part of the software dependency chain, and we take that into consideration when evaluating contributions in aws-cdk. However, not everything can be owned by the aws-cdk team. Strictly from a technical limitation perspective, `aws-cdk-lib` is big. Continuing a system that makes it, potentially, many multiple times bigger, has a cost on usability. Additionally, as the surface area widens, the aws-cdk team becomes stretched ever thinner and isn't able to properly maintain what we own.
+
+That being said, "trust", isn't as black and white as "it's owned by aws, so it's okay". The best way to trust that the packages you depend on to help generate your aws resources is to use [policy validation](https://docs.aws.amazon.com/cdk/v2/guide/policy-validation-synthesis.html) on the output of your application in order to ensure it is following the rules that are important to you or your organization.
+
+#### Third Party Package Administration
+
+Another reason we hear from authors that they don't want to publish their own packages, is they don't want to go through the trouble of setting up their own repository and publishing toolchain. This is something we are continuously working on making easier and we encourage you to check out some of the tools that we have available to aid in this.
+
+1. [Projen](https://github.com/projen/projen) - A tool with common repository and publishing setup abstracted, has a construct specifically for CDK construct libraries.
+1. [Publib](https://github.com/cdklabs/publib) - A toolchain for publishing packages to multiple repositories. A lot of this is included in projen and we recommend using that instead of publib directly, but it may be useful for specific cases.
+1. [Construct Hub](https://constructs.dev) - An index of all construct libraries published to NPM. When you publish a construct library, it will automatically have documentation generated and published to Construct Hub.
+
+## Quick Start
+
+### Setup
+Fork the aws-cdk repository into your account: https://github.com/aws/aws-cdk/fork
+
+Clone the forked repository:
+```console
+$ git clone https://github.com/{your-account}/aws-cdk.git
+$ cd aws-cdk
+$ yarn install
+```
+
+Before you create a pull request:
+* Write code changes
+* Write unit tests
+* Write integ tests (aws-cdk/packages/@aws-cdk-testing/)
+* Commit changes and push to remote branch
+
+Build the entire aws-cdk repo (this may take some time):
+```console
+$ npx lerna run build --skip-nx-cache
+```
+
+### Testing
+Run the unit tests for the modules(e.g. aws-lambda) you've changed:
+```console
+$ cd aws-cdk/packages/aws-cdk-lib
+$ yarn test aws-lambda
+```
+
+Run the integration tests for the modules(e.g. aws-lambda) you've changed:
+```console
+$ cd aws-cdk/packages/@aws-cdk-testing/framework-integ
+$ yarn integ test/aws-lambda/test/integ.lambda.js --update-on-failed
+```
+
+If you've made changes to sample code in any README, ensure those examples compile with:
+```console
+$ /bin/bash ./scripts/run-rosetta.sh
+```
+
+### Linking
+If you would like to test your code changes against a CDK App, create the App and link your local CDK with it:
+```console
+$ mkdir cdkApp # in parent dir of aws-cdk
+$ cd cdkApp
+$ npx cdk init app --language typescript
+$ npx cdk --version # shows the latest CDK version e.g. 2.155.0 (build 34dcc5a)
+$ ../aws-cdk/link-all.sh # link the aws-cdk repo with your cdkApp
+$ npx cdk --version # verify linked cdk version 0.0.0
+# Define the resource that uses your aws-cdk changes in cdkApp lib folder
+$ npx cdk deploy # deploy successfully
+```
+
+Congratulations! Create pull request for review.
+
 ## Getting Started
 
 The following steps describe how to set up the AWS CDK repository on your local machine.
@@ -61,11 +207,13 @@ The following tools need to be installed on your system prior to installing the 
   - We recommend using a version in [Active LTS](https://nodejs.org/en/about/releases/)
 - [Yarn >= 1.19.1, < 2](https://yarnpkg.com/lang/en/docs/install)
 - [.NET SDK >= 6.0.x](https://www.microsoft.com/net/download)
-- [Python >= 3.6.5, < 4.0](https://www.python.org/downloads/release/python-365/)
+- [Python >= 3.8.0, < 4.0](https://www.python.org/downloads/release/python-380/)
 - [Docker >= 19.03](https://docs.docker.com/get-docker/)
   - the Docker daemon must also be running
+- [git-lfs](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage)
+  - Without this, you'll get the message that the clone succeeded but the checkout failed when you initially clone the repo.
 
-First fork the repository, and then run the following commands to clone the repository locally.
+First fork the repository https://github.com/aws/aws-cdk/fork, and then run the following commands to clone the repository locally.
 
 ```console
 $ git clone https://github.com/{your-account}/aws-cdk.git
@@ -74,8 +222,8 @@ $ yarn install
 ```
 
 We recommend that you use [Visual Studio Code](https://code.visualstudio.com/) to work on the CDK.
-We use `eslint` to keep our code consistent in terms of style and reducing defects. We recommend installing
-the [eslint extension](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) as well.
+We use `ESLint` to keep our code consistent in terms of style and reducing defects. We recommend installing
+the [ESLint extension](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) as well.
 
 Windows, as a development environment, has known performance and compatibility issues. To help in this case, consider using [Gitpod](#gitpod) or [Amazon CodeCatalyst DevEnv](https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/codecatalyst-service.html) instead.
 
@@ -96,9 +244,9 @@ specific to the CDK.
 
 ### Building aws-cdk-lib
 
-The full build of all of the packages within the repository can take a few minutes, about 20  when all tests are run.
+The full build of all of the packages within the repository can take a few minutes, about 20 when all tests are run.
 Most contributions only require working on a single package, usually `aws-cdk-lib`. To build this package for the first
-time, you can execute the following to build it and it's dependencies.
+time, you can execute the following to build it and its dependencies.
 
 ```console
 $ npx lerna run build --scope=aws-cdk-lib
@@ -107,6 +255,8 @@ $ npx lerna run build --scope=aws-cdk-lib
 Note: `lerna` uses a local cache by default. If your build fails, you can fix
 the issue and run the command again and it will not rerun any previously
 successful steps.
+
+Note: If you encounter `ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory`, please try running the command with increased memory by using `export NODE_OPTIONS="--max-old-space-size=8192"`.
 
 At this point, you can run build and test the `aws-cdk-lib` module by running
 
@@ -162,7 +312,7 @@ The `dist/` folder within each module contains the packaged up language artifact
 The AWS CDK provides a VS Code Dev Container with all dependencies pre-installed.
 Please follow the [setup instructions](https://code.visualstudio.com/docs/remote/containers-tutorial) to configure VS Code.
 
-With VS Code setup, you will be prompted to open the `aws-cdk` repo in a Dev Container, or you can choos "Dev Containers: Reopen in Container" from the VS Code command palette.
+With VS Code setup, you will be prompted to open the `aws-cdk` repo in a Dev Container, or you can choose "Dev Containers: Reopen in Container" from the VS Code command palette.
 
 ### Gitpod
 
@@ -207,8 +357,8 @@ eval $(gp env -e)
 
 ### Amazon CodeCatalyst Dev Environments
 
-Dev Environments are cloud-based development environments. 
-[Amazon CodeCatalyst](https://aws.amazon.com/codecatalyst/) allows you to checkout your linked Github
+Dev Environments are cloud-based development environments.
+[Amazon CodeCatalyst](https://aws.amazon.com/codecatalyst/) allows you to checkout your linked GitHub
 repositories in your Dev Environments with your favorite local IDEs such as VSCode or JetBrains.
 
 Build up `aws-cdk-lib` as well as `framework-integ` when you enter your Dev Env:
@@ -220,7 +370,7 @@ $ NODE_OPTIONS=--max-old-space-size=8192 npx lerna run build --scope=aws-cdk-lib
 
 You may [configure your Dev Env](https://docs.aws.amazon.com/codecatalyst/latest/userguide/devenvironment-devfile.html) with the `devfile.yaml` to further customize your Dev Env for CDK development.
 
-Read the links below for more details: 
+Read the links below for more details:
 - [Dev Environments in CodeCatalyst](https://docs.aws.amazon.com/codecatalyst/latest/userguide/devenvironment.html)
 - [Using GitHub repositories in CodeCatalyst](https://docs.aws.amazon.com/codecatalyst/latest/userguide/extensions-github.html)
 - [Setting up to use the AWS CLI with CodeCatalyst](https://docs.aws.amazon.com/codecatalyst/latest/userguide/set-up-cli.html)
@@ -275,16 +425,15 @@ much more likely to give a PR for those issues prompt attention.
 
 ### Step 2: Design
 
-In some cases, it is useful to seek feedback by iterating on a design document. This is useful
-when you plan a big change or feature, or you want advice on what would be the best path forward.
+In some cases, it is useful to seek feedback by iterating on a design document. This is useful when you plan a big change or feature, or you want advice on what would be the best path forward.
 
-In many cases, the GitHub issue is sufficient for such discussions, and can be
-sufficient to get clarity on what you plan to do. If the changes are
-significant or intrusive to the existing CDK experience, and especially for a
-brand new L2 construct implementation, please write an RFC in our [RFC
-repository](https://github.com/aws/aws-cdk-rfcs) before jumping into the code
-base. L2 construct implementation pull requests will not be reviewed without
-linking an approved RFC.
+In many cases, the comments section of the relevant GitHub issue is sufficient for such discussion, and can be a good place to socialize and get feedback on what you plan to do. If the changes are significant in scope, require a longer form medium to communicate, or you just want to ensure that the core team agrees with your planned implementation before you submit it for review to avoid wasted work, there are a few different strategies you can pursue.
+
+1. README driven development - This is the core team's preferred method for reviewing new APIs. Submit a draft PR with updates to the README for the package that you intend to change that clearly describes how the functionality will be used. For new L2s, include usage examples that cover common use cases and showcase the features of the API you're designing. The most important thing to consider for any feature is the public API and this will help to give a clear picture of what changes users can expect.
+1. Write an [RFC](https://github.com/aws/aws-cdk-rfcs) - This is a process for discussing new functionality that is large in scope, may incur breaking changes, or may otherwise warrant discussion from multiple stakeholders on the core team or within the community. Specifically, it is a good place to discuss new features in the core CDK framework or the CLI that are unable to be decoupled from the core cdk codebase.
+1. Publish a package - A separate package is the best place to demonstrate the value of new functionality that you believe should be included within the CDK core libraries. It not only illustrates a complete solution with its entire API surface area available to review, it also proves that your design works! When publishing a package with the goal for eventual inclusion within aws-cdk-lib, make sure to follow our [design guidelines](./docs/DESIGN_GUIDELINES.md) wherever relevant.
+
+Performing any of the above processes helps us to ensure that expectations are clearly set before a contribution is made. We want to ensure that everyone is able to contribute to the CDK ecosystem effectively. If you make a contribution that is ultimately not merged by into aws-cdk-lib, but you believe it should be, we encourage you to keep pursuing it. The scope of the core framework is intentionally limited to ensure that we can effectively maintain its surface area and ensure code quality and reliability over the long term. However, new patterns may emerge in the ecosystem that clearly provide better solutions than those currently in aws-cdk-lib. If your solutions gains popularity within the community, and you want us to re-evaluate its inclusion, reach out to us on cdk.dev or create a GitHub issue with a feature request and references to your package. See [demonstrating value](#demonstrating-value) for more information. 
 
 ### Step 3: Work your Magic
 
@@ -338,7 +487,7 @@ new features and all fixes unless there is a good reason why one is not needed.
 
 All integration tests going forward should use the [IntegTest](https://github.com/aws/aws-cdk/blob/main/packages/%40aws-cdk/integ-tests-alpha/lib/test-case.ts#L148)
 construct. Over time we will be updating all of our existing tests to use this construct. It
-allows for more control over configuring each tests as well as the ability to perform
+allows for more control over configuring each test as well as the ability to perform
 assertions against the deployed infrastructure.
 
 ```ts
@@ -350,8 +499,8 @@ assertions against the deployed infrastructure.
 ```
 
 Examples:
-* [integ.destinations.ts](https://github.com/aws/aws-cdk/blob/master/packages/%40aws-cdk/aws-lambda-destinations/test/integ.destinations.ts#L7)
-* [integ.put-events.ts](https://github.com/aws/aws-cdk/blob/main/packages/%40aws-cdk/aws-stepfunctions-tasks/test/eventbridge/integ.put-events.ts)
+* [integ.destinations.ts](https://github.com/aws/aws-cdk/blob/main/packages/%40aws-cdk-testing/framework-integ/test/aws-lambda-destinations/test/integ.destinations.ts#L7)
+* [integ.put-events.ts](https://github.com/aws/aws-cdk/blob/main/packages/%40aws-cdk-testing/framework-integ/test/aws-stepfunctions-tasks/test/eventbridge/integ.put-events.ts)
 
 **What if you cannot run integration tests**
 
@@ -429,7 +578,7 @@ $ npx cdk -a test/aws-eks/test/sample.js deploy
 
 This allows you to iterate your development and ensure a minimal sample app would successfully deploy as you expect.
 You have the freedom to interact with it just as a common CDK app such as viewing differences with `npx cdk diff`
-or pass context variables with `npx cdk deploy -c`. You can rapidly iterate your testing with repeated deployments 
+or pass context variables with `npx cdk deploy -c`. You can rapidly iterate your testing with repeated deployments
 by importing existing resource such as existing VPC. This can save a lot of time and help you focus on the core changes.
 
 ```ts
@@ -439,7 +588,7 @@ const vpc = ec2.Vpc.fromLookup(stack, 'Vpc', { isDefault: true });
 As this is for testing only, do not commit `sample.ts` and `sample.js` to your PR branch.
 
 Alternatively, you can write this test as a new integration test like `integ.my-test.ts` and deploy it
-using `yarn integ --no-clean`. This may be useful when you need to publish a new 
+using `yarn integ --no-clean`. This may be useful when you need to publish a new
 integration test:
 
 ```console
@@ -483,19 +632,27 @@ CDK integration tests.
 
 ### Step 4: Pull Request
 
-* Create a commit with your changes and push them to a
-  [fork](https://docs.github.com/en/get-started/quickstart/fork-a-repo).
-  > Note: CDK core members can push to a branch on the AWS CDK repo (naming convention: `<user>/<feature-bug-name>`).
+* Create a [fork](https://docs.github.com/en/get-started/quickstart/fork-a-repo) of the CDK repository.
+* Create a new branch for your change, and push the change commits on it.
+  > [!IMPORTANT]
+  > Your pull request must be based off of a branch in a personal account (not an organization owned account, and not the `main` branch).
+  > You must also have the setting enabled that [allows the CDK team to push changes to your branch](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/allowing-changes-to-a-pull-request-branch-created-from-a-fork) (this setting is enabled by default for personal accounts,
+  > and cannot be enabled for organization owned accounts).
+  > The reason for this is that our automation needs to synchronize your branch with our `main` after it has been approved, and
+  > we cannot do that if we cannot push to your branch.
+  
+  > [!NOTE]
+  > CDK core members can push to a branch on the AWS CDK repo (naming convention: `<user>/<feature-bug-name>`).
 
 * Create a [pull request on
-  Github](https://docs.github.com/en/github/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request-from-a-fork).
+  GitHub](https://docs.github.com/en/github/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request-from-a-fork).
 
 * Pull request title and message (and PR title and description) must adhere to
   [conventionalcommits](https://www.conventionalcommits.org).
   * The title must begin with `feat(module): title`, `fix(module): title`, `refactor(module): title` or
     `chore(module): title`.
     * `feat`: indicates a feature added (requires tests and README updates in principle, but can be suppressed)
-    * `fix`: indicates a bug fixes (requires tests in principle, but can be suppressed)
+    * `fix`: indicates a bug fix (requires tests in principle, but can be suppressed)
     * `docs`: indicates updated documentation (docstrings or Markdown files)
     * `refactor`: indicates a feature-preserving refactoring
     * `chore`: something without directly visible user benefit (does not end up in the CHANGELOG). Typically used for build scripts, config, or changes so minor they don't warrant showing up the CHANGELOG.
@@ -591,9 +748,10 @@ dependency.**
 
 #### Adding new unconventional dependencies
 
-> :warning: Do not add these. If there is a tool that you want to use in your
-CDK constructs, see [Adding construct runtime
-dependencies](#Adding-construct-runtime-dependencies).
+> [!WARNING]
+> Do not add these. If there is a tool that you want to use in your
+> CDK constructs, see [Adding construct runtime
+> dependencies](#Adding-construct-runtime-dependencies).
 
 **For the aws-cdk an unconventional dependency is defined as any dependency that is not managed via the module's
 `package.json` file.**
@@ -606,11 +764,50 @@ You can find the dependabot config file [here](./.github/dependabot.yml).
 **If you think your PR introduces a new unconventional dependency, make sure to call it
 out in the description so that we can discuss the best way to manage that dependency.**
 
+### Addressing Code Coverage Gaps
+
+We leverage [Codecov](https://about.codecov.io/) to track code coverage of the project.
+If your PR doesn't meet the coverage requirements, you'll see failing status checks, which will prevent the PR from merging.
+
+There are two requirements we define, each are enforced both on the overall 
+project as well as individual packages.
+
+1. Coverage percentage must not decrease.
+2. Patch percentage must be at least 95%.
+
+Following is an example of status checks for a PR that violates both requirements:
+
+![](./images/codecov-violations.png)
+
+To fix and diagnose coverage gaps in your PR, there are two options:
+
+1. Push your changes to the PR and wait for Codecov to comment on the PR.
+2. If you find option 1 too slow, you can open a local coverage report located in `<path-to-package>/coverage/index.html`
+
+> [!NOTE]
+> Coverage percentage in local reports differs slightly from the percentage you'll see on Codecov.
+> This is ok, and is related to how Codecov handles function signatures (probably).
+> Ultimately Codecov is the source of truth, but you can still use local reports to locate uncovered
+> lines and address them.
+
+Even though it should be rare, sometimes specific lines will be hard to cover by tests.
+To disable coverage of specific lines, you can use:
+
+```ts
+/* istanbul ignore next */
+console.log('This cannot be covered')
+```
+
 ### Step 5: Merge
 
 * Make sure your PR builds successfully (we have CodeBuild setup to automatically build all PRs).
 * Once approved and tested, one of our bots will squash-merge to main and will use your PR title/description as the
   commit message.
+
+> [!NOTE]
+> If your PR is failing one of the required checks (e.g Codecov), it will not be auto-merged. If you believe the PR should be merged
+> inspite of this, let a maintainer know. The maintainer may agree and merge the PR manually, or ask you to address the failing checks.
+
 
 ## Breaking Changes
 
@@ -770,7 +967,7 @@ preview version. For example, assume we add the method
 
 ```ts
 /**
- * This methods grants awesome powers
+ * This method grants awesome powers
  */
 grantAwesomePowerBeta1();
 ```
@@ -782,21 +979,39 @@ change, we will add `grantAwesomePowerBeta2()` and deprecate
 
 ```ts
 /**
-* This methods grants awesome powers to the given principal
+* This method grants awesome powers to the given principal
 *
 * @param grantee The principal to grant powers to
 */
 grantAwesomePowerBeta2(grantee: iam.IGrantable)
 
 /**
-* This methods grants awesome powers
+* This method grants awesome powers
 * @deprecated use grantAwesomePowerBeta2
 */
 grantAwesomePowerBeta1()
 ```
 
-When we decide its time to graduate the API, the latest preview version will
+When we decide it's time to graduate the API, the latest preview version will
 be deprecated and the final version - `grantAwesomePower` will be added.
+
+### Adding new experimental CLI features
+
+In order to move fast when developing new CLI features, we may decide to release 
+functionality as "experimental" or "incremental." In this scenario we can utilize
+explicit opt-in via an `--unstable` flag.
+
+Explicit opt-ins would look something like this:
+
+```bash
+cdk new-command --unstable='new-command'
+
+cdk bootstrap --unstable='new-funky-bootstrap'
+```
+
+And can be simply added as an additional flag on the CLI command that is being worked on.
+When the time comes to stabilize the command, we remove the requirement that such a flag
+is set.
 
 ## Documentation
 
@@ -806,7 +1021,7 @@ the README for the `aws-ec2` module - https://docs.aws.amazon.com/cdk/api/latest
 ### Rosetta
 
 The README file contains code snippets written as typescript code. Code snippets typed in fenced code blocks
-(such as `` ```ts ``) will be automatically extracted, compiled and translated to other languages when the
+(such as `` ```ts ``) will be automatically extracted, compiled and translated to other languages 
 during the [pack](#pack) step. We call this feature 'rosetta'.
 
 You can run rosetta on the aws-cdk-lib module (or any other module) by running:
@@ -946,16 +1161,16 @@ yarn lint
 
 The following linters are used:
 
-- [eslint](#eslint)
+- [ESLint](#eslint)
 - [pkglint](#pkglint)
 - [awslint](#awslint)
 
-#### eslint
+#### ESLint
 
 All packages in the repo use a standard base configuration found at [eslintrc.js](tools/@aws-cdk/cdk-build-tools/config/eslintrc.js).
 This can be customized for any package by modifying the `.eslintrc` file found at its root.
 
-If you're using the VS Code and would like to see eslint violations on it, install the [eslint
+If you're using the VS Code and would like to see ESLint violations on it, install the [ESLint
 extension](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint).
 
 #### pkglint
@@ -998,23 +1213,7 @@ Here are a few useful commands:
    evaluate only the rule specified [awslint README](./packages/awslint/README.md)
    for details on include/exclude rule patterns.
 
-### cfn2ts
-
-This tool is used to generate our low-level CloudFormation resources
-(L1/`CfnFoo`). It is executed as part of the build step of all modules in the
-AWS Construct Library.
-
-The tool consults the `cdk-build.cloudformation` key in `package.json` to
-determine which CloudFormation namespace this library represents (e.g.
-`AWS::EC2` is the namespace for `aws-ec2`). We maintain strict 1:1 relationship
-between those.
-
-Each module also has an npm script called `cfn2ts`:
-
-* `yarn cfn2ts`: generates L1 for a specific module
-* `lerna run cfn2ts`: generates L1 for the entire repo
-
-### Jetbrains support (WebStorm/IntelliJ)
+### JetBrains support (WebStorm/IntelliJ)
 
 This project uses lerna and utilizes symlinks inside nested `node_modules` directories. You may encounter an issue during
 indexing where the IDE attempts to index these directories and keeps following links until the process runs out of
@@ -1067,6 +1266,20 @@ cannot be taken as dependencies by `aws-cdk-lib`
 Experimental packages are used to develop new constructs and experiment with their APIs before marking
 them as stable and including them within `aws-cdk-lib`. Once they are included in `aws-cdk-lib`, no
 more breaking api changes can be made.
+
+When you want to build an alpha package (for example, `some-package-alpha`), you can execute the following in the root of the repository to build it and its dependencies.
+
+```
+$ npx lerna run build --scope=@aws-cdk/some-package-alpha
+```
+
+At this point, you can run build and test the alpha package.
+
+```
+$ cd packages/@aws-cdk/some-package-alpha
+$ yarn build
+$ yarn test
+```
 
 ## Changing Cloud Assembly Schema
 
@@ -1137,6 +1350,7 @@ Most build issues can be solved by doing a full clean rebuild:
 
 ```shell
 $ git clean -fqdx .
+$ yarn install
 $ yarn build
 ```
 
@@ -1173,7 +1387,7 @@ restart the TypeScript compiler.
 
 Hit F1, type `> TypeScript: Restart TS Server`.
 
-#### I'm doing refactorings between packages and compile times are killing me/I need to switch between differently-verionsed branches a lot and rebuilds because of version errors are taking too long.
+#### I'm doing refactorings between packages and compile times are killing me/I need to switch between differently-versioned branches a lot and rebuilds because of version errors are taking too long.
 
 Our build steps for each package do a couple of things, such as generating code and generating JSII assemblies. If
 you've done a full build at least once to generate all source files, you can do a quicker TypeScript-only rebuild of the
@@ -1190,7 +1404,7 @@ $ scripts/build-typescript.sh -w
 This does not do code generation and it does not do JSII checks and JSII assembly generation. Instead of doing a
 package-by-package ordered build, it compiles all `.ts` files in the repository all at once. This takes about the same
 time as it does to compile the biggest package all by itself, and on my machine is the difference between a 15
-CPU-minute build and a 20 CPU-second build. If you use this methods of recompiling and you want to run the test, you
+CPU-minute build and a 20 CPU-second build. If you use this method of recompiling and you want to run the test, you
 have to disable the built-in rebuild functionality of `lerna run test`:
 
 ```shell

@@ -15,6 +15,7 @@ import {
   Runtime,
   AdotLayerVersion,
 } from 'aws-cdk-lib/aws-lambda';
+import { STANDARD_NODEJS_RUNTIME } from '../../config';
 
 const app = new cdk.App();
 
@@ -27,7 +28,7 @@ class StackUnderTest extends Stack {
     super(scope, id, props);
 
     new Function(this, 'MyFunc1', {
-      runtime: Runtime.NODEJS_14_X,
+      runtime: STANDARD_NODEJS_RUNTIME,
       handler: 'index.handler',
       code: Code.fromInline(`exports.handler = ${handler.toString()}`),
       architecture: props.architecture,
@@ -43,7 +44,7 @@ class StackUnderTest extends Stack {
       code: Code.fromInline('def handler(event, context): pass'),
       adotInstrumentation: {
         layerVersion: AdotLayerVersion.fromPythonSdkLayerVersion(AdotLambdaLayerPythonSdkVersion.LATEST),
-        execWrapper: AdotLambdaExecWrapper.REGULAR_HANDLER,
+        execWrapper: AdotLambdaExecWrapper.INSTRUMENT_HANDLER,
       },
     });
 
@@ -53,7 +54,7 @@ class StackUnderTest extends Stack {
       code: Code.fromInline('def handler(event, context): pass'),
       adotInstrumentation: {
         layerVersion: AdotLayerVersion.fromJavaSdkLayerVersion(AdotLambdaLayerJavaSdkVersion.LATEST),
-        execWrapper: AdotLambdaExecWrapper.REGULAR_HANDLER,
+        execWrapper: AdotLambdaExecWrapper.INSTRUMENT_HANDLER,
       },
     });
 
@@ -63,7 +64,7 @@ class StackUnderTest extends Stack {
       code: Code.fromInline('def handler(event, context): pass'),
       adotInstrumentation: {
         layerVersion: AdotLayerVersion.fromJavaAutoInstrumentationLayerVersion(AdotLambdaLayerJavaAutoInstrumentationVersion.LATEST),
-        execWrapper: AdotLambdaExecWrapper.REGULAR_HANDLER,
+        execWrapper: AdotLambdaExecWrapper.INSTRUMENT_HANDLER,
       },
     });
 
@@ -73,7 +74,7 @@ class StackUnderTest extends Stack {
       code: Code.fromInline('def handler(event, context): pass'),
       adotInstrumentation: {
         layerVersion: AdotLayerVersion.fromGenericLayerVersion(AdotLambdaLayerGenericVersion.LATEST),
-        execWrapper: AdotLambdaExecWrapper.REGULAR_HANDLER,
+        execWrapper: AdotLambdaExecWrapper.INSTRUMENT_HANDLER,
       },
     });
   }

@@ -5,6 +5,7 @@ import * as ecs from '../../../aws-ecs';
 import * as iam from '../../../aws-iam';
 import * as sfn from '../../../aws-stepfunctions';
 import * as cdk from '../../../core';
+import { STEPFUNCTIONS_TASKS_FIX_RUN_ECS_TASK_POLICY } from '../../../cx-api';
 import { integrationResourceArn, validatePatternSupported } from '../private/task-utils';
 
 /**
@@ -28,7 +29,7 @@ export interface EcsRunTaskProps extends sfn.TaskStateBaseProps {
   readonly taskDefinition: ecs.TaskDefinition;
 
   /**
-   * The revision number of ECS task definiton family
+   * The revision number of ECS task definition family
    *
    * @default - '$latest'
    */
@@ -81,6 +82,29 @@ export interface EcsRunTaskProps extends sfn.TaskStateBaseProps {
    * @default - No tags are propagated.
    */
   readonly propagatedTagSource?: ecs.PropagatedTagSource;
+
+  /**
+   * Whether ECS Exec should be enabled
+   *
+   * @see https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html#ECS-RunTask-request-enableExecuteCommand
+   *
+   * @default false
+   */
+  readonly enableExecuteCommand?: boolean;
+
+  /**
+   * Cpu setting override
+   * @see https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_TaskOverride.html
+   * @default - No override
+   */
+  readonly cpu?: string;
+
+  /**
+   * Memory setting override
+   * @see https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_TaskOverride.html
+   * @default - No override
+   */
+  readonly memoryMiB?: string;
 }
 
 /**
@@ -301,9 +325,15 @@ export class EcsRunTask extends sfn.TaskStateBase implements ec2.IConnectable {
         Cluster: this.props.cluster.clusterArn,
         TaskDefinition: this.props.revisionNumber === undefined ? this.props.taskDefinition.family : `${this.props.taskDefinition.family}:${this.props.revisionNumber.toString()}`,
         NetworkConfiguration: this.networkConfiguration,
-        Overrides: renderOverrides(this.props.containerOverrides),
+        Overrides: renderOverrides(
+          {
+            cpu: this.props.cpu,
+            memoryMiB: this.props.memoryMiB,
+            containerOverrides: this.props.containerOverrides,
+          }),
         PropagateTags: this.props.propagatedTagSource,
         ...this.props.launchTarget.bind(this, { taskDefinition: this.props.taskDefinition, cluster: this.props.cluster }).parameters,
+        EnableExecuteCommand: this.props.enableExecuteCommand,
       }),
     };
   }
@@ -336,11 +366,10 @@ export class EcsRunTask extends sfn.TaskStateBase implements ec2.IConnectable {
   private makePolicyStatements(): iam.PolicyStatement[] {
     const stack = cdk.Stack.of(this);
 
-    // https://docs.aws.amazon.com/step-functions/latest/dg/ecs-iam.html
     const policyStatements = [
       new iam.PolicyStatement({
         actions: ['ecs:RunTask'],
-        resources: [this.getTaskDefinitionFamilyArn()],
+        resources: [cdk.FeatureFlags.of(this).isEnabled(STEPFUNCTIONS_TASKS_FIX_RUN_ECS_TASK_POLICY) ? this.getTaskDefinitionArn() : this.getTaskDefinitionFamilyArn() + ':*'],
       }),
       new iam.PolicyStatement({
         actions: ['ecs:StopTask', 'ecs:DescribeTasks'],
@@ -368,6 +397,10 @@ export class EcsRunTask extends sfn.TaskStateBase implements ec2.IConnectable {
     }
 
     return policyStatements;
+  }
+
+  private getTaskDefinitionArn(): string {
+    return this.props.taskDefinition.taskDefinitionArn;
   }
 
   /**
@@ -406,26 +439,40 @@ export class EcsRunTask extends sfn.TaskStateBase implements ec2.IConnectable {
   }
 }
 
-function renderOverrides(containerOverrides?: ContainerOverride[]) {
-  if (!containerOverrides || containerOverrides.length === 0) {
+interface OverrideProps {
+  cpu?: string;
+  memoryMiB?: string;
+  containerOverrides?: ContainerOverride[];
+}
+
+function renderOverrides(props: OverrideProps) {
+  const containerOverrides = props.containerOverrides;
+  const noContainerOverrides = !containerOverrides || containerOverrides.length === 0;
+  if (noContainerOverrides && !props.cpu && !props.memoryMiB) {
     return undefined;
   }
 
   const ret = new Array<any>();
-  for (const override of containerOverrides) {
-    ret.push({
-      Name: override.containerDefinition.containerName,
-      Command: override.command,
-      Cpu: override.cpu,
-      Memory: override.memoryLimit,
-      MemoryReservation: override.memoryReservation,
-      Environment:
-        override.environment?.map((e) => ({
-          Name: e.name,
-          Value: e.value,
-        })),
-    });
+  if (!noContainerOverrides) {
+    for (const override of containerOverrides) {
+      ret.push({
+        Name: override.containerDefinition.containerName,
+        Command: override.command,
+        Cpu: override.cpu,
+        Memory: override.memoryLimit,
+        MemoryReservation: override.memoryReservation,
+        Environment:
+          override.environment?.map((e) => ({
+            Name: e.name,
+            Value: e.value,
+          })),
+      });
+    }
   }
 
-  return { ContainerOverrides: ret };
+  return {
+    Cpu: props.cpu,
+    Memory: props.memoryMiB,
+    ContainerOverrides: noContainerOverrides ? undefined : ret,
+  };
 }

@@ -2,6 +2,8 @@ import { Construct } from 'constructs';
 import { Archive, BaseArchiveProps } from './archive';
 import { CfnEventBus, CfnEventBusPolicy } from './events.generated';
 import * as iam from '../../aws-iam';
+import * as kms from '../../aws-kms';
+import * as sqs from '../../aws-sqs';
 import { ArnFormat, IResource, Lazy, Names, Resource, Stack, Token } from '../../core';
 
 /**
@@ -78,6 +80,33 @@ export interface EventBusProps {
    * @default - no partner event source
    */
   readonly eventSourceName?: string;
+
+  /**
+   * Dead-letter queue for the event bus
+   *
+   * @see https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-event-delivery.html#eb-rule-dlq
+   *
+   * @default - no dead-letter queue
+   */
+  readonly deadLetterQueue?: sqs.IQueue;
+
+  /**
+   * The event bus description.
+   *
+   * The description can be up to 512 characters long.
+   *
+   * @see http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-events-eventbus.html#cfn-events-eventbus-description
+   *
+   * @default - no description
+   */
+  readonly description?: string;
+
+  /**
+  * The customer managed key that encrypt events on this event bus.
+  *
+  * @default - Use an AWS managed key
+  */
+  readonly kmsKey?: kms.IKey;
 }
 
 /**
@@ -309,8 +338,6 @@ export class EventBus extends EventBusBase {
    */
   public readonly eventSourceName?: string;
 
-  private policy?: EventBusPolicy;
-
   constructor(scope: Construct, id: string, props?: EventBusProps) {
     const { eventBusName, eventSourceName } = EventBus.eventBusProps(
       Lazy.string({ produce: () => Names.uniqueId(this) }),
@@ -319,9 +346,18 @@ export class EventBus extends EventBusBase {
 
     super(scope, id, { physicalName: eventBusName });
 
+    if (props?.description && !Token.isUnresolved(props.description) && props.description.length > 512) {
+      throw new Error(`description must be less than or equal to 512 characters, got ${props.description.length}`);
+    }
+
     const eventBus = new CfnEventBus(this, 'Resource', {
       name: this.physicalName,
       eventSourceName,
+      deadLetterConfig: props?.deadLetterQueue ? {
+        arn: props.deadLetterQueue.queueArn,
+      } : undefined,
+      description: props?.description,
+      kmsKeyIdentifier: props?.kmsKey?.keyArn,
     });
 
     this.eventBusArn = this.getResourceArnAttribute(eventBus.attrArn, {
@@ -329,6 +365,34 @@ export class EventBus extends EventBusBase {
       resource: 'event-bus',
       resourceName: eventBus.name,
     });
+
+    /**
+     * Allow EventBridge to use customer managed key
+     *
+     * @see https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-encryption-key-policy.html#eb-encryption-key-policy-bus
+     */
+    if (props?.kmsKey) {
+      props?.kmsKey.addToResourcePolicy(new iam.PolicyStatement({
+        resources: ['*'],
+        actions: ['kms:Decrypt', 'kms:GenerateDataKey', 'kms:DescribeKey'],
+        principals: [new iam.ServicePrincipal('events.amazonaws.com')],
+        conditions: {
+          StringEquals: {
+            'aws:SourceAccount': this.stack.account,
+            'aws:SourceArn': Stack.of(this).formatArn({
+              service: 'events',
+              resource: 'event-bus',
+              resourceName: eventBusName,
+            }),
+            'kms:EncryptionContext:aws:events:event-bus:arn': Stack.of(this).formatArn({
+              service: 'events',
+              resource: 'event-bus',
+              resourceName: eventBusName,
+            }),
+          },
+        },
+      }));
+    }
 
     this.eventBusName = this.getResourceNameAttribute(eventBus.ref);
     this.eventBusPolicy = eventBus.attrPolicy;
@@ -343,18 +407,16 @@ export class EventBus extends EventBusBase {
       throw new Error('Event Bus policy statements must have a sid');
     }
 
-    if (this.policy) {
-      // The policy can contain only one statement
-      return { statementAdded: false };
-    }
-
-    this.policy = new EventBusPolicy(this, 'Policy', {
+    // In order to generate new statementIDs for the change in https://github.com/aws/aws-cdk/pull/27340
+    const statementId = `cdk-${statement.sid}`.slice(0, 64);
+    statement.sid = statementId;
+    const policy = new EventBusPolicy(this, statementId, {
       eventBus: this,
       statement: statement.toJSON(),
-      statementId: statement.sid,
+      statementId,
     });
 
-    return { statementAdded: true, policyDependable: this.policy };
+    return { statementAdded: true, policyDependable: policy };
   }
 }
 

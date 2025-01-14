@@ -2,6 +2,7 @@ import { describeDeprecated } from '@aws-cdk/cdk-build-tools';
 import { Match, Template } from '../../assertions';
 import * as iam from '../../aws-iam';
 import * as cdk from '../../core';
+import * as cxapi from '../../cx-api';
 import * as kms from '../lib';
 import { KeySpec, KeyUsage } from '../lib';
 
@@ -73,6 +74,66 @@ describe('key policies', () => {
             Principal: {
               AWS: 'arn:aws:iam::111122223333:root',
             },
+            Resource: '*',
+          },
+        ],
+        Version: '2012-10-17',
+      },
+    });
+  });
+
+  test('cross region key with iam role grant', () => {
+    const app = new cdk.App({ context: { [cxapi.KMS_REDUCE_CROSS_ACCOUNT_REGION_POLICY_SCOPE]: true } });
+    const stack = new cdk.Stack(app, 'test-stack', { env: { account: '000000000000', region: 'us-west-2' } });
+    const key = kms.Key.fromKeyArn(
+      stack,
+      'Key',
+      'arn:aws:kms:eu-north-1:000000000000:key/e3ab59e5-3dc3-4bc4-9c3f-c790231d2287',
+    );
+
+    const roleStack = new cdk.Stack(app, 'RoleStack', {
+      env: { account: '000000000000', region: 'eu-north-1' },
+    });
+    const role = new iam.Role(roleStack, 'Role', {
+      assumedBy: new iam.AccountPrincipal('000000000000'),
+    });
+    key.grantEncryptDecrypt(role);
+
+    Template.fromStack(roleStack).hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: [
+          {
+            Effect: 'Allow',
+            Resource: 'arn:aws:kms:eu-north-1:000000000000:key/e3ab59e5-3dc3-4bc4-9c3f-c790231d2287',
+          },
+        ],
+        Version: '2012-10-17',
+      },
+    });
+  });
+
+  test('cross region key with iam role grant when feature flag is disabled', () => {
+    const app = new cdk.App({ context: { [cxapi.KMS_REDUCE_CROSS_ACCOUNT_REGION_POLICY_SCOPE]: false } });
+    const stack = new cdk.Stack(app, 'test-stack', { env: { account: '000000000000', region: 'us-west-2' } });
+    const key = kms.Key.fromKeyArn(
+      stack,
+      'Key',
+      'arn:aws:kms:eu-north-1:000000000000:key/e3ab59e5-3dc3-4bc4-9c3f-c790231d2287',
+    );
+
+    const roleStack = new cdk.Stack(app, 'RoleStack', {
+      env: { account: '000000000000', region: 'eu-north-1' },
+    });
+    const role = new iam.Role(roleStack, 'Role', {
+      assumedBy: new iam.AccountPrincipal('000000000000'),
+    });
+    key.grantEncryptDecrypt(role);
+
+    Template.fromStack(roleStack).hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: [
+          {
+            Effect: 'Allow',
             Resource: '*',
           },
         ],
@@ -183,6 +244,123 @@ describe('key policies', () => {
         Statement: [
           {
             Action: ['kms:Encrypt', 'kms:ReEncrypt*', 'kms:GenerateDataKey*'],
+            Effect: 'Allow',
+            Resource: { 'Fn::GetAtt': ['Key961B73FD', 'Arn'] },
+          },
+        ],
+        Version: '2012-10-17',
+      },
+    });
+  });
+
+  test('sign', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const key = new kms.Key(stack, 'Key');
+    const user = new iam.User(stack, 'User');
+
+    // WHEN
+    key.grantSign(user);
+
+    // THEN
+    // Key policy should be unmodified by the grant.
+    Template.fromStack(stack).hasResourceProperties('AWS::KMS::Key', {
+      KeyPolicy: {
+        Statement: [
+          {
+            Action: 'kms:*',
+            Effect: 'Allow',
+            Principal: { AWS: { 'Fn::Join': ['', ['arn:', { Ref: 'AWS::Partition' }, ':iam::', { Ref: 'AWS::AccountId' }, ':root']] } },
+            Resource: '*',
+          },
+        ],
+        Version: '2012-10-17',
+      },
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: [
+          {
+            Action: 'kms:Sign',
+            Effect: 'Allow',
+            Resource: { 'Fn::GetAtt': ['Key961B73FD', 'Arn'] },
+          },
+        ],
+        Version: '2012-10-17',
+      },
+    });
+  });
+
+  test('verify', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const key = new kms.Key(stack, 'Key');
+    const user = new iam.User(stack, 'User');
+
+    // WHEN
+    key.grantVerify(user);
+
+    // THEN
+    // Key policy should be unmodified by the grant.
+    Template.fromStack(stack).hasResourceProperties('AWS::KMS::Key', {
+      KeyPolicy: {
+        Statement: [
+          {
+            Action: 'kms:*',
+            Effect: 'Allow',
+            Principal: { AWS: { 'Fn::Join': ['', ['arn:', { Ref: 'AWS::Partition' }, ':iam::', { Ref: 'AWS::AccountId' }, ':root']] } },
+            Resource: '*',
+          },
+        ],
+        Version: '2012-10-17',
+      },
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: [
+          {
+            Action: 'kms:Verify',
+            Effect: 'Allow',
+            Resource: { 'Fn::GetAtt': ['Key961B73FD', 'Arn'] },
+          },
+        ],
+        Version: '2012-10-17',
+      },
+    });
+  });
+
+  test('signverify', () => {
+    // GIVEN
+    const stack = new cdk.Stack();
+    const key = new kms.Key(stack, 'Key');
+    const user = new iam.User(stack, 'User');
+
+    // WHEN
+    key.grantSignVerify(user);
+
+    // THEN
+    // Key policy should be unmodified by the grant.
+    Template.fromStack(stack).hasResourceProperties('AWS::KMS::Key', {
+      KeyPolicy: {
+        Statement: [
+          {
+            Action: 'kms:*',
+            Effect: 'Allow',
+            Principal: { AWS: { 'Fn::Join': ['', ['arn:', { Ref: 'AWS::Partition' }, ':iam::', { Ref: 'AWS::AccountId' }, ':root']] } },
+            Resource: '*',
+          },
+        ],
+        Version: '2012-10-17',
+      },
+    });
+
+    Template.fromStack(stack).hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: [
+          {
+            Action: ['kms:Sign', 'kms:Verify'],
             Effect: 'Allow',
             Resource: { 'Fn::GetAtt': ['Key961B73FD', 'Arn'] },
           },
@@ -430,6 +608,7 @@ test('key with some options', () => {
     enableKeyRotation: true,
     enabled: false,
     pendingWindow: cdk.Duration.days(7),
+    rotationPeriod: cdk.Duration.days(180),
   });
 
   cdk.Tags.of(key).add('tag1', 'value1');
@@ -440,6 +619,7 @@ test('key with some options', () => {
     Enabled: false,
     EnableKeyRotation: true,
     PendingWindowInDays: 7,
+    RotationPeriodInDays: 180,
     Tags: [
       {
         Key: 'tag1',
@@ -457,10 +637,28 @@ test('key with some options', () => {
   });
 });
 
+test('set rotationPeriod without enabling enableKeyRotation', () => {
+  const stack = new cdk.Stack();
+  new kms.Key(stack, 'MyKey', {
+    rotationPeriod: cdk.Duration.days(180),
+  });
+
+  Template.fromStack(stack).hasResourceProperties('AWS::KMS::Key', {
+    EnableKeyRotation: true,
+    RotationPeriodInDays: 180,
+  });
+});
+
 test('setting pendingWindow value to not in allowed range will throw', () => {
   const stack = new cdk.Stack();
   expect(() => new kms.Key(stack, 'MyKey', { enableKeyRotation: true, pendingWindow: cdk.Duration.days(6) }))
     .toThrow('\'pendingWindow\' value must between 7 and 30 days. Received: 6');
+});
+
+test.each([89, 2561])('throw if rotationPeriod is not in allowed range', (period) => {
+  const stack = new cdk.Stack();
+  expect(() => new kms.Key(stack, 'MyKey', { enableKeyRotation: true, rotationPeriod: cdk.Duration.days(period) }))
+    .toThrow(`'rotationPeriod' value must between 90 and 2650 days. Received: ${period}`);
 });
 
 describeDeprecated('trustAccountIdentities is deprecated', () => {
@@ -563,6 +761,17 @@ test('fails if key policy has no IAM principals', () => {
   }));
 
   expect(() => app.synth()).toThrow(/A PolicyStatement used in a resource-based policy must specify at least one IAM principal/);
+});
+
+test('multi-region primary key', () => {
+  const stack = new cdk.Stack();
+  new kms.Key(stack, 'MyKey', {
+    multiRegion: true,
+  });
+
+  Template.fromStack(stack).hasResourceProperties('AWS::KMS::Key', {
+    MultiRegion: true,
+  });
 });
 
 describe('imported keys', () => {
@@ -1240,8 +1449,19 @@ function generateInvalidKeySpecKeyUsageCombinations() {
       KeySpec.SYMMETRIC_DEFAULT,
       KeySpec.SM2,
     ],
+    [KeyUsage.KEY_AGREEMENT]: [
+      KeySpec.SYMMETRIC_DEFAULT,
+      KeySpec.RSA_2048,
+      KeySpec.RSA_3072,
+      KeySpec.RSA_4096,
+      KeySpec.ECC_SECG_P256K1,
+      KeySpec.HMAC_224,
+      KeySpec.HMAC_256,
+      KeySpec.HMAC_384,
+      KeySpec.HMAC_512,
+    ],
   };
-  const testCases: { keySpec: KeySpec, keyUsage: KeyUsage, toString: () => string }[] = [];
+  const testCases: { keySpec: KeySpec; keyUsage: KeyUsage; toString: () => string }[] = [];
   for (const keySpec in KeySpec) {
     for (const keyUsage in KeyUsage) {
       if (denyLists[keyUsage as KeyUsage].includes(keySpec as KeySpec)) {

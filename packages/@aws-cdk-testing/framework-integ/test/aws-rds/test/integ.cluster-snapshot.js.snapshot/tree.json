@@ -45,9 +45,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             0,
@@ -71,7 +68,10 @@
                             "key": "Name",
                             "value": "cdk-integ-cluster-snapshot/Vpc/PublicSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -93,15 +93,15 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "cdk-integ-cluster-snapshot/Vpc/PublicSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -134,12 +134,12 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Route",
                       "aws:cdk:cloudformation:props": {
-                        "routeTableId": {
-                          "Ref": "VpcPublicSubnet1RouteTable6C95E38E"
-                        },
                         "destinationCidrBlock": "0.0.0.0/0",
                         "gatewayId": {
                           "Ref": "VpcIGWD7BA715C"
+                        },
+                        "routeTableId": {
+                          "Ref": "VpcPublicSubnet1RouteTable6C95E38E"
                         }
                       }
                     },
@@ -174,14 +174,14 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::NatGateway",
                       "aws:cdk:cloudformation:props": {
-                        "subnetId": {
-                          "Ref": "VpcPublicSubnet1Subnet5C2D37C4"
-                        },
                         "allocationId": {
                           "Fn::GetAtt": [
                             "VpcPublicSubnet1EIPD7E02669",
                             "AllocationId"
                           ]
+                        },
+                        "subnetId": {
+                          "Ref": "VpcPublicSubnet1Subnet5C2D37C4"
                         },
                         "tags": [
                           {
@@ -212,9 +212,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             1,
@@ -238,7 +235,10 @@
                             "key": "Name",
                             "value": "cdk-integ-cluster-snapshot/Vpc/PublicSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -260,15 +260,15 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "cdk-integ-cluster-snapshot/Vpc/PublicSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -301,12 +301,12 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Route",
                       "aws:cdk:cloudformation:props": {
-                        "routeTableId": {
-                          "Ref": "VpcPublicSubnet2RouteTable94F7E489"
-                        },
                         "destinationCidrBlock": "0.0.0.0/0",
                         "gatewayId": {
                           "Ref": "VpcIGWD7BA715C"
+                        },
+                        "routeTableId": {
+                          "Ref": "VpcPublicSubnet2RouteTable94F7E489"
                         }
                       }
                     },
@@ -331,9 +331,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             0,
@@ -357,7 +354,10 @@
                             "key": "Name",
                             "value": "cdk-integ-cluster-snapshot/Vpc/PrivateSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -379,15 +379,15 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "cdk-integ-cluster-snapshot/Vpc/PrivateSubnet1"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -420,12 +420,12 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Route",
                       "aws:cdk:cloudformation:props": {
-                        "routeTableId": {
-                          "Ref": "VpcPrivateSubnet1RouteTableB2C5B500"
-                        },
                         "destinationCidrBlock": "0.0.0.0/0",
                         "natGatewayId": {
                           "Ref": "VpcPublicSubnet1NATGateway4D7517AA"
+                        },
+                        "routeTableId": {
+                          "Ref": "VpcPrivateSubnet1RouteTableB2C5B500"
                         }
                       }
                     },
@@ -450,9 +450,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Subnet",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "availabilityZone": {
                           "Fn::Select": [
                             1,
@@ -476,7 +473,10 @@
                             "key": "Name",
                             "value": "cdk-integ-cluster-snapshot/Vpc/PrivateSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -498,15 +498,15 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::RouteTable",
                       "aws:cdk:cloudformation:props": {
-                        "vpcId": {
-                          "Ref": "Vpc8378EB38"
-                        },
                         "tags": [
                           {
                             "key": "Name",
                             "value": "cdk-integ-cluster-snapshot/Vpc/PrivateSubnet2"
                           }
-                        ]
+                        ],
+                        "vpcId": {
+                          "Ref": "Vpc8378EB38"
+                        }
                       }
                     },
                     "constructInfo": {
@@ -539,12 +539,12 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::Route",
                       "aws:cdk:cloudformation:props": {
-                        "routeTableId": {
-                          "Ref": "VpcPrivateSubnet2RouteTableA678073B"
-                        },
                         "destinationCidrBlock": "0.0.0.0/0",
                         "natGatewayId": {
                           "Ref": "VpcPublicSubnet1NATGateway4D7517AA"
+                        },
+                        "routeTableId": {
+                          "Ref": "VpcPrivateSubnet2RouteTableA678073B"
                         }
                       }
                     },
@@ -584,11 +584,11 @@
                 "attributes": {
                   "aws:cdk:cloudformation:type": "AWS::EC2::VPCGatewayAttachment",
                   "aws:cdk:cloudformation:props": {
-                    "vpcId": {
-                      "Ref": "Vpc8378EB38"
-                    },
                     "internetGatewayId": {
                       "Ref": "VpcIGWD7BA715C"
+                    },
+                    "vpcId": {
+                      "Ref": "Vpc8378EB38"
                     }
                   }
                 },
@@ -758,12 +758,12 @@
                   "aws:cdk:cloudformation:type": "AWS::RDS::DBCluster",
                   "aws:cdk:cloudformation:props": {
                     "copyTagsToSnapshot": true,
-                    "dbClusterParameterGroupName": "default.aurora-mysql5.7",
+                    "dbClusterParameterGroupName": "default.aurora-mysql8.0",
                     "dbSubnetGroupName": {
                       "Ref": "ClusterSubnetsDCFA5CB7"
                     },
                     "engine": "aurora-mysql",
-                    "engineVersion": "5.7.mysql_aurora.2.10.2",
+                    "engineVersion": "8.0.mysql_aurora.3.04.0",
                     "masterUsername": {
                       "Fn::Join": [
                         "",
@@ -820,7 +820,7 @@
                     "dbClusterIdentifier": {
                       "Ref": "ClusterEB0386A7"
                     },
-                    "dbInstanceClass": "db.t3.small",
+                    "dbInstanceClass": "db.t3.medium",
                     "dbSubnetGroupName": {
                       "Ref": "ClusterSubnetsDCFA5CB7"
                     },
@@ -849,7 +849,7 @@
                     "dbClusterIdentifier": {
                       "Ref": "ClusterEB0386A7"
                     },
-                    "dbInstanceClass": "db.t3.small",
+                    "dbInstanceClass": "db.t3.medium",
                     "dbSubnetGroupName": {
                       "Ref": "ClusterSubnetsDCFA5CB7"
                     },
@@ -1054,16 +1054,16 @@
                           "s3Bucket": {
                             "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                           },
-                          "s3Key": "4d4dc74a9beb8e44733e1a95b570d30a58a658c6b1896bf7da5db1940d5fed82.zip"
+                          "s3Key": "7531d12b1fd853bba70fda1369698d729b1ef9986621d19d7cbdbf9648a32ba5.zip"
                         },
+                        "handler": "index.onEventHandler",
                         "role": {
                           "Fn::GetAtt": [
                             "SnapshoterOnEventHandlerServiceRole7F84B26D",
                             "Arn"
                           ]
                         },
-                        "handler": "index.onEventHandler",
-                        "runtime": "nodejs16.x"
+                        "runtime": "nodejs18.x"
                       }
                     },
                     "constructInfo": {
@@ -1231,16 +1231,16 @@
                           "s3Bucket": {
                             "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                           },
-                          "s3Key": "4d4dc74a9beb8e44733e1a95b570d30a58a658c6b1896bf7da5db1940d5fed82.zip"
+                          "s3Key": "7531d12b1fd853bba70fda1369698d729b1ef9986621d19d7cbdbf9648a32ba5.zip"
                         },
+                        "handler": "index.isCompleteHandler",
                         "role": {
                           "Fn::GetAtt": [
                             "SnapshoterIsCompleteHandlerServiceRole40F5F1A8",
                             "Arn"
                           ]
                         },
-                        "handler": "index.isCompleteHandler",
-                        "runtime": "nodejs16.x"
+                        "runtime": "nodejs18.x"
                       }
                     },
                     "constructInfo": {
@@ -1442,13 +1442,7 @@
                               "s3Bucket": {
                                 "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                               },
-                              "s3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-                            },
-                            "role": {
-                              "Fn::GetAtt": [
-                                "SnapshoterSnapshotProviderframeworkonEventServiceRole29C21F76",
-                                "Arn"
-                              ]
+                              "s3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
                             },
                             "description": "AWS CDK resource provider framework - onEvent (cdk-integ-cluster-snapshot/Snapshoter/SnapshotProvider)",
                             "environment": {
@@ -1471,9 +1465,15 @@
                               }
                             },
                             "handler": "framework.onEvent",
+                            "role": {
+                              "Fn::GetAtt": [
+                                "SnapshoterSnapshotProviderframeworkonEventServiceRole29C21F76",
+                                "Arn"
+                              ]
+                            },
                             "runtime": {
                               "Fn::FindInMap": [
-                                "DefaultCrNodeVersionMap",
+                                "LatestNodeRuntimeMap",
                                 {
                                   "Ref": "AWS::Region"
                                 },
@@ -1671,13 +1671,7 @@
                               "s3Bucket": {
                                 "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                               },
-                              "s3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-                            },
-                            "role": {
-                              "Fn::GetAtt": [
-                                "SnapshoterSnapshotProviderframeworkisCompleteServiceRoleFAA9C6CB",
-                                "Arn"
-                              ]
+                              "s3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
                             },
                             "description": "AWS CDK resource provider framework - isComplete (cdk-integ-cluster-snapshot/Snapshoter/SnapshotProvider)",
                             "environment": {
@@ -1697,9 +1691,15 @@
                               }
                             },
                             "handler": "framework.isComplete",
+                            "role": {
+                              "Fn::GetAtt": [
+                                "SnapshoterSnapshotProviderframeworkisCompleteServiceRoleFAA9C6CB",
+                                "Arn"
+                              ]
+                            },
                             "runtime": {
                               "Fn::FindInMap": [
-                                "DefaultCrNodeVersionMap",
+                                "LatestNodeRuntimeMap",
                                 {
                                   "Ref": "AWS::Region"
                                 },
@@ -1897,13 +1897,7 @@
                               "s3Bucket": {
                                 "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
                               },
-                              "s3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-                            },
-                            "role": {
-                              "Fn::GetAtt": [
-                                "SnapshoterSnapshotProviderframeworkonTimeoutServiceRole0B00A1BD",
-                                "Arn"
-                              ]
+                              "s3Key": "9ebfbf95d93057cd65617a9d6f72a0e7dd31520f28cf423c3afd3cbaf0662e6b.zip"
                             },
                             "description": "AWS CDK resource provider framework - onTimeout (cdk-integ-cluster-snapshot/Snapshoter/SnapshotProvider)",
                             "environment": {
@@ -1923,9 +1917,15 @@
                               }
                             },
                             "handler": "framework.onTimeout",
+                            "role": {
+                              "Fn::GetAtt": [
+                                "SnapshoterSnapshotProviderframeworkonTimeoutServiceRole0B00A1BD",
+                                "Arn"
+                              ]
+                            },
                             "runtime": {
                               "Fn::FindInMap": [
-                                "DefaultCrNodeVersionMap",
+                                "LatestNodeRuntimeMap",
                                 {
                                   "Ref": "AWS::Region"
                                 },
@@ -2044,6 +2044,22 @@
                                               ]
                                             }
                                           ]
+                                        },
+                                        {
+                                          "Action": [
+                                            "logs:CreateLogDelivery",
+                                            "logs:CreateLogStream",
+                                            "logs:DeleteLogDelivery",
+                                            "logs:DescribeLogGroups",
+                                            "logs:DescribeResourcePolicies",
+                                            "logs:GetLogDelivery",
+                                            "logs:ListLogDeliveries",
+                                            "logs:PutLogEvents",
+                                            "logs:PutResourcePolicy",
+                                            "logs:UpdateLogDelivery"
+                                          ],
+                                          "Effect": "Allow",
+                                          "Resource": "*"
                                         }
                                       ],
                                       "Version": "2012-10-17"
@@ -2073,18 +2089,103 @@
                           "version": "0.0.0"
                         }
                       },
+                      "LogGroup": {
+                        "id": "LogGroup",
+                        "path": "cdk-integ-cluster-snapshot/Snapshoter/SnapshotProvider/waiter-state-machine/LogGroup",
+                        "children": {
+                          "Resource": {
+                            "id": "Resource",
+                            "path": "cdk-integ-cluster-snapshot/Snapshoter/SnapshotProvider/waiter-state-machine/LogGroup/Resource",
+                            "attributes": {
+                              "aws:cdk:cloudformation:type": "AWS::Logs::LogGroup",
+                              "aws:cdk:cloudformation:props": {
+                                "logGroupName": {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      "/aws/vendedlogs/states/waiter-state-machine-",
+                                      {
+                                        "Ref": "SnapshoterSnapshotProviderframeworkisComplete803B4F1B"
+                                      },
+                                      "-c8913d7ae55807b42206686ba5c74df4ca169c2f9e"
+                                    ]
+                                  ]
+                                },
+                                "retentionInDays": 731
+                              }
+                            },
+                            "constructInfo": {
+                              "fqn": "aws-cdk-lib.aws_logs.CfnLogGroup",
+                              "version": "0.0.0"
+                            }
+                          }
+                        },
+                        "constructInfo": {
+                          "fqn": "aws-cdk-lib.aws_logs.LogGroup",
+                          "version": "0.0.0"
+                        }
+                      },
                       "Resource": {
                         "id": "Resource",
                         "path": "cdk-integ-cluster-snapshot/Snapshoter/SnapshotProvider/waiter-state-machine/Resource",
+                        "attributes": {
+                          "aws:cdk:cloudformation:type": "AWS::StepFunctions::StateMachine",
+                          "aws:cdk:cloudformation:props": {
+                            "definitionString": {
+                              "Fn::Join": [
+                                "",
+                                [
+                                  "{\"StartAt\":\"framework-isComplete-task\",\"States\":{\"framework-isComplete-task\":{\"End\":true,\"Retry\":[{\"ErrorEquals\":[\"States.ALL\"],\"IntervalSeconds\":5,\"MaxAttempts\":360,\"BackoffRate\":1}],\"Catch\":[{\"ErrorEquals\":[\"States.ALL\"],\"Next\":\"framework-onTimeout-task\"}],\"Type\":\"Task\",\"Resource\":\"",
+                                  {
+                                    "Fn::GetAtt": [
+                                      "SnapshoterSnapshotProviderframeworkisComplete803B4F1B",
+                                      "Arn"
+                                    ]
+                                  },
+                                  "\"},\"framework-onTimeout-task\":{\"End\":true,\"Type\":\"Task\",\"Resource\":\"",
+                                  {
+                                    "Fn::GetAtt": [
+                                      "SnapshoterSnapshotProviderframeworkonTimeout04342B00",
+                                      "Arn"
+                                    ]
+                                  },
+                                  "\"}}}"
+                                ]
+                              ]
+                            },
+                            "loggingConfiguration": {
+                              "destinations": [
+                                {
+                                  "cloudWatchLogsLogGroup": {
+                                    "logGroupArn": {
+                                      "Fn::GetAtt": [
+                                        "SnapshoterSnapshotProviderwaiterstatemachineLogGroup5A64CAF9",
+                                        "Arn"
+                                      ]
+                                    }
+                                  }
+                                }
+                              ],
+                              "includeExecutionData": false,
+                              "level": "ERROR"
+                            },
+                            "roleArn": {
+                              "Fn::GetAtt": [
+                                "SnapshoterSnapshotProviderwaiterstatemachineRole76E414C5",
+                                "Arn"
+                              ]
+                            }
+                          }
+                        },
                         "constructInfo": {
-                          "fqn": "aws-cdk-lib.CfnResource",
+                          "fqn": "aws-cdk-lib.aws_stepfunctions.CfnStateMachine",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "constructs.Construct",
-                      "version": "10.2.52"
+                      "fqn": "aws-cdk-lib.custom_resources.WaiterStateMachine",
+                      "version": "0.0.0"
                     }
                   }
                 },
@@ -2114,12 +2215,12 @@
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.2.52"
+              "version": "10.4.2"
             }
           },
-          "DefaultCrNodeVersionMap": {
-            "id": "DefaultCrNodeVersionMap",
-            "path": "cdk-integ-cluster-snapshot/DefaultCrNodeVersionMap",
+          "LatestNodeRuntimeMap": {
+            "id": "LatestNodeRuntimeMap",
+            "path": "cdk-integ-cluster-snapshot/LatestNodeRuntimeMap",
             "constructInfo": {
               "fqn": "aws-cdk-lib.CfnMapping",
               "version": "0.0.0"
@@ -2195,7 +2296,6 @@
                     "attributes": {
                       "aws:cdk:cloudformation:type": "AWS::EC2::SecurityGroupIngress",
                       "aws:cdk:cloudformation:props": {
-                        "ipProtocol": "tcp",
                         "description": "from cdkintegclustersnapshotFromSnapshotRotationSingleUserSecurityGroup8B231219:{IndirectPort}",
                         "fromPort": {
                           "Fn::GetAtt": [
@@ -2209,6 +2309,7 @@
                             "GroupId"
                           ]
                         },
+                        "ipProtocol": "tcp",
                         "sourceSecurityGroupId": {
                           "Fn::GetAtt": [
                             "FromSnapshotRotationSingleUserSecurityGroupF78A9956",
@@ -2239,76 +2340,6 @@
                 "path": "cdk-integ-cluster-snapshot/FromSnapshot/AuroraMySqlDatabaseClusterEngineDefaultParameterGroup",
                 "constructInfo": {
                   "fqn": "aws-cdk-lib.Resource",
-                  "version": "0.0.0"
-                }
-              },
-              "Secret": {
-                "id": "Secret",
-                "path": "cdk-integ-cluster-snapshot/FromSnapshot/Secret",
-                "children": {
-                  "Resource": {
-                    "id": "Resource",
-                    "path": "cdk-integ-cluster-snapshot/FromSnapshot/Secret/Resource",
-                    "attributes": {
-                      "aws:cdk:cloudformation:type": "AWS::SecretsManager::Secret",
-                      "aws:cdk:cloudformation:props": {
-                        "description": {
-                          "Fn::Join": [
-                            "",
-                            [
-                              "Generated by the CDK for stack: ",
-                              {
-                                "Ref": "AWS::StackName"
-                              }
-                            ]
-                          ]
-                        },
-                        "generateSecretString": {
-                          "passwordLength": 30,
-                          "secretStringTemplate": "{\"username\":\"admin\"}",
-                          "generateStringKey": "password",
-                          "excludeCharacters": " %+~`#$&*()|[]{}:;<>?!'/@\"\\"
-                        }
-                      }
-                    },
-                    "constructInfo": {
-                      "fqn": "aws-cdk-lib.aws_secretsmanager.CfnSecret",
-                      "version": "0.0.0"
-                    }
-                  },
-                  "Attachment": {
-                    "id": "Attachment",
-                    "path": "cdk-integ-cluster-snapshot/FromSnapshot/Secret/Attachment",
-                    "children": {
-                      "Resource": {
-                        "id": "Resource",
-                        "path": "cdk-integ-cluster-snapshot/FromSnapshot/Secret/Attachment/Resource",
-                        "attributes": {
-                          "aws:cdk:cloudformation:type": "AWS::SecretsManager::SecretTargetAttachment",
-                          "aws:cdk:cloudformation:props": {
-                            "secretId": {
-                              "Ref": "FromSnapshotSecret9100F61C"
-                            },
-                            "targetId": {
-                              "Ref": "FromSnapshotEE0682C5"
-                            },
-                            "targetType": "AWS::RDS::DBCluster"
-                          }
-                        },
-                        "constructInfo": {
-                          "fqn": "aws-cdk-lib.aws_secretsmanager.CfnSecretTargetAttachment",
-                          "version": "0.0.0"
-                        }
-                      }
-                    },
-                    "constructInfo": {
-                      "fqn": "aws-cdk-lib.aws_secretsmanager.SecretTargetAttachment",
-                      "version": "0.0.0"
-                    }
-                  }
-                },
-                "constructInfo": {
-                  "fqn": "aws-cdk-lib.aws_rds.DatabaseSecret",
                   "version": "0.0.0"
                 }
               },
@@ -2380,9 +2411,6 @@
                             "attributes": {
                               "aws:cdk:cloudformation:type": "AWS::SecretsManager::RotationSchedule",
                               "aws:cdk:cloudformation:props": {
-                                "secretId": {
-                                  "Ref": "FromSnapshotSnapshotSecretAttachmentA3F619B8"
-                                },
                                 "rotationLambdaArn": {
                                   "Fn::GetAtt": [
                                     "FromSnapshotRotationSingleUserEBCAA50C",
@@ -2390,7 +2418,10 @@
                                   ]
                                 },
                                 "rotationRules": {
-                                  "automaticallyAfterDays": 30
+                                  "scheduleExpression": "rate(30 days)"
+                                },
+                                "secretId": {
+                                  "Ref": "FromSnapshotSnapshotSecretAttachmentA3F619B8"
                                 }
                               }
                             },
@@ -2478,12 +2509,12 @@
                   "aws:cdk:cloudformation:type": "AWS::RDS::DBCluster",
                   "aws:cdk:cloudformation:props": {
                     "copyTagsToSnapshot": true,
-                    "dbClusterParameterGroupName": "default.aurora-mysql5.7",
+                    "dbClusterParameterGroupName": "default.aurora-mysql8.0",
                     "dbSubnetGroupName": {
                       "Ref": "FromSnapshotSubnets9ED4B8EE"
                     },
                     "engine": "aurora-mysql",
-                    "engineVersion": "5.7.mysql_aurora.2.10.2",
+                    "engineVersion": "8.0.mysql_aurora.3.04.0",
                     "masterUserPassword": {
                       "Fn::Join": [
                         "",
@@ -2534,7 +2565,7 @@
                     "dbClusterIdentifier": {
                       "Ref": "FromSnapshotEE0682C5"
                     },
-                    "dbInstanceClass": "db.t3.small",
+                    "dbInstanceClass": "db.t3.medium",
                     "dbSubnetGroupName": {
                       "Ref": "FromSnapshotSubnets9ED4B8EE"
                     },
@@ -2563,7 +2594,7 @@
                     "dbClusterIdentifier": {
                       "Ref": "FromSnapshotEE0682C5"
                     },
-                    "dbInstanceClass": "db.t3.small",
+                    "dbInstanceClass": "db.t3.medium",
                     "dbSubnetGroupName": {
                       "Ref": "FromSnapshotSubnets9ED4B8EE"
                     },
@@ -2735,12 +2766,66 @@
           "version": "0.0.0"
         }
       },
+      "ClusterSnapshotInteg": {
+        "id": "ClusterSnapshotInteg",
+        "path": "ClusterSnapshotInteg",
+        "children": {
+          "DefaultTest": {
+            "id": "DefaultTest",
+            "path": "ClusterSnapshotInteg/DefaultTest",
+            "children": {
+              "Default": {
+                "id": "Default",
+                "path": "ClusterSnapshotInteg/DefaultTest/Default",
+                "constructInfo": {
+                  "fqn": "constructs.Construct",
+                  "version": "10.4.2"
+                }
+              },
+              "DeployAssert": {
+                "id": "DeployAssert",
+                "path": "ClusterSnapshotInteg/DefaultTest/DeployAssert",
+                "children": {
+                  "BootstrapVersion": {
+                    "id": "BootstrapVersion",
+                    "path": "ClusterSnapshotInteg/DefaultTest/DeployAssert/BootstrapVersion",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnParameter",
+                      "version": "0.0.0"
+                    }
+                  },
+                  "CheckBootstrapVersion": {
+                    "id": "CheckBootstrapVersion",
+                    "path": "ClusterSnapshotInteg/DefaultTest/DeployAssert/CheckBootstrapVersion",
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.CfnRule",
+                      "version": "0.0.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.Stack",
+                  "version": "0.0.0"
+                }
+              }
+            },
+            "constructInfo": {
+              "fqn": "@aws-cdk/integ-tests-alpha.IntegTestCase",
+              "version": "0.0.0"
+            }
+          }
+        },
+        "constructInfo": {
+          "fqn": "@aws-cdk/integ-tests-alpha.IntegTest",
+          "version": "0.0.0"
+        }
+      },
       "Tree": {
         "id": "Tree",
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.2.52"
+          "version": "10.4.2"
         }
       }
     },

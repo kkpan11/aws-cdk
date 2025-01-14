@@ -1,5 +1,5 @@
 {
-  "version": "32.0.0",
+  "version": "36.0.0",
   "artifacts": {
     "integ-cloudtrail.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "integ-cloudtrail.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/0897e48ad424529be2f1f103ed49df43a87017128f2b5f1155eb5e23fd7ee5c2.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/6afff07b51ac8a241a1b76cdcffb954b96cf350df9c519e68d2acca36770efb8.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -51,10 +52,10 @@
             "data": "BucketAutoDeleteObjectsCustomResourceBAFD23C2"
           }
         ],
-        "/integ-cloudtrail/DefaultCrNodeVersionMap": [
+        "/integ-cloudtrail/LatestNodeRuntimeMap": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "DefaultCrNodeVersionMap"
+            "data": "LatestNodeRuntimeMap"
           }
         ],
         "/integ-cloudtrail/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role": [

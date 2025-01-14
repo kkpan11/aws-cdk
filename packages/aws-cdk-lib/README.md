@@ -147,7 +147,7 @@ a stack with a synthesizer, pass it as one of its properties:
 ```ts
 new MyStack(app, 'MyStack', {
   synthesizer: new DefaultStackSynthesizer({
-    fileAssetsBucketName: 'my-orgs-asset-bucket',
+    fileAssetsBucketName: 'amzn-s3-demo-bucket',
   }),
 });
 ```
@@ -268,7 +268,15 @@ In order to mimic strong references, a Custom Resource is also created in the co
 stack which marks the SSM parameters as being "imported". When a parameter has been successfully
 imported, the producing stack cannot update the value.
 
-See the [adr](https://github.com/aws/aws-cdk/blob/main/packages/@aws-cdk/core/adr/cross-region-stack-references)
+> [!NOTE]
+> As a consequence of this feature being built on a Custom Resource, we are restricted to a
+> CloudFormation response body size limitation of [4096 bytes](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/crpg-ref-responses.html).
+> To prevent deployment errors related to the Custom Resource Provider response body being too
+> large, we recommend limiting the use of nested stacks and minimizing the length of stack names.
+> Doing this will prevent SSM parameter names from becoming too long which will reduce the size of the
+> response body.
+
+See the [adr](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/core/adr/cross-region-stack-references.md)
 for more details on this feature.
 
 ### Removing automatic cross-stack references
@@ -396,7 +404,7 @@ CloudFormation to re-read the secret.
 ## ARN manipulation
 
 Sometimes you will need to put together or pick apart Amazon Resource Names
-(ARNs). The functions `stack.formatArn()` and `stack.parseArn()` exist for
+(ARNs). The functions `stack.formatArn()` and `stack.splitArn()` exist for
 this purpose.
 
 `formatArn()` can be used to build an ARN from components. It will automatically
@@ -409,12 +417,12 @@ declare const stack: Stack;
 stack.formatArn({
   service: 'lambda',
   resource: 'function',
-  sep: ':',
+  arnFormat: ArnFormat.COLON_RESOURCE_NAME,
   resourceName: 'MyFunction'
 });
 ```
 
-`parseArn()` can be used to get a single component from an ARN. `parseArn()`
+`splitArn()` can be used to get a single component from an ARN. `splitArn()`
 will correctly deal with both literal ARNs and deploy-time values (tokens),
 but in case of a deploy-time value be aware that the result will be another
 deploy-time value which cannot be inspected in the CDK application.
@@ -423,14 +431,13 @@ deploy-time value which cannot be inspected in the CDK application.
 declare const stack: Stack;
 
 // Extracts the function name out of an AWS Lambda Function ARN
-const arnComponents = stack.parseArn(arn, ':');
+const arnComponents = stack.splitArn(arn, ArnFormat.COLON_RESOURCE_NAME);
 const functionName = arnComponents.resourceName;
 ```
 
-Note that depending on the service, the resource separator can be either
-`:` or `/`, and the resource name can be either the 6th or 7th
-component in the ARN. When using these functions, you will need to know
-the format of the ARN you are dealing with.
+Note that the format of the resource separator depends on the service and
+may be any of the values supported by `ArnFormat`. When dealing with these
+functions, it is important to know the format of the ARN you are dealing with.
 
 For an exhaustive list of ARN formats used in AWS, see [AWS ARNs and
 Namespaces](https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
@@ -533,12 +540,12 @@ Custom resources are backed by a **custom resource provider** which can be
 implemented in one of the following ways. The following table compares the
 various provider types (ordered from low-level to high-level):
 
-| Provider                                                             | Compute Type | Error Handling | Submit to CloudFormation | Max Timeout     | Language | Footprint |
-|----------------------------------------------------------------------|:------------:|:--------------:|:------------------------:|:---------------:|:--------:|:---------:|
-| [sns.Topic](#amazon-sns-topic)                                       | Self-managed | Manual         | Manual                   | Unlimited       | Any      | Depends   |
-| [lambda.Function](#aws-lambda-function)                              | AWS Lambda   | Manual         | Manual                   | 15min           | Any      | Small     |
-| [core.CustomResourceProvider](#the-corecustomresourceprovider-class) | AWS Lambda   | Auto           | Auto                     | 15min           | Node.js  | Small     |
-| [custom-resources.Provider](#the-custom-resource-provider-framework) | AWS Lambda   | Auto           | Auto                     | Unlimited Async | Any      | Large     |
+| Provider                                                             | Compute Type | Error Handling | Submit to CloudFormation |   Max Timeout   | Language | Footprint |
+| -------------------------------------------------------------------- | :----------: | :------------: | :----------------------: | :-------------: | :------: | :-------: |
+| [sns.Topic](#amazon-sns-topic)                                       | Self-managed |     Manual     |          Manual          |    Unlimited    |   Any    |  Depends  |
+| [lambda.Function](#aws-lambda-function)                              |  AWS Lambda  |     Manual     |          Manual          |      15min      |   Any    |   Small   |
+| [core.CustomResourceProvider](#the-corecustomresourceprovider-class) |  AWS Lambda  |      Auto      |           Auto           |      15min      | Node.js  |   Small   |
+| [custom-resources.Provider](#the-custom-resource-provider-framework) |  AWS Lambda  |      Auto      |           Auto           | Unlimited Async |   Any    |   Large   |
 
 Legend:
 
@@ -611,7 +618,7 @@ response to the CloudFormation service and handle various error cases.
 Set `serviceToken` to `lambda.functionArn` to use this provider:
 
 ```ts
-const fn = new lambda.Function(this, 'MyProvider', functionProps);
+const fn = new lambda.SingletonFunction(this, 'MyProvider', functionProps);
 
 new CustomResource(this, 'MyResource', {
   serviceToken: fn.functionArn,
@@ -625,7 +632,8 @@ framework designed to implement simple and slim custom resource providers. It
 currently only supports Node.js-based user handlers, represents permissions as raw
 JSON blobs instead of `iam.PolicyStatement` objects, and it does not have
 support for asynchronous waiting (handler cannot exceed the 15min lambda
-timeout).
+timeout). The `CustomResourceProviderRuntime` supports runtime `nodejs12.x`,
+`nodejs14.x`, `nodejs16.x`, `nodejs18.x`.
 
 [`@aws-cdk/core.CustomResourceProvider`]: https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_core.CustomResourceProvider.html
 
@@ -639,7 +647,7 @@ stack-unique identifier and returns the service token:
 ```ts
 const serviceToken = CustomResourceProvider.getOrCreate(this, 'Custom::MyCustomResourceType', {
   codeDirectory: `${__dirname}/my-handler`,
-  runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+  runtime: CustomResourceProviderRuntime.NODEJS_18_X,
   description: "Lambda function created by the custom resource provider",
 });
 
@@ -734,7 +742,7 @@ export class Sum extends Construct {
     const resourceType = 'Custom::Sum';
     const serviceToken = CustomResourceProvider.getOrCreate(this, resourceType, {
       codeDirectory: `${__dirname}/sum-handler`,
-      runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+      runtime: CustomResourceProviderRuntime.NODEJS_18_X,
     });
 
     const resource = new CustomResource(this, 'Resource', {
@@ -764,7 +772,7 @@ built-in singleton method:
 ```ts
 const provider = CustomResourceProvider.getOrCreateProvider(this, 'Custom::MyCustomResourceType', {
   codeDirectory: `${__dirname}/my-handler`,
-  runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+  runtime: CustomResourceProviderRuntime.NODEJS_18_X,
 });
 
 const roleArn = provider.roleArn;
@@ -777,7 +785,7 @@ To add IAM policy statements to this role, use `addToRolePolicy()`:
 ```ts
 const provider = CustomResourceProvider.getOrCreateProvider(this, 'Custom::MyCustomResourceType', {
   codeDirectory: `${__dirname}/my-handler`,
-  runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+  runtime: CustomResourceProviderRuntime.NODEJS_18_X,
 });
 provider.addToRolePolicy({
   Effect: 'Allow',
@@ -815,7 +823,7 @@ new CustomResource(this, 'MyResource', {
 });
 ```
 
-See the [documentation](https://docs.aws.amazon.com/cdk/api/latest/docs/custom-resources-readme.html) for more details.
+See the [documentation](https://docs.aws.amazon.com/cdk/api/latest/docs/aws-cdk-lib.custom_resources-readme.html) for more details.
 
 ## AWS CloudFormation features
 
@@ -1096,6 +1104,31 @@ declare const regionTable: CfnMapping;
 regionTable.findInMap(Aws.REGION, 'regionName');
 ```
 
+An optional default value can also be passed to `findInMap`. If either key is not found in the map and the mapping is lazy, `findInMap` will return the default value and not render the mapping.
+If the mapping is not lazy or either key is an unresolved token, the call to `findInMap` will return a token that resolves to 
+`{ "Fn::FindInMap": [ "MapName", "TopLevelKey", "SecondLevelKey", { "DefaultValue": "DefaultValue" } ] }`, and the mapping will be rendered.
+Note that the `AWS::LanguageExtentions` transform is added to enable the default value functionality.
+
+For example, the following code will again not produce anything in the "Mappings" section. The
+call to `findInMap` will be able to resolve the value during synthesis and simply return
+`'Region not found'`.
+
+```ts
+const regionTable = new CfnMapping(this, 'RegionTable', {
+  mapping: {
+    'us-east-1': {
+      regionName: 'US East (N. Virginia)',
+    },
+    'us-east-2': {
+      regionName: 'US East (Ohio)',
+    },
+  },
+  lazy: true,
+});
+
+regionTable.findInMap('us-west-1', 'regionName', 'Region not found');
+```
+
 [cfn-mappings]: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/mappings-section-structure.html
 
 ### Dynamic References
@@ -1140,7 +1173,7 @@ The `CfnResource` class allows emitting arbitrary entries in the
 new CfnResource(this, 'ResourceId', {
   type: 'AWS::S3::Bucket',
   properties: {
-    BucketName: 'bucket-name'
+    BucketName: 'amzn-s3-demo-bucket'
   },
 });
 ```
@@ -1164,7 +1197,7 @@ new CfnInclude(this, 'ID', {
       Bucket: {
         Type: 'AWS::S3::Bucket',
         Properties: {
-          BucketName: 'my-shiny-bucket'
+          BucketName: 'amzn-s3-demo-bucket'
         }
       }
     }
@@ -1185,6 +1218,13 @@ on a stack by setting the `terminationProtection` prop to `true`.
 const stack = new Stack(app, 'StackName', {
   terminationProtection: true,
 });
+```
+
+You can also set termination protection with the setter after you've instantiated the stack.
+
+```ts
+const stack = new Stack(app, 'StackName', {});
+stack.terminationProtection = true;
 ```
 
 By default, termination protection is disabled.
@@ -1244,6 +1284,20 @@ When deploying to AWS CloudFormation, it needs to keep in check the amount of re
 It's possible to synthesize the project with more Resources than the allowed (or even reduce the number of Resources).
 
 Set the context key `@aws-cdk/core:stackResourceLimit` with the proper value, being 0 for disable the limit of resources.
+
+### Template Indentation
+
+The AWS CloudFormation templates generated by CDK include indentation by default. 
+Indentation makes the templates more readable, but also increases their size, 
+and CloudFormation templates cannot exceed 1MB.
+
+It's possible to reduce the size of your templates by suppressing indentation.
+
+To do this for all templates, set the context key `@aws-cdk/core:suppressTemplateIndentation` to `true`.
+
+To do this for a specific stack, add a `suppressTemplateIndentation: true` property to the 
+stack's `StackProps` parameter. You can also set this property to `false` to override 
+the context key setting.
 
 ## App Context
 
@@ -1440,6 +1494,10 @@ class MyPlugin implements IPolicyValidationPluginBeta1 {
 }
 ```
 
+In addition to the name, plugins may optionally report their version (`version`
+property ) and a list of IDs of the rules they are going to evaluate (`ruleIds`
+property).
+
 Note that plugins are not allowed to modify anything in the cloud assembly. Any
 attempt to do so will result in synthesis failure.
 
@@ -1451,5 +1509,41 @@ part of the installation of your package. With `npm`, for example, you can run
 add it to the `postinstall`
 [script](https://docs.npmjs.com/cli/v9/using-npm/scripts) in the `package.json`
 file.
+
+## Annotations
+
+Construct authors can add annotations to constructs to report at three different
+levels: `ERROR`, `WARN`, `INFO`.
+
+Typically warnings are added for things that are important for the user to be
+aware of, but will not cause deployment errors in all cases. Some common
+scenarios are (non-exhaustive list):
+
+- Warn when the user needs to take a manual action, e.g. IAM policy should be
+  added to an referenced resource.
+- Warn if the user configuration might not follow best practices (but is still
+  valid)
+- Warn if the user is using a deprecated API
+
+### Acknowledging Warnings
+
+If you would like to run with `--strict` mode enabled (warnings will throw
+errors) it is possible to `acknowledge` warnings to make the warning go away.
+
+For example, if > 10 IAM managed policies are added to an IAM Group, a warning
+will be created:
+
+```text
+IAM:Group:MaxPoliciesExceeded: You added 11 to IAM Group my-group. The maximum number of managed policies attached to an IAM group is 10.
+```
+
+If you have requested a [quota increase](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html#reference_iam-quotas-entities)
+you may have the ability to add > 10 managed policies which means that this
+warning does not apply to you. You can acknowledge this by `acknowledging` the
+warning by the `id`.
+
+```ts
+Annotations.of(this).acknowledgeWarning('IAM:Group:MaxPoliciesExceeded', 'Account has quota increased to 20');
+```
 
 <!--END CORE DOCUMENTATION-->

@@ -79,7 +79,8 @@ export interface PolicyProps {
    * creating invalid--and hence undeployable--CloudFormation templates.
    *
    * In cases where you know the policy must be created and it is actually
-   * an error if no statements have been added to it, you can set this to `true`.
+   * an error if no statements have been added to it or it remains unattached to
+   * an IAM identity, you can set this to `true`.
    *
    * @default false
    */
@@ -96,9 +97,9 @@ export interface PolicyProps {
 }
 
 /**
- * The AWS::IAM::Policy resource associates an IAM policy with IAM users, roles,
- * or groups. For more information about IAM policies, see [Overview of IAM
- * Policies](http://docs.aws.amazon.com/IAM/latest/UserGuide/policies_overview.html)
+ * The AWS::IAM::Policy resource associates an [inline](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#inline)
+ * IAM policy with IAM users, roles, or groups. For more information about IAM policies, see
+ * [Overview of IAM Policies](http://docs.aws.amazon.com/IAM/latest/UserGuide/policies_overview.html)
  * in the IAM User Guide guide.
  */
 export class Policy extends Resource implements IPolicy, IGrantable {
@@ -197,7 +198,7 @@ export class Policy extends Resource implements IPolicy, IGrantable {
    * Attaches this policy to a user.
    */
   public attachToUser(user: IUser) {
-    if (this.users.find(u => u === user)) { return; }
+    if (this.users.find(u => u.userArn === user.userArn)) { return; }
     this.users.push(user);
     user.attachInlinePolicy(this);
   }
@@ -206,7 +207,7 @@ export class Policy extends Resource implements IPolicy, IGrantable {
    * Attaches this policy to a role.
    */
   public attachToRole(role: IRole) {
-    if (this.roles.find(r => r === role)) { return; }
+    if (this.roles.find(r => r.roleArn === role.roleArn)) { return; }
     this.roles.push(role);
     role.attachInlinePolicy(this);
   }
@@ -215,7 +216,7 @@ export class Policy extends Resource implements IPolicy, IGrantable {
    * Attaches this policy to a group.
    */
   public attachToGroup(group: IGroup) {
-    if (this.groups.find(g => g === group)) { return; }
+    if (this.groups.find(g => g.groupArn === group.groupArn)) { return; }
     this.groups.push(group);
     group.attachInlinePolicy(this);
   }

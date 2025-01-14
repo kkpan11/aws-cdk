@@ -20,7 +20,72 @@
                   "aws:cdk:cloudformation:props": {}
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-s3.CfnBucket",
+                  "fqn": "aws-cdk-lib.aws_s3.CfnBucket",
+                  "version": "0.0.0"
+                }
+              },
+              "Policy": {
+                "id": "Policy",
+                "path": "aws-cdk-s3-notifications/MyEventBridgeBucket/Policy",
+                "children": {
+                  "Resource": {
+                    "id": "Resource",
+                    "path": "aws-cdk-s3-notifications/MyEventBridgeBucket/Policy/Resource",
+                    "attributes": {
+                      "aws:cdk:cloudformation:type": "AWS::S3::BucketPolicy",
+                      "aws:cdk:cloudformation:props": {
+                        "bucket": {
+                          "Ref": "MyEventBridgeBucket1ABD5C2A"
+                        },
+                        "policyDocument": {
+                          "Statement": [
+                            {
+                              "Action": "s3:*",
+                              "Condition": {
+                                "Bool": {
+                                  "aws:SecureTransport": "false"
+                                }
+                              },
+                              "Effect": "Deny",
+                              "Principal": {
+                                "AWS": "*"
+                              },
+                              "Resource": [
+                                {
+                                  "Fn::GetAtt": [
+                                    "MyEventBridgeBucket1ABD5C2A",
+                                    "Arn"
+                                  ]
+                                },
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Fn::GetAtt": [
+                                          "MyEventBridgeBucket1ABD5C2A",
+                                          "Arn"
+                                        ]
+                                      },
+                                      "/*"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "Version": "2012-10-17"
+                        }
+                      }
+                    },
+                    "constructInfo": {
+                      "fqn": "aws-cdk-lib.aws_s3.CfnBucketPolicy",
+                      "version": "0.0.0"
+                    }
+                  }
+                },
+                "constructInfo": {
+                  "fqn": "aws-cdk-lib.aws_s3.BucketPolicy",
                   "version": "0.0.0"
                 }
               },
@@ -32,19 +97,19 @@
                     "id": "Resource",
                     "path": "aws-cdk-s3-notifications/MyEventBridgeBucket/Notifications/Resource",
                     "constructInfo": {
-                      "fqn": "@aws-cdk/core.CfnResource",
+                      "fqn": "aws-cdk-lib.CfnResource",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.1.252"
+                  "version": "10.3.0"
                 }
               }
             },
             "constructInfo": {
-              "fqn": "@aws-cdk/aws-s3.Bucket",
+              "fqn": "aws-cdk-lib.aws_s3.Bucket",
               "version": "0.0.0"
             }
           },
@@ -60,7 +125,7 @@
                     "id": "ImportRole",
                     "path": "aws-cdk-s3-notifications/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Role/ImportRole",
                     "constructInfo": {
-                      "fqn": "@aws-cdk/core.Resource",
+                      "fqn": "aws-cdk-lib.Resource",
                       "version": "0.0.0"
                     }
                   },
@@ -99,7 +164,7 @@
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-iam.CfnRole",
+                      "fqn": "aws-cdk-lib.aws_iam.CfnRole",
                       "version": "0.0.0"
                     }
                   },
@@ -132,19 +197,19 @@
                           }
                         },
                         "constructInfo": {
-                          "fqn": "@aws-cdk/aws-iam.CfnPolicy",
+                          "fqn": "aws-cdk-lib.aws_iam.CfnPolicy",
                           "version": "0.0.0"
                         }
                       }
                     },
                     "constructInfo": {
-                      "fqn": "@aws-cdk/aws-iam.Policy",
+                      "fqn": "aws-cdk-lib.aws_iam.Policy",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/aws-iam.Role",
+                  "fqn": "aws-cdk-lib.aws_iam.Role",
                   "version": "0.0.0"
                 }
               },
@@ -152,21 +217,21 @@
                 "id": "Resource",
                 "path": "aws-cdk-s3-notifications/BucketNotificationsHandler050a0587b7544547bf325f094a3db834/Resource",
                 "constructInfo": {
-                  "fqn": "@aws-cdk/core.CfnResource",
+                  "fqn": "aws-cdk-lib.CfnResource",
                   "version": "0.0.0"
                 }
               }
             },
             "constructInfo": {
               "fqn": "constructs.Construct",
-              "version": "10.1.252"
+              "version": "10.3.0"
             }
           },
           "BootstrapVersion": {
             "id": "BootstrapVersion",
             "path": "aws-cdk-s3-notifications/BootstrapVersion",
             "constructInfo": {
-              "fqn": "@aws-cdk/core.CfnParameter",
+              "fqn": "aws-cdk-lib.CfnParameter",
               "version": "0.0.0"
             }
           },
@@ -174,13 +239,13 @@
             "id": "CheckBootstrapVersion",
             "path": "aws-cdk-s3-notifications/CheckBootstrapVersion",
             "constructInfo": {
-              "fqn": "@aws-cdk/core.CfnRule",
+              "fqn": "aws-cdk-lib.CfnRule",
               "version": "0.0.0"
             }
           }
         },
         "constructInfo": {
-          "fqn": "@aws-cdk/core.Stack",
+          "fqn": "aws-cdk-lib.Stack",
           "version": "0.0.0"
         }
       },
@@ -197,7 +262,7 @@
                 "path": "NotificationTest/DefaultTest/Default",
                 "constructInfo": {
                   "fqn": "constructs.Construct",
-                  "version": "10.1.252"
+                  "version": "10.3.0"
                 }
               },
               "DeployAssert": {
@@ -208,7 +273,7 @@
                     "id": "BootstrapVersion",
                     "path": "NotificationTest/DefaultTest/DeployAssert/BootstrapVersion",
                     "constructInfo": {
-                      "fqn": "@aws-cdk/core.CfnParameter",
+                      "fqn": "aws-cdk-lib.CfnParameter",
                       "version": "0.0.0"
                     }
                   },
@@ -216,25 +281,25 @@
                     "id": "CheckBootstrapVersion",
                     "path": "NotificationTest/DefaultTest/DeployAssert/CheckBootstrapVersion",
                     "constructInfo": {
-                      "fqn": "@aws-cdk/core.CfnRule",
+                      "fqn": "aws-cdk-lib.CfnRule",
                       "version": "0.0.0"
                     }
                   }
                 },
                 "constructInfo": {
-                  "fqn": "@aws-cdk/core.Stack",
+                  "fqn": "aws-cdk-lib.Stack",
                   "version": "0.0.0"
                 }
               }
             },
             "constructInfo": {
-              "fqn": "@aws-cdk/integ-tests.IntegTestCase",
+              "fqn": "@aws-cdk/integ-tests-alpha.IntegTestCase",
               "version": "0.0.0"
             }
           }
         },
         "constructInfo": {
-          "fqn": "@aws-cdk/integ-tests.IntegTest",
+          "fqn": "@aws-cdk/integ-tests-alpha.IntegTest",
           "version": "0.0.0"
         }
       },
@@ -243,12 +308,12 @@
         "path": "Tree",
         "constructInfo": {
           "fqn": "constructs.Construct",
-          "version": "10.1.252"
+          "version": "10.3.0"
         }
       }
     },
     "constructInfo": {
-      "fqn": "@aws-cdk/core.App",
+      "fqn": "aws-cdk-lib.App",
       "version": "0.0.0"
     }
   }

@@ -6,7 +6,11 @@ import { Duration } from 'aws-cdk-lib';
 import { IntegTest, ExpectedResult, Match } from '@aws-cdk/integ-tests-alpha';
 import * as cpactions from 'aws-cdk-lib/aws-codepipeline-actions';
 
-const app = new cdk.App();
+const app = new cdk.App({
+  postCliContext: {
+    '@aws-cdk/aws-codepipeline:defaultPipelineTypeToV2': false,
+  },
+});
 
 const stack = new cdk.Stack(app, 'aws-cdk-codepipeline-s3-deploy');
 
@@ -79,6 +83,7 @@ const pipeline = new codepipeline.Pipeline(stack, 'Pipeline', {
 
 const integ = new IntegTest(app, 's3-deploy-test', {
   testCases: [stack],
+  diffAssets: true,
 });
 
 const getObjectCall = integ.assertions.awsApiCall('S3', 'getObject', {

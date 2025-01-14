@@ -96,7 +96,7 @@ export enum TreatMissingData {
   /**
    * The alarm does not consider missing data points when evaluating whether to change state
    */
-  MISSING = 'missing'
+  MISSING = 'missing',
 }
 
 /**
@@ -222,8 +222,8 @@ export class Alarm extends AlarmBase {
       value: props.threshold,
     };
 
-    for (const w of this.metric.warnings ?? []) {
-      Annotations.of(this).addWarning(w);
+    for (const [i, message] of Object.entries(this.metric.warningsV2 ?? {})) {
+      Annotations.of(this).addWarningV2(i, message);
     }
   }
 
@@ -250,7 +250,7 @@ export class Alarm extends AlarmBase {
   /**
    * Trigger this action if the alarm fires
    *
-   * Typically SnsAcion or AutoScalingAction.
+   * Typically SnsAction or AutoScalingAction.
    */
   public addAlarmAction(...actions: IAlarmAction[]) {
     if (this.alarmActionArns === undefined) {
@@ -267,7 +267,7 @@ export class Alarm extends AlarmBase {
     if (ec2ActionsRegexp.test(actionArn)) {
       // Check per-instance metric
       const metricConfig = this.metric.toMetricConfig();
-      if (metricConfig.metricStat?.dimensions?.length != 1 || metricConfig.metricStat?.dimensions![0].name != 'InstanceId') {
+      if (metricConfig.metricStat?.dimensions?.length != 1 || !metricConfig.metricStat?.dimensions?.some(dimension => dimension.name === 'InstanceId')) {
         throw new Error(`EC2 alarm actions requires an EC2 Per-Instance Metric. (${JSON.stringify(metricConfig)} does not have an 'InstanceId' dimension)`);
       }
     }

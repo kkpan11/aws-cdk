@@ -97,6 +97,34 @@ new codepipeline_actions.CodeBuildAction({
 });
 ```
 
+If you want to use a custom event for your `CodeCommitSourceAction`, you can pass in
+a `customEventRule` which needs an event pattern (see [here](https://docs.aws.amazon.com/codecommit/latest/userguide/monitoring-events.html)) and an `IRuleTarget` (see [here](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_events_targets-readme.html))
+
+```ts
+const eventPattern = {
+  'detail-type': ['CodeCommit Repository State Change'],
+  'resources': ['foo'],
+  'source': ['aws.codecommit'],
+  'detail': {
+    referenceType: ['branch'],
+    event: ['referenceCreated', 'referenceUpdated'],
+    referenceName: ['master'],
+  },
+};
+declare const repo: codecommit.Repository;
+declare const lambdaFuntion: lambda.Function;
+const sourceOutput = new codepipeline.Artifact();
+const sourceAction = new codepipeline_actions.CodeCommitSourceAction({
+  actionName: 'CodeCommit',
+  repository: repo,
+  output: sourceOutput,
+  customEventRule: {
+    eventPattern,
+    target: new targets.LambdaFunction(lambdaFuntion),
+  }
+});
+```
+
 ### GitHub
 
 If you want to use a GitHub repository as the source, you must create:
@@ -250,7 +278,7 @@ you can specify the region explicitly:
 
 ```ts
 const sourceBucket = s3.Bucket.fromBucketAttributes(this, 'SourceBucket', {
-  bucketName: 'my-bucket',
+  bucketName: 'amzn-s3-demo-bucket',
   region: 'ap-southeast-1',
 });
 ```
@@ -754,7 +782,7 @@ const lambdaCode = lambda.Code.fromCfnParameters();
 const func = new lambda.Function(this, 'Lambda', {
   code: lambdaCode,
   handler: 'index.handler',
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: lambda.Runtime.NODEJS_LATEST,
 });
 // used to make sure each CDK synthesis produces a different Version
 const version = func.currentVersion;
@@ -857,9 +885,11 @@ Here's an example:
 To use an S3 Bucket as a deployment target in CodePipeline:
 
 ```ts
+import * as kms from 'aws-cdk-lib/aws-kms';
+
 const sourceOutput = new codepipeline.Artifact();
 const targetBucket = new s3.Bucket(this, 'MyBucket');
-const key: kms.IKey = new kms.Key(stack, 'EnvVarEncryptKey', {
+const key: kms.IKey = new kms.Key(this, 'EnvVarEncryptKey', {
   description: 'sample key',
 });
 
@@ -1143,10 +1173,10 @@ Example:
 const lambdaInvokeAction = new codepipeline_actions.LambdaInvokeAction({
   actionName: 'Lambda',
   lambda: new lambda.Function(this, 'Func', {
-    runtime: lambda.Runtime.NODEJS_14_X,
+    runtime: lambda.Runtime.NODEJS_LATEST,
     handler: 'index.handler',
     code: lambda.Code.fromInline(`
-        const AWS = require('aws-sdk');
+        const { CodePipeline } = require('@aws-sdk/client-codepipeline');
 
         exports.handler = async function(event, context) {
             const codepipeline = new AWS.CodePipeline();
@@ -1155,7 +1185,7 @@ const lambdaInvokeAction = new codepipeline_actions.LambdaInvokeAction({
                 outputVariables: {
                     MY_VAR: "some value",
                 },
-            }).promise();
+            });
         }
     `),
   }),

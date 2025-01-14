@@ -99,21 +99,21 @@ export interface LoggingConfiguration {
    *
    * @default - A logging bucket is automatically created.
    */
-  readonly bucket?: s3.IBucket,
+  readonly bucket?: s3.IBucket;
 
   /**
    * Whether to include the cookies in the logs
    *
    * @default false
    */
-  readonly includeCookies?: boolean,
+  readonly includeCookies?: boolean;
 
   /**
    * Where in the bucket to store logs
    *
    * @default - No prefix.
    */
-  readonly prefix?: string
+  readonly prefix?: string;
 }
 
 // Subset of SourceConfiguration for rendering properties internally
@@ -124,12 +124,12 @@ interface SourceConfigurationRender {
   readonly customOriginSource?: CustomOriginConfig;
   readonly originPath?: string;
   readonly originHeaders?: { [key: string]: string };
-  readonly originShieldRegion?: string
+  readonly originShieldRegion?: string;
 }
 
 /**
  * A source configuration is a wrapper for CloudFront origins and behaviors.
- * An origin is what CloudFront will "be in front of" - that is, CloudFront will pull it's assets from an origin.
+ * An origin is what CloudFront will "be in front of" - that is, CloudFront will pull its assets from an origin.
  *
  * If you're using s3 as a source - pass the `s3Origin` property, otherwise, pass the `customOriginSource` property.
  *
@@ -222,42 +222,42 @@ export interface CustomOriginConfig {
   /**
    * The domain name of the custom origin. Should not include the path - that should be in the parent SourceConfiguration
    */
-  readonly domainName: string,
+  readonly domainName: string;
 
   /**
    * The origin HTTP port
    *
    * @default 80
    */
-  readonly httpPort?: number,
+  readonly httpPort?: number;
 
   /**
    * The origin HTTPS port
    *
    * @default 443
    */
-  readonly httpsPort?: number,
+  readonly httpsPort?: number;
 
   /**
    * The keep alive timeout when making calls in seconds.
    *
    * @default Duration.seconds(5)
    */
-  readonly originKeepaliveTimeout?: cdk.Duration,
+  readonly originKeepaliveTimeout?: cdk.Duration;
 
   /**
    * The protocol (http or https) policy to use when interacting with the origin.
    *
    * @default OriginProtocolPolicy.HttpsOnly
    */
-  readonly originProtocolPolicy?: OriginProtocolPolicy,
+  readonly originProtocolPolicy?: OriginProtocolPolicy;
 
   /**
    * The read timeout when calling the origin in seconds
    *
    * @default Duration.seconds(30)
    */
-  readonly originReadTimeout?: cdk.Duration
+  readonly originReadTimeout?: cdk.Duration;
 
   /**
    * The SSL versions to use when interacting with the origin.
@@ -339,7 +339,7 @@ export interface S3OriginConfig {
 export enum CloudFrontAllowedMethods {
   GET_HEAD = 'GH',
   GET_HEAD_OPTIONS = 'GHO',
-  ALL = 'ALL'
+  ALL = 'ALL',
 }
 
 /**
@@ -479,7 +479,7 @@ export interface LambdaFunctionAssociation {
   /**
    * Allows a Lambda function to have read access to the body content.
    * Only valid for "request" event types (`ORIGIN_REQUEST` or `VIEWER_REQUEST`).
-   * See https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/lambda-include-body-access.html
+   * @see https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/lambda-include-body-access.html
    *
    * @default false
    */
@@ -555,7 +555,7 @@ export class ViewerCertificate {
   }
 
   /**
-   * Generate a viewer certifcate configuration using
+   * Generate a viewer certificate configuration using
    * the CloudFront default certificate (e.g. d111111abcdef8.cloudfront.net)
    * and a `SecurityPolicyProtocol.TLS_V1` security policy.
    *
@@ -736,11 +736,12 @@ export interface CloudFrontWebDistributionAttributes {
  * });
  * ```
  *
- * This will create a CloudFront distribution that uses your S3Bucket as it's origin.
+ * This will create a CloudFront distribution that uses your S3Bucket as its origin.
  *
  * You can customize the distribution using additional properties from the CloudFrontWebDistributionProps interface.
  *
  * @resource AWS::CloudFront::Distribution
+ * @deprecated Use `Distribution` instead
  */
 export class CloudFrontWebDistribution extends cdk.Resource implements IDistribution {
 
@@ -760,6 +761,9 @@ export class CloudFrontWebDistribution extends cdk.Resource implements IDistribu
         this.distributionId = attrs.distributionId;
       }
 
+      public get distributionArn(): string {
+        return formatDistributionArn(this);
+      }
       public grant(grantee: iam.IGrantable, ...actions: string[]): iam.Grant {
         return iam.Grant.addToPrincipal({ grantee, actions, resourceArns: [formatDistributionArn(this)] });
       }
@@ -989,6 +993,10 @@ export class CloudFrontWebDistribution extends cdk.Resource implements IDistribu
     this.domainName = distribution.attrDomainName;
     this.distributionDomainName = distribution.attrDomainName;
     this.distributionId = distribution.ref;
+  }
+
+  public get distributionArn(): string {
+    return formatDistributionArn(this);
   }
 
   /**

@@ -1,8 +1,8 @@
-
 import { Construct } from 'constructs';
 import { Connections, IConnectable } from './connections';
 import { CfnLaunchTemplate } from './ec2.generated';
 import { InstanceType } from './instance-types';
+import { IKeyPair } from './key-pair';
 import { IMachineImage, MachineImageConfig, OperatingSystemType } from './machine-image';
 import { launchTemplateBlockDeviceMappings } from './private/ebs-util';
 import { ISecurityGroup } from './security-group';
@@ -222,6 +222,17 @@ export interface LaunchTemplateProps {
   readonly launchTemplateName?: string;
 
   /**
+   * A description for the first version of the launch template.
+   *
+   * The version description must be maximum 255 characters long.
+   *
+   * @see http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-launchtemplate.html#cfn-ec2-launchtemplate-versiondescription
+   *
+   * @default - No description
+   */
+  readonly versionDescription?: string;
+
+  /**
    * Type of instance to launch.
    *
    * @default - This Launch Template does not specify a default Instance Type.
@@ -246,7 +257,8 @@ export interface LaunchTemplateProps {
   /**
    * An IAM role to associate with the instance profile that is used by instances.
    *
-   * The role must be assumable by the service principal `ec2.amazonaws.com`:
+   * The role must be assumable by the service principal `ec2.amazonaws.com`.
+   * Note: You can provide an instanceProfile or a role, but not both.
    *
    * @example
    * const role = new iam.Role(this, 'MyRole', {
@@ -332,8 +344,16 @@ export interface LaunchTemplateProps {
    * Name of SSH keypair to grant access to instance
    *
    * @default - No SSH access will be possible.
+   * @deprecated - Use `keyPair` instead - https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_ec2-readme.html#using-an-existing-ec2-key-pair
    */
   readonly keyName?: string;
+
+  /**
+   * The SSH keypair to grant access to the instance.
+   *
+   * @default - No SSH access will be possible.
+   */
+  readonly keyPair?: IKeyPair;
 
   /**
    * If set to true, then detailed monitoring will be enabled on instances created with this
@@ -404,6 +424,22 @@ export interface LaunchTemplateProps {
    * @default false
    */
   readonly instanceMetadataTags?: boolean;
+
+  /**
+   * Whether instances should have a public IP addresses associated with them.
+   *
+   * @default - Use subnet settings
+   */
+  readonly associatePublicIpAddress?: boolean;
+
+  /**
+   * The instance profile used to pass role information to EC2 instances.
+   *
+   * Note: You can provide an instanceProfile or a role, but not both.
+   *
+   * @default - No instance profile
+   */
+  readonly instanceProfile?: iam.IInstanceProfile;
 }
 
 /**
@@ -575,11 +611,28 @@ export class LaunchTemplate extends Resource implements ILaunchTemplate, iam.IGr
       Annotations.of(this).addError('HttpPutResponseHopLimit must between 1 and 64');
     }
 
-    this.role = props.role;
+    if (props.instanceProfile && props.role) {
+      throw new Error('You cannot provide both an instanceProfile and a role');
+    }
+
+    if (props.keyName && props.keyPair) {
+      throw new Error('Cannot specify both of \'keyName\' and \'keyPair\'; prefer \'keyPair\'');
+    }
+
+    // use provided instance profile or create one if a role was provided
+    let iamProfileArn: string | undefined = undefined;
+    if (props.instanceProfile) {
+      this.role = props.instanceProfile.role;
+      iamProfileArn = props.instanceProfile.instanceProfileArn;
+    } else if (props.role) {
+      this.role = props.role;
+      const iamProfile = new iam.CfnInstanceProfile(this, 'Profile', {
+        roles: [this.role.roleName],
+      });
+      iamProfileArn = iamProfile.attrArn;
+    }
+
     this._grantPrincipal = this.role;
-    const iamProfile: iam.CfnInstanceProfile | undefined = this.role ? new iam.CfnInstanceProfile(this, 'Profile', {
-      roles: [this.role!.roleName],
-    }) : undefined;
 
     if (props.securityGroup) {
       this._connections = new Connections({ securityGroups: [props.securityGroup] });
@@ -599,7 +652,12 @@ export class LaunchTemplate extends Resource implements ILaunchTemplate, iam.IGr
       this.imageId = imageConfig.imageId;
     }
 
-    if (FeatureFlags.of(this).isEnabled(cxapi.EC2_LAUNCH_TEMPLATE_DEFAULT_USER_DATA)) {
+    if (this.osType && props.keyPair && !props.keyPair._isOsCompatible(this.osType)) {
+      throw new Error(`${props.keyPair.type} keys are not compatible with the chosen AMI`);
+    }
+
+    if (FeatureFlags.of(this).isEnabled(cxapi.EC2_LAUNCH_TEMPLATE_DEFAULT_USER_DATA) ||
+      FeatureFlags.of(this).isEnabled(cxapi.AUTOSCALING_GENERATE_LAUNCH_TEMPLATE)) {
       // priority: prop.userData -> userData from machineImage -> undefined
       this.userData = props.userData ?? imageConfig?.userData;
     } else {
@@ -684,8 +742,17 @@ export class LaunchTemplate extends Resource implements ILaunchTemplate, iam.IGr
       },
     });
 
+    const networkInterfaces = props.associatePublicIpAddress !== undefined
+      ? [{ deviceIndex: 0, associatePublicIpAddress: props.associatePublicIpAddress, groups: securityGroupsToken }]
+      : undefined;
+
+    if (props.versionDescription && !Token.isUnresolved(props.versionDescription) && props.versionDescription.length > 255) {
+      throw new Error(`versionDescription must be less than or equal to 255 characters, got ${props.versionDescription.length}`);
+    }
+
     const resource = new CfnLaunchTemplate(this, 'Resource', {
       launchTemplateName: props?.launchTemplateName,
+      versionDescription: props?.versionDescription,
       launchTemplateData: {
         blockDeviceMappings: props?.blockDevices !== undefined ? launchTemplateBlockDeviceMappings(this, props.blockDevices) : undefined,
         creditSpecification: props?.cpuCredits !== undefined ? {
@@ -699,21 +766,20 @@ export class LaunchTemplate extends Resource implements ILaunchTemplate, iam.IGr
         hibernationOptions: props?.hibernationConfigured !== undefined ? {
           configured: props.hibernationConfigured,
         } : undefined,
-        iamInstanceProfile: iamProfile !== undefined ? {
-          arn: iamProfile.getAtt('Arn').toString(),
-        } : undefined,
+        iamInstanceProfile: iamProfileArn !== undefined ? { arn: iamProfileArn } : undefined,
         imageId: imageConfig?.imageId,
         instanceType: props?.instanceType?.toString(),
         instanceInitiatedShutdownBehavior: props?.instanceInitiatedShutdownBehavior,
         instanceMarketOptions: marketOptions,
-        keyName: props?.keyName,
+        keyName: props.keyPair?.keyPairName ?? props?.keyName,
         monitoring: props?.detailedMonitoring !== undefined ? {
           enabled: props.detailedMonitoring,
         } : undefined,
-        securityGroupIds: securityGroupsToken,
+        securityGroupIds: networkInterfaces ? undefined : securityGroupsToken,
         tagSpecifications: tagsToken,
         userData: userDataToken,
         metadataOptions: this.renderMetadataOptions(props),
+        networkInterfaces,
 
         // Fields not yet implemented:
         // ==========================
@@ -742,15 +808,18 @@ export class LaunchTemplate extends Resource implements ILaunchTemplate, iam.IGr
         // Should be implemented via the Tagging aspect in CDK core. Complication will be that this tagging interface is very unique to LaunchTemplates.
         // tagSpecification: undefined
 
-        // CDK has no abstraction for Network Interfaces yet.
-        // networkInterfaces: undefined,
-
         // CDK has no abstraction for Placement yet.
         // placement: undefined,
 
       },
       tagSpecifications: ltTagsToken,
     });
+
+    if (this.role) {
+      resource.node.addDependency(this.role);
+    } else if (props.instanceProfile?.role) {
+      resource.node.addDependency(props.instanceProfile.role);
+    }
 
     Tags.of(this).add(NAME_TAG, this.node.path);
 

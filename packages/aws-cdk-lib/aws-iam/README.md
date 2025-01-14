@@ -174,7 +174,7 @@ iam.Role.customizeRoles(stack);
 const fn = new lambda.Function(this, 'MyLambda', {
   code: new lambda.InlineCode('foo'),
   handler: 'index.handler',
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: lambda.Runtime.NODEJS_LATEST,
 });
 
 const bucket = new s3.Bucket(this, 'Bucket');
@@ -237,6 +237,72 @@ iam.Role.customizeRoles(this, {
 
 For more information on configuring permissions see the [Security And Safety Dev
 Guide](https://github.com/aws/aws-cdk/wiki/Security-And-Safety-Dev-Guide)
+
+#### Policy report generation
+
+When `customizeRoles` is used, the `iam-policy-report.txt` report will contain a list
+of IAM roles and associated permissions that would have been created. This report is
+generated in an attempt to resolve and replace any references with a more user-friendly
+value.
+
+The following are some examples of the value that will appear in the report:
+
+```json
+"Resource": {
+  "Fn::Join": [
+    "",
+    [
+      "arn:",
+      {
+        "Ref": "AWS::Partition"
+      },
+      ":iam::",
+      {
+        "Ref": "AWS::AccountId"
+      },
+      ":role/Role"
+    ]
+  ]
+}
+```
+
+The policy report will instead get:
+
+```json
+"Resource": "arn:(PARTITION):iam::(ACCOUNT):role/Role"
+```
+
+If IAM policy is referencing a resource attribute:
+
+```json
+"Resource": [
+  {
+    "Fn::GetAtt": [
+      "SomeResource",
+      "Arn"
+    ]
+  },
+  {
+    "Ref": "AWS::NoValue",
+  }
+]
+```
+
+The policy report will instead get:
+
+```json
+"Resource": [
+  "(Path/To/SomeResource.Arn)"
+  "(NOVALUE)"
+]
+```
+
+The following pseudo parameters will be converted:
+
+1. `{ 'Ref': 'AWS::AccountId' }` -> `(ACCOUNT)
+2. `{ 'Ref': 'AWS::Partition' }` -> `(PARTITION)
+3. `{ 'Ref': 'AWS::Region' }` -> `(REGION)
+4. `{ 'Ref': 'AWS::NoValue' }` -> `(NOVALUE)
 
 #### Generating a permissions report
 
@@ -369,6 +435,57 @@ new iam.Role(this, 'Role', {
 });
 ```
 
+### Granting a principal permission to assume a role
+
+A principal can be granted permission to assume a role using `grantAssumeRole`.
+
+Note that this does not apply to service principals or account principals as they must be added to the role trust policy via `assumeRolePolicy`.
+
+```ts
+const user = new iam.User(this, 'user')
+const role = new iam.Role(this, 'role', {
+  assumedBy: new iam.AccountPrincipal(this.account)
+});
+
+role.grantAssumeRole(user);
+```
+
+### Granting service and account principals permission to assume a role
+
+Service principals and account principals can be granted permission to assume a role using `assumeRolePolicy` which modifies the role trust policy.
+
+```ts
+const role = new iam.Role(this, 'role', {
+  assumedBy: new iam.AccountPrincipal(this.account),
+});
+
+role.assumeRolePolicy?.addStatements(new iam.PolicyStatement({
+  actions: ['sts:AssumeRole'],
+  principals: [
+    new iam.AccountPrincipal('123456789'),
+    new iam.ServicePrincipal('beep-boop.amazonaws.com')
+    ],
+}));
+```
+
+### Fixing the synthesized service principle for services that do not follow the IAM Pattern
+
+In some cases, certain AWS services may not use the standard `<service>.amazonaws.com` pattern for their service principals. For these services, you can define the ServicePrincipal as following where the provided service principle name will be used as is without any changing.
+
+```ts
+    const sp = iam.ServicePrincipal.fromStaticServicePrincipleName('elasticmapreduce.amazonaws.com.cn');
+```
+
+This principle can use as normal in defining any role, for example:
+```ts
+const emrServiceRole = new iam.Role(this, 'EMRServiceRole', {
+    assumedBy: iam.ServicePrincipal.fromStaticServicePrincipleName('elasticmapreduce.amazonaws.com.cn'),
+    managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonElasticMapReduceRole'),
+    ],
+});
+```
+
 
 ## Parsing JSON Policy Documents
 
@@ -382,28 +499,28 @@ const policyDocument = {
       "Sid": "FirstStatement",
       "Effect": "Allow",
       "Action": ["iam:ChangePassword"],
-      "Resource": "*"
+      "Resource": ["*"],
     },
     {
       "Sid": "SecondStatement",
       "Effect": "Allow",
-      "Action": "s3:ListAllMyBuckets",
-      "Resource": "*"
+      "Action": ["s3:ListAllMyBuckets"],
+      "Resource": ["*"],
     },
     {
       "Sid": "ThirdStatement",
       "Effect": "Allow",
       "Action": [
         "s3:List*",
-        "s3:Get*"
+        "s3:Get*",
       ],
       "Resource": [
         "arn:aws:s3:::confidential-data",
-        "arn:aws:s3:::confidential-data/*"
+        "arn:aws:s3:::confidential-data/*",
       ],
-      "Condition": {"Bool": {"aws:MultiFactorAuthPresent": "true"}}
-    }
-  ]
+      "Condition": {"Bool": {"aws:MultiFactorAuthPresent": "true"}},
+    },
+  ],
 };
 
 const customPolicyDocument = iam.PolicyDocument.fromJson(policyDocument);
@@ -738,11 +855,64 @@ user.addToGroup(group);
 group.addUser(user);
 ```
 
+## Instance Profiles
+
+An IAM instance profile is a container for an IAM role that you can use to pass role information to an EC2 instance when the instance starts. By default, an instance profile must be created with a role:
+
+```ts
+const role = new iam.Role(this, 'Role', {
+  assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+});
+
+const instanceProfile = new iam.InstanceProfile(this, 'InstanceProfile', {
+  role,
+});
+```
+
+An instance profile can also optionally be created with an instance profile name and/or a [path](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_identifiers.html#identifiers-friendly-names) to the instance profile:
+
+```ts
+const role = new iam.Role(this, 'Role', {
+  assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+});
+
+const instanceProfile = new iam.InstanceProfile(this, 'InstanceProfile', {
+  role,
+  instanceProfileName: 'MyInstanceProfile',
+  path: '/sample/path/',
+});
+```
+
+To import an existing instance profile by name:
+
+```ts
+const instanceProfile = iam.InstanceProfile.fromInstanceProfileName(this, 'ImportedInstanceProfile', 'MyInstanceProfile');
+```
+
+To import an existing instance profile by ARN:
+
+```ts
+const instanceProfile = iam.InstanceProfile.fromInstanceProfileArn(this, 'ImportedInstanceProfile', 'arn:aws:iam::account-id:instance-profile/MyInstanceProfile');
+```
+
+To import an existing instance profile with an associated role:
+
+```ts
+const role = new iam.Role(this, 'Role', {
+  assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+});
+
+const instanceProfile = iam.InstanceProfile.fromInstanceProfileAttributes(this, 'ImportedInstanceProfile', {
+  instanceProfileArn: 'arn:aws:iam::account-id:instance-profile/MyInstanceProfile',
+  role,
+});
+```
+
 ## Features
 
 * Policy name uniqueness is enforced. If two policies by the same name are attached to the same
-    principal, the attachment will fail.
+  principal, the attachment will fail.
 * Policy names are not required - the CDK logical ID will be used and ensured to be unique.
 * Policies are validated during synthesis to ensure that they have actions, and that policies
-    attached to IAM principals specify relevant resources, while policies attached to resources
-    specify which IAM principals they apply to.
+  attached to IAM principals specify relevant resources, while policies attached to resources
+  specify which IAM principals they apply to.

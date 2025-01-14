@@ -9,33 +9,39 @@ running on AWS Lambda, or any web application.
 
 ## Table of Contents
 
-- [Defining APIs](#defining-apis)
-  - [Breaking up Methods and Resources across Stacks](#breaking-up-methods-and-resources-across-stacks)
-- [AWS Lambda-backed APIs](#aws-lambda-backed-apis)
-- [AWS StepFunctions backed APIs](#aws-stepfunctions-backed-APIs)
-- [Integration Targets](#integration-targets)
-- [Usage Plan & API Keys](#usage-plan--api-keys)
-- [Working with models](#working-with-models)
-- [Default Integration and Method Options](#default-integration-and-method-options)
-- [Proxy Routes](#proxy-routes)
-- [Authorizers](#authorizers)
-  - [IAM-based authorizer](#iam-based-authorizer)
-  - [Lambda-based token authorizer](#lambda-based-token-authorizer)
-  - [Lambda-based request authorizer](#lambda-based-request-authorizer)
-  - [Cognito User Pools authorizer](#cognito-user-pools-authorizer)
-- [Mutual TLS](#mutal-tls-mtls)
-- [Deployments](#deployments)
-  - [Deep dive: Invalidation of deployments](#deep-dive-invalidation-of-deployments)
-- [Custom Domains](#custom-domains)
-- [Access Logging](#access-logging)
-- [Cross Origin Resource Sharing (CORS)](#cross-origin-resource-sharing-cors)
-- [Endpoint Configuration](#endpoint-configuration)
-- [Private Integrations](#private-integrations)
-- [Gateway Response](#gateway-response)
-- [OpenAPI Definition](#openapi-definition)
-  - [Endpoint configuration](#endpoint-configuration)
-- [Metrics](#metrics)
-- [APIGateway v2](#apigateway-v2)
+- [Amazon API Gateway Construct Library](#amazon-api-gateway-construct-library)
+  - [Table of Contents](#table-of-contents)
+  - [Defining APIs](#defining-apis)
+    - [Breaking up Methods and Resources across Stacks](#breaking-up-methods-and-resources-across-stacks)
+  - [AWS Lambda-backed APIs](#aws-lambda-backed-apis)
+  - [AWS StepFunctions backed APIs](#aws-stepfunctions-backed-apis)
+  - [Integration Targets](#integration-targets)
+  - [Usage Plan \& API Keys](#usage-plan--api-keys)
+    - [Adding an API Key to an imported RestApi](#adding-an-api-key-to-an-imported-restapi)
+    - [⚠️ Multiple API Keys](#️-multiple-api-keys)
+    - [Rate Limited API Key](#rate-limited-api-key)
+  - [Working with models](#working-with-models)
+  - [Default Integration and Method Options](#default-integration-and-method-options)
+  - [Proxy Routes](#proxy-routes)
+  - [Authorizers](#authorizers)
+    - [IAM-based authorizer](#iam-based-authorizer)
+    - [Lambda-based token authorizer](#lambda-based-token-authorizer)
+    - [Lambda-based request authorizer](#lambda-based-request-authorizer)
+    - [Cognito User Pools authorizer](#cognito-user-pools-authorizer)
+  - [Mutual TLS (mTLS)](#mutual-tls-mtls)
+  - [Deployments](#deployments)
+    - [Deep dive: Invalidation of deployments](#deep-dive-invalidation-of-deployments)
+  - [Custom Domains](#custom-domains)
+    - [Custom Domains with multi-level api mapping](#custom-domains-with-multi-level-api-mapping)
+  - [Access Logging](#access-logging)
+  - [Cross Origin Resource Sharing (CORS)](#cross-origin-resource-sharing-cors)
+  - [Endpoint Configuration](#endpoint-configuration)
+  - [Private Integrations](#private-integrations)
+  - [Gateway response](#gateway-response)
+  - [OpenAPI Definition](#openapi-definition)
+    - [Endpoint configuration](#endpoint-configuration-1)
+  - [Metrics](#metrics)
+  - [APIGateway v2](#apigateway-v2)
 
 ## Defining APIs
 
@@ -63,10 +69,29 @@ book.addMethod('DELETE');
 To give an IAM User or Role permission to invoke a method, use `grantExecute`:
 
 ```ts
-declare user: iam.User;
-const books = api.root.addResource('books');
-books.grantExecute(user);
+declare const api: apigateway.RestApi;
+declare const user: iam.User;
+
+const method = api.root.addResource('books').addMethod('GET');
+method.grantExecute(user);
 ```
+
+### Breaking up Methods and Resources across Stacks
+
+It is fairly common for REST APIs with a large number of Resources and Methods to hit the [CloudFormation
+limit](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cloudformation-limits.html) of 500 resources per
+stack.
+
+To help with this, Resources and Methods for the same REST API can be re-organized across multiple stacks. A common
+way to do this is to have a stack per Resource or groups of Resources, but this is not the only possible way.
+The following example uses sets up two Resources '/pets' and '/books' in separate stacks using nested stacks:
+
+[Resources grouped into nested stacks](test/integ.restapi-import.lit.ts)
+
+> **Warning:** In the code above, an API Gateway deployment is created during the initial CDK deployment.
+However, if there are changes to the resources in subsequent CDK deployments, a new API Gateway deployment is not
+automatically created. As a result, the latest state of the resources is not reflected. To ensure the latest state
+of the resources is reflected, a manual deployment of the API Gateway is required after the CDK deployment. See [Controlled triggering of deployments](#controlled-triggering-of-deployments) for more info.
 
 ## AWS Lambda-backed APIs
 
@@ -131,6 +156,17 @@ The construct sets up an API endpoint and maps the `ANY` HTTP method and any cal
 Invoking the endpoint with any HTTP method (`GET`, `POST`, `PUT`, `DELETE`, ...) in the example below will send the request to the state machine as a new execution. On success, an HTTP code `200` is returned with the execution output as the Response Body.
 
 If the execution fails, an HTTP `500` response is returned with the `error` and `cause` from the execution output as the Response Body. If the request is invalid (ex. bad execution input) HTTP code `400` is returned.
+
+To disable default response models generation use the `useDefaultMethodResponses` property:
+
+```ts
+declare const machine: stepfunctions.IStateMachine;
+
+new apigateway.StepFunctionsRestApi(this, 'StepFunctionsRestApi', {
+  stateMachine: machine,
+  useDefaultMethodResponses: false,
+});
+```
 
 The response from the invocation contains only the `output` field from the
 [StartSyncExecution](https://docs.aws.amazon.com/step-functions/latest/apireference/API_StartSyncExecution.html#API_StartSyncExecution_ResponseSyntax) API.
@@ -236,18 +272,6 @@ AWS Step Functions will receive the following execution input:
 }
 ```
 
-### Breaking up Methods and Resources across Stacks
-
-It is fairly common for REST APIs with a large number of Resources and Methods to hit the [CloudFormation
-limit](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cloudformation-limits.html) of 500 resources per
-stack.
-
-To help with this, Resources and Methods for the same REST API can be re-organized across multiple stacks. A common
-way to do this is to have a stack per Resource or groups of Resources, but this is not the only possible way.
-The following example uses sets up two Resources '/pets' and '/books' in separate stacks using nested stacks:
-
-[Resources grouped into nested stacks](test/integ.restapi-import.lit.ts)
-
 ## Integration Targets
 
 Methods are associated with backend integrations, which are invoked when this
@@ -255,9 +279,10 @@ method is called. API Gateway supports the following integrations:
 
 - `MockIntegration` - can be used to test APIs. This is the default
    integration if one is not specified.
-- `LambdaIntegration` - can be used to invoke an AWS Lambda function.
 - `AwsIntegration` - can be used to invoke arbitrary AWS service APIs.
 - `HttpIntegration` - can be used to invoke HTTP endpoints.
+- `LambdaIntegration` - can be used to invoke an AWS Lambda function.
+- `SagemakerIntegration` - can be used to invoke Sagemaker Endpoints.
 
 The following example shows how to integrate the `GET /book/{book_id}` method to
 an AWS Lambda function:
@@ -455,7 +480,7 @@ have to define your models and mappings for the request, response, and integrati
 
 ```ts
 const hello = new lambda.Function(this, 'hello', {
-  runtime: lambda.Runtime.NODEJS_14_X,
+  runtime: lambda.Runtime.NODEJS_LATEST,
   handler: 'hello.handler',
   code: lambda.Code.fromAsset('lambda')
 });
@@ -786,7 +811,7 @@ class MyStack extends Stack {
     super(scope, id);
 
     const authorizerFn = new lambda.Function(this, 'MyAuthorizerFunction', {
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_LATEST,
       handler: 'index.handler',
       code: lambda.AssetCode.fromAsset(path.join(__dirname, 'integ.token-authorizer.handler')),
     });
@@ -916,7 +941,7 @@ Instructions for configuring your trust store can be found [here](https://aws.am
 By default, the `RestApi` construct will automatically create an API Gateway
 [Deployment] and a "prod" [Stage] which represent the API configuration you
 defined in your CDK app. This means that when you deploy your app, your API will
-be have open access from the internet via the stage URL.
+have open access from the internet via the stage URL.
 
 The URL of your API can be obtained from the attribute `restApi.url`, and is
 also exported as an `Output` from your stack, so it's printed when you `cdk
@@ -962,6 +987,80 @@ so if you create multiple `RestApi`s with `cloudWatchRole=true` each new `RestAp
 will overwrite the `CfnAccount`. It is recommended to set `cloudWatchRole=false`
 (the default behavior if `@aws-cdk/aws-apigateway:disableCloudWatchRole` is enabled)
 and only create a single CloudWatch role and account per environment.
+
+You can specify the CloudWatch Role and Account sub-resources removal policy with the
+`cloudWatchRoleRemovalPolicy` property, which defaults to `RemovalPolicy.RETAIN`.
+This option requires `cloudWatchRole` to be enabled.
+
+```ts
+import * as cdk from 'aws-cdk-lib/core';
+
+const api = new apigateway.RestApi(this, 'books', {
+  cloudWatchRole: true,
+  cloudWatchRoleRemovalPolicy: cdk.RemovalPolicy.DESTROY,
+});
+```
+### Deploying to an existing stage
+
+#### Using RestApi
+
+If you want to use an existing stage to deploy your `RestApi`, first set `{ deploy: false }` so the construct doesn't automatically create new `Deployment` and `Stage` resources.  Then you can manually define a `apigateway.Deployment` resource and specify the stage name for your existing stage using the `stageName` property.
+
+Note that as long as the deployment's logical ID doesn't change, it will represent the snapshot in time when the resource was created. To ensure your deployment reflects changes to the `RestApi` model, see [Controlled triggering of deployments](#controlled-triggering-of-deployments).
+```ts
+const restApi = new apigateway.RestApi(this, 'my-rest-api', {
+  deploy: false,
+});
+
+// Use `stageName` to deploy to an existing stage
+const deployment = new apigateway.Deployment(this, 'my-deployment', {
+  api: restApi,
+  stageName: 'dev',
+  retainDeployments: true, // keep old deployments
+});
+```
+#### Using SpecRestApi
+If you want to use an existing stage to deploy your `SpecRestApi`, first set `{ deploy: false }` so the construct doesn't automatically create new `Deployment` and `Stage` resources. Then you can manually define a `apigateway.Deployment` resource and specify the stage name for your existing stage using the `stageName` property.
+
+To automatically create a new deployment that reflects the latest API changes, you can use the `addToLogicalId()` method and pass in your OpenAPI definition.
+
+```ts
+const myApiDefinition = apigateway.ApiDefinition.fromAsset('path-to-file.json');
+const specRestApi = new apigateway.SpecRestApi(this, 'my-specrest-api', {
+  deploy: false,
+  apiDefinition: myApiDefinition
+});
+
+// Use `stageName` to deploy to an existing stage
+const deployment = new apigateway.Deployment(this, 'my-deployment', {
+  api: specRestApi,
+  stageName: 'dev',
+  retainDeployments: true, // keep old deployments
+});
+
+// Trigger a new deployment on OpenAPI definition updates
+deployment.addToLogicalId(myApiDefinition);
+
+```
+
+> Note: If the `stageName` property is set but a stage with the corresponding name does not exist, a new stage resource will be created with the provided stage name.
+
+> Note: If you update the `stageName` property, you should be triggering a new deployment (i.e. with an updated logical ID and API changes). Otherwise, an error will occur during deployment.
+
+### Controlled triggering of deployments
+
+By default, the `RestApi` construct deploys changes immediately. If you want to
+control when deployments happen, set `{ deploy: false }` and create a `Deployment` construct yourself. Add a revision counter to the construct ID, and update it in your source code whenever you want to trigger a new deployment:
+```ts
+const restApi = new apigateway.RestApi(this, 'my-api', {
+  deploy: false,
+});
+
+const deploymentRevision = 5; // Bump this counter to trigger a new deployment
+new apigateway.Deployment(this, `Deployment${deploymentRevision}`, {
+  api: restApi
+});
+```
 
 ### Deep dive: Invalidation of deployments
 
@@ -1185,10 +1284,10 @@ Gateway](https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-log
 
 ```ts
 // production stage
-const prdLogGroup = new logs.LogGroup(this, "PrdLogs");
+const prodLogGroup = new logs.LogGroup(this, "PrdLogs");
 const api = new apigateway.RestApi(this, 'books', {
   deployOptions: {
-    accessLogDestination: new apigateway.LogGroupLogDestination(prdLogGroup),
+    accessLogDestination: new apigateway.LogGroupLogDestination(prodLogGroup),
     accessLogFormat: apigateway.AccessLogFormat.jsonWithStandardFields(),
   },
 });
@@ -1274,6 +1373,34 @@ const api = new apigateway.RestApi(this, 'books', {
   }
 });
 ```
+
+To write access log files to a Firehose delivery stream destination use the `FirehoseLogDestination` class:
+
+```ts
+const destinationBucket = new s3.Bucket(this, 'Bucket');
+const deliveryStreamRole = new iam.Role(this, 'Role', {
+  assumedBy: new iam.ServicePrincipal('firehose.amazonaws.com'),
+});
+
+const stream = new firehose.CfnDeliveryStream(this, 'MyStream', {
+  deliveryStreamName: 'amazon-apigateway-delivery-stream',
+  s3DestinationConfiguration: {
+    bucketArn: destinationBucket.bucketArn,
+    roleArn: deliveryStreamRole.roleArn,
+  },
+});
+
+const api = new apigateway.RestApi(this, 'books', {
+  deployOptions: {
+    accessLogDestination: new apigateway.FirehoseLogDestination(stream),
+    accessLogFormat: apigateway.AccessLogFormat.jsonWithStandardFields(),
+  },
+});
+```
+
+**Note:** The delivery stream name must start with `amazon-apigateway-`.
+
+> Visit [Logging API calls to Kinesis Data Firehose](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-logging-to-kinesis.html) for more details.
 
 ## Cross Origin Resource Sharing (CORS)
 
@@ -1392,6 +1519,7 @@ const link = new apigateway.VpcLink(this, 'link', {
 
 const integration = new apigateway.Integration({
   type: apigateway.IntegrationType.HTTP_PROXY,
+  integrationHttpMethod: 'ANY',
   options: {
     connectionType: apigateway.ConnectionType.VPC_LINK,
     vpcLink: link,
@@ -1513,10 +1641,13 @@ const latencyMethodMetric = method.metricLatency(stage);
 
 ## APIGateway v2
 
-APIGateway v2 APIs are now moved to its own package named `aws-apigatewayv2`. For backwards compatibility, existing
-APIGateway v2 "CFN resources" (such as `CfnApi`) that were previously exported as part of this package, are still
-exported from here and have been marked deprecated. However, updates to these CloudFormation resources, such as new
-properties and new resource types will not be available.
+APIGateway v2 APIs are now moved to its own package named `aws-apigatewayv2`. Previously, these APIs were marked
+deprecated but retained for backwards compatibility. The deprecated usage of APIGateway v2 APIs within this module
+`aws-apigateway` has now been removed from the codebase.
+
+The reason for the removal of these deprecated Constructs is that CloudFormation team is releasing AWS resources
+like `AWS::APIGateway::DomainNameV2` and this would cause compatibility issue with the deprecated `CfnDomainNameV2`
+resource defined in `apigatewayv2.ts` file during the L1 generation.
 
 Move to using `aws-apigatewayv2` to get the latest APIs and updates.
 

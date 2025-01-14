@@ -5,7 +5,12 @@ import * as cdk from 'aws-cdk-lib';
 import * as integ from '@aws-cdk/integ-tests-alpha';
 import { ScheduledEc2Task } from 'aws-cdk-lib/aws-ecs-patterns';
 
-const app = new cdk.App();
+const app = new cdk.App({
+  postCliContext: {
+    '@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature': false,
+    '@aws-cdk/aws-ecs:disableEcsImdsBlocking': false,
+  },
+});
 
 class EventStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
@@ -24,6 +29,27 @@ class EventStack extends cdk.Stack {
       cluster,
       scheduledEc2TaskImageOptions: {
         image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+        memoryLimitMiB: 512,
+        cpu: 1,
+        environment: { TRIGGER: 'CloudWatch Events' },
+      },
+      desiredTaskCount: 2,
+      schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
+      propagateTags: ecs.PropagatedTagSource.TASK_DEFINITION,
+      tags: [
+        {
+          key: 'my-tag',
+          value: 'my-tag-value',
+        },
+      ],
+    });
+
+    // New Scheduled Task with custom container name
+    new ScheduledEc2Task(this, 'ScheduledEc2Task2', {
+      cluster,
+      scheduledEc2TaskImageOptions: {
+        image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
+        containerName: 'differentName',
         memoryLimitMiB: 512,
         cpu: 1,
         environment: { TRIGGER: 'CloudWatch Events' },

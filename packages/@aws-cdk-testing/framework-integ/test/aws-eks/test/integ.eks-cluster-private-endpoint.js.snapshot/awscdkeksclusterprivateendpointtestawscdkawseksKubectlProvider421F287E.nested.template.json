@@ -7,12 +7,14 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "9017774b84ae2457b1b2ad6fcbb4860d8ce2537062c77010b24d9b156ced5a1b.zip"
-    },
-    "Role": {
-     "Ref": "referencetoawscdkeksclusterprivateendpointtestClusterKubectlHandlerRole67774AF8Arn"
+     "S3Key": "abc70c90ded969d12235ca11768293cb20557cff54518518480c0d9fb344a098.zip"
     },
     "Description": "onEvent handler for EKS kubectl resource provider",
+    "Environment": {
+     "Variables": {
+      "AWS_STS_REGIONAL_ENDPOINTS": "regional"
+     }
+    },
     "Handler": "index.handler",
     "Layers": [
      {
@@ -23,7 +25,10 @@
      }
     ],
     "MemorySize": 1024,
-    "Runtime": "python3.7",
+    "Role": {
+     "Ref": "referencetoawscdkeksclusterprivateendpointtestClusterKubectlHandlerRole67774AF8Arn"
+    },
+    "Runtime": "python3.11",
     "Timeout": 900,
     "VpcConfig": {
      "SecurityGroupIds": [
@@ -49,7 +54,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "cff916937906abb9c99e0ecbb4accbc091c734ce975c7ff64b3f4bfae4372b9c.zip"
+     "S3Key": "3322b7049fb0ed2b7cbb644a2ada8d1116ff80c32dca89e6ada846b5de26f961.zip"
     },
     "Description": "/opt/awscli/aws"
    }
@@ -146,13 +151,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "45017ac1fb5b50dac36a255c328b0fe125f18a8e6d3689e188eab5e3a1bf8146.zip"
-    },
-    "Role": {
-     "Fn::GetAtt": [
-      "ProviderframeworkonEventServiceRole9FF04296",
-      "Arn"
-     ]
+     "S3Key": "46fb886516825167db3571f1ed91110fc6163ce20ee26fdb097c2c983f25fcd6.zip"
     },
     "Description": "AWS CDK resource provider framework - onEvent (aws-cdk-eks-cluster-private-endpoint-test/@aws-cdk--aws-eks.KubectlProvider/Provider)",
     "Environment": {
@@ -166,9 +165,15 @@
      }
     },
     "Handler": "framework.onEvent",
+    "Role": {
+     "Fn::GetAtt": [
+      "ProviderframeworkonEventServiceRole9FF04296",
+      "Arn"
+     ]
+    },
     "Runtime": {
      "Fn::FindInMap": [
-      "DefaultCrNodeVersionMap",
+      "LatestNodeRuntimeMap",
       {
        "Ref": "AWS::Region"
       },
@@ -199,105 +204,126 @@
   }
  },
  "Mappings": {
-  "DefaultCrNodeVersionMap": {
+  "LatestNodeRuntimeMap": {
    "af-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-south-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-4": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-5": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-7": {
+    "value": "nodejs20.x"
    },
    "ca-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "ca-west-1": {
+    "value": "nodejs20.x"
    },
    "cn-north-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "cn-northwest-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "eu-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-central-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "eu-isoe-west-1": {
+    "value": "nodejs18.x"
    },
    "eu-north-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-south-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "il-central-1": {
+    "value": "nodejs20.x"
    },
    "me-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "me-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "mx-central-1": {
+    "value": "nodejs20.x"
    },
    "sa-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-east-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-gov-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "us-gov-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "us-iso-east-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-iso-west-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-isob-east-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-west-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    }
   }
  },
@@ -312,10 +338,10 @@
   }
  },
  "Parameters": {
-  "referencetoawscdkeksclusterprivateendpointtestClusterKubectlHandlerRole67774AF8Arn": {
+  "referencetoawscdkeksclusterprivateendpointtestKubectlLayer9A0EA6BCRef": {
    "Type": "String"
   },
-  "referencetoawscdkeksclusterprivateendpointtestKubectlLayer9A0EA6BCRef": {
+  "referencetoawscdkeksclusterprivateendpointtestClusterKubectlHandlerRole67774AF8Arn": {
    "Type": "String"
   },
   "referencetoawscdkeksclusterprivateendpointtestVpcPrivateSubnet1Subnet94DAD769Ref": {

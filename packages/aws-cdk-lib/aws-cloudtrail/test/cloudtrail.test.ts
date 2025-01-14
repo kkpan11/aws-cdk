@@ -246,6 +246,136 @@ describe('cloudtrail', () => {
       });
     });
 
+    test('with orgId', () => {
+      // GIVEN
+      const stack = getTestStack();
+
+      // WHEN
+      new Trail(stack, 'Trail', { isOrganizationTrail: true, orgId: 'o-xxxxxxxxx', trailName: 'trailname123' });
+
+      Template.fromStack(stack).resourceCountIs('AWS::CloudTrail::Trail', 1);
+      Template.fromStack(stack).resourceCountIs('AWS::S3::Bucket', 1);
+      Template.fromStack(stack).hasResourceProperties('AWS::S3::BucketPolicy', {
+        Bucket: { Ref: 'TrailS30071F172' },
+        PolicyDocument: {
+          Statement: [
+            {
+              Action: 's3:*',
+              Condition: {
+                Bool: {
+                  'aws:SecureTransport': 'false',
+                },
+              },
+              Effect: 'Deny',
+              Principal: {
+                AWS: '*',
+              },
+              Resource: [
+                {
+                  'Fn::GetAtt': [
+                    'TrailS30071F172',
+                    'Arn',
+                  ],
+                },
+                {
+                  'Fn::Join': [
+                    '',
+                    [
+                      {
+                        'Fn::GetAtt': [
+                          'TrailS30071F172',
+                          'Arn',
+                        ],
+                      },
+                      '/*',
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              Action: 's3:GetBucketAcl',
+              Effect: 'Allow',
+              Principal: {
+                Service: 'cloudtrail.amazonaws.com',
+              },
+              Resource: {
+                'Fn::GetAtt': [
+                  'TrailS30071F172',
+                  'Arn',
+                ],
+              },
+            },
+            {
+              Action: 's3:PutObject',
+              Condition: {
+                StringEquals: {
+                  's3:x-amz-acl': 'bucket-owner-full-control',
+                },
+              },
+              Effect: 'Allow',
+              Principal: {
+                Service: 'cloudtrail.amazonaws.com',
+              },
+              Resource: {
+                'Fn::Join': [
+                  '',
+                  [
+                    {
+                      'Fn::GetAtt': [
+                        'TrailS30071F172',
+                        'Arn',
+                      ],
+                    },
+                    '/AWSLogs/123456789012/*',
+                  ],
+                ],
+              },
+            },
+            {
+              Action: 's3:PutObject',
+              Condition: {
+                StringEquals: {
+                  's3:x-amz-acl': 'bucket-owner-full-control',
+                  'aws:SourceArn': {
+                    'Fn::Join': [
+                      '',
+                      [
+                        'arn:',
+                        {
+                          Ref: 'AWS::Partition',
+                        },
+                        ':cloudtrail:us-east-1:123456789012:trail/trailname123',
+                      ],
+                    ],
+                  },
+                },
+              },
+              Effect: 'Allow',
+              Principal: {
+                Service: 'cloudtrail.amazonaws.com',
+              },
+              Resource: {
+                'Fn::Join': [
+                  '',
+                  [
+                    {
+                      'Fn::GetAtt': [
+                        'TrailS30071F172',
+                        'Arn',
+                      ],
+                    },
+                    '/AWSLogs/o-xxxxxxxxx/*',
+                  ],
+                ],
+              },
+            },
+          ],
+          Version: '2012-10-17',
+        },
+      });
+    });
+
     test('encryption keys', () => {
       const stack = new Stack();
       const key = new kms.Key(stack, 'key');
@@ -571,7 +701,7 @@ describe('cloudtrail', () => {
       test('for Lambda function data event', () => {
         const stack = getTestStack();
         const lambdaFunction = new lambda.Function(stack, 'LambdaFunction', {
-          runtime: lambda.Runtime.NODEJS_14_X,
+          runtime: lambda.Runtime.NODEJS_LATEST,
           handler: 'hello.handler',
           code: lambda.Code.fromInline('exports.handler = {}'),
         });
@@ -633,7 +763,7 @@ describe('cloudtrail', () => {
 
         expect(() => {
           Template.fromStack(stack);
-        }).toThrowError(/At least one event selector must be added when management event recording is set to None/);
+        }).toThrow(/At least one event selector must be added when management event recording is set to None/);
       });
 
       test('defaults to not include management events when managementEvents set to None', () => {

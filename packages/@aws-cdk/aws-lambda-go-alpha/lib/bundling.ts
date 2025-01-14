@@ -107,7 +107,7 @@ export class Bundling implements cdk.BundlingOptions {
   public readonly command: string[];
   public readonly environment?: { [key: string]: string };
   public readonly local?: cdk.ILocalBundling;
-  public readonly entrypoint?: string[]
+  public readonly entrypoint?: string[];
   public readonly volumes?: cdk.DockerVolume[];
   public readonly volumesFrom?: string[];
   public readonly workingDirectory?: string;
@@ -143,7 +143,7 @@ export class Bundling implements cdk.BundlingOptions {
     // Docker bundling
     const shouldBuildImage = props.forcedDockerBundling || !Bundling.runsLocally;
     this.image = shouldBuildImage
-      ? props.dockerImage ?? cdk.DockerImage.fromBuild(path.join(__dirname, '../lib'), {
+      ? props.dockerImage ?? cdk.DockerImage.fromBuild(path.join(__dirname, '..', 'lib'), {
         buildArgs: {
           ...props.buildArgs ?? {},
           IMAGE: Runtime.GO_1_X.bundlingImage.image, // always use the GO_1_X build image
@@ -209,7 +209,7 @@ export class Bundling implements cdk.BundlingOptions {
     const goBuildCommand: string = [
       'go', 'build',
       hasVendor ? '-mod=vendor': '',
-      '-o', `${pathJoin(outputDir, 'bootstrap')}`,
+      '-o', `"${pathJoin(outputDir, 'bootstrap')}"`,
       `${this.props.goBuildFlags ? this.props.goBuildFlags.join(' ') : ''}`,
       `${this.relativeEntryPath.replace(/\\/g, '/')}`,
     ].filter(c => !!c).join(' ');

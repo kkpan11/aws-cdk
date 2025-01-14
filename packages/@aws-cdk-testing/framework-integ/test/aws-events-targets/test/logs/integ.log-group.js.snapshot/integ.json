@@ -1,10 +1,11 @@
 {
-  "version": "31.0.0",
+  "version": "36.0.5",
   "testCases": {
     "LogGroup/DefaultTest": {
       "stacks": [
         "log-group-events"
       ],
+      "diffAssets": true,
       "assertionStack": "LogGroup/DefaultTest/DeployAssert",
       "assertionStackName": "LogGroupDefaultTestDeployAssert353EE07A"
     }

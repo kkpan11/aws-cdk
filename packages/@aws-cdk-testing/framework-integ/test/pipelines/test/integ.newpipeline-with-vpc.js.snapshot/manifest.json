@@ -1,5 +1,5 @@
 {
-  "version": "31.0.0",
+  "version": "36.0.24",
   "artifacts": {
     "assembly-PipelineStack-Beta": {
       "type": "cdk:cloud-assembly",
@@ -21,10 +21,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "PipelineStack.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/0a38575278954c57dc2282c4e3007815cca46595cdd0204557102de34dbcc818.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/50afb09dbbed63ffee083f1d3cc6c19e231e3e57e2a16a2d8ce0ab51c89c3b16.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [

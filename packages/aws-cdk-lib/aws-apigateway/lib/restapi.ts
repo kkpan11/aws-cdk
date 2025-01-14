@@ -21,6 +21,7 @@ import { ArnFormat, CfnOutput, IResource as IResourceBase, Resource, Stack, Toke
 import { APIGATEWAY_DISABLE_CLOUDWATCH_ROLE } from '../../cx-api';
 
 const RESTAPI_SYMBOL = Symbol.for('@aws-cdk/aws-apigateway.RestApiBase');
+const APIGATEWAY_RESTAPI_SYMBOL = Symbol.for('@aws-cdk/aws-apigateway.RestApi');
 
 export interface IRestApi extends IResourceBase {
   /**
@@ -162,6 +163,15 @@ export interface RestApiBaseProps {
    * @default - false if `@aws-cdk/aws-apigateway:disableCloudWatchRole` is enabled, true otherwise
    */
   readonly cloudWatchRole?: boolean;
+
+  /**
+   * The removal policy applied to the AWS CloudWatch role when this resource
+   * is removed from the application.
+   * Requires `cloudWatchRole` to be enabled.
+   *
+   * @default - RemovalPolicy.RETAIN
+   */
+  readonly cloudWatchRoleRemovalPolicy?: RemovalPolicy;
 
   /**
    * Export name for the CfnOutput containing the API endpoint
@@ -315,6 +325,13 @@ export abstract class RestApiBase extends Resource implements IRestApi {
    */
   public get domainName() {
     return this._domainName;
+  }
+
+  /**
+   * The deployed root URL of this REST API.
+   */
+  public get url() {
+    return this.urlForPath();
   }
 
   /**
@@ -552,17 +569,32 @@ export abstract class RestApiBase extends Resource implements IRestApi {
   /**
    * @internal
    */
-  protected _configureCloudWatchRole(apiResource: CfnRestApi) {
+  protected _configureCloudWatchRole(
+    apiResource: CfnRestApi,
+    cloudWatchRole?: boolean,
+    cloudWatchRoleRemovalPolicy?: RemovalPolicy,
+  ) {
+    const cloudWatchRoleDefault = FeatureFlags.of(this).isEnabled(APIGATEWAY_DISABLE_CLOUDWATCH_ROLE) ? false : true;
+    cloudWatchRole = cloudWatchRole ?? cloudWatchRoleDefault;
+    if (!cloudWatchRole) {
+      if (cloudWatchRoleRemovalPolicy) {
+        throw new Error('\'cloudWatchRole\' must be enabled for \'cloudWatchRoleRemovalPolicy\' to be applied.');
+      }
+      return;
+    }
+
+    cloudWatchRoleRemovalPolicy = cloudWatchRoleRemovalPolicy ?? RemovalPolicy.RETAIN;
+
     const role = new iam.Role(this, 'CloudWatchRole', {
       assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
       managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonAPIGatewayPushToCloudWatchLogs')],
     });
-    role.applyRemovalPolicy(RemovalPolicy.RETAIN);
+    role.applyRemovalPolicy(cloudWatchRoleRemovalPolicy);
 
     this.cloudWatchAccount = new CfnAccount(this, 'Account', {
       cloudWatchRoleArn: role.roleArn,
     });
-    this.cloudWatchAccount.applyRemovalPolicy(RemovalPolicy.RETAIN);
+    this.cloudWatchAccount.applyRemovalPolicy(cloudWatchRoleRemovalPolicy);
 
     this.cloudWatchAccount.node.addDependency(apiResource);
   }
@@ -589,7 +621,7 @@ export abstract class RestApiBase extends Resource implements IRestApi {
     if (deploy) {
 
       this._latestDeployment = new Deployment(this, 'Deployment', {
-        description: props.description? props.description :'Automatically created by the RestApi construct',
+        description: props.deployOptions?.description ?? props.description ?? 'Automatically created by the RestApi construct',
         api: this,
         retainDeployments: props.retainDeployments,
       });
@@ -688,11 +720,7 @@ export class SpecRestApi extends RestApiBase {
     this.restApiRootResourceId = resource.attrRootResourceId;
     this.root = new RootResource(this, {}, this.restApiRootResourceId);
 
-    const cloudWatchRoleDefault = FeatureFlags.of(this).isEnabled(APIGATEWAY_DISABLE_CLOUDWATCH_ROLE) ? false : true;
-    const cloudWatchRole = props.cloudWatchRole ?? cloudWatchRoleDefault;
-    if (cloudWatchRole) {
-      this._configureCloudWatchRole(resource);
-    }
+    this._configureCloudWatchRole(resource, props.cloudWatchRole, props.cloudWatchRoleRemovalPolicy);
 
     this._configureDeployment(props);
     if (props.domainName) {
@@ -732,6 +760,14 @@ export interface RestApiAttributes {
  * public endpoint.
  */
 export class RestApi extends RestApiBase {
+
+  /**
+   * Return whether the given object is a `RestApi`
+   */
+  public static isRestApi(x: any) : x is RestApi {
+    return x !== null && typeof(x) === 'object' && APIGATEWAY_RESTAPI_SYMBOL in x;
+  }
+
   /**
    * Import an existing RestApi.
    */
@@ -804,11 +840,7 @@ export class RestApi extends RestApiBase {
     this.node.defaultChild = resource;
     this.restApiId = resource.ref;
 
-    const cloudWatchRoleDefault = FeatureFlags.of(this).isEnabled(APIGATEWAY_DISABLE_CLOUDWATCH_ROLE) ? false : true;
-    const cloudWatchRole = props.cloudWatchRole ?? cloudWatchRoleDefault;
-    if (cloudWatchRole) {
-      this._configureCloudWatchRole(resource);
-    }
+    this._configureCloudWatchRole(resource, props.cloudWatchRole, props.cloudWatchRoleRemovalPolicy);
 
     this._configureDeployment(props);
     if (props.domainName) {
@@ -819,13 +851,8 @@ export class RestApi extends RestApiBase {
     this.restApiRootResourceId = resource.attrRootResourceId;
 
     this.node.addValidation({ validate: () => this.validateRestApi() });
-  }
 
-  /**
-   * The deployed root URL of this REST API.
-   */
-  public get url() {
-    return this.urlForPath();
+    Object.defineProperty(this, APIGATEWAY_RESTAPI_SYMBOL, { value: true });
   }
 
   /**
@@ -940,7 +967,7 @@ export enum EndpointType {
   /**
    * For a private API and its custom domain name.
    */
-  PRIVATE = 'PRIVATE'
+  PRIVATE = 'PRIVATE',
 }
 
 class RootResource extends ResourceBase {

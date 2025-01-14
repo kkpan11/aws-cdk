@@ -17,7 +17,7 @@
 
 Amazon Neptune is a fast, reliable, fully managed graph database service that makes it easy to build and run applications that work with highly connected datasets. The core of Neptune is a purpose-built, high-performance graph database engine. This engine is optimized for storing billions of relationships and querying the graph with milliseconds latency. Neptune supports the popular graph query languages Apache TinkerPop Gremlin and W3C’s SPARQL, enabling you to build queries that efficiently navigate highly connected datasets.
 
-The `@aws-cdk/aws-neptune` package contains primitives for setting up Neptune database clusters and instances.
+The `@aws-cdk/aws-neptune-alpha` package contains primitives for setting up Neptune database clusters and instances.
 
 ```ts nofixture
 import * as neptune from '@aws-cdk/aws-neptune-alpha';
@@ -25,7 +25,7 @@ import * as neptune from '@aws-cdk/aws-neptune-alpha';
 
 ## Starting a Neptune Database
 
-To set up a Neptune database, define a `DatabaseCluster`. You must always launch a database in a VPC. 
+To set up a Neptune database, define a `DatabaseCluster`. You must always launch a database in a VPC.
 
 ```ts
 const cluster = new neptune.DatabaseCluster(this, 'Database', {
@@ -100,7 +100,7 @@ const cluster = new neptune.DatabaseCluster(this, 'Database', {
 });
 ```
 
-Note: if you want to use Neptune engine `1.2.0.0` or later, you need to specify the corresponding `engineVersion` prop to `neptune.DatabaseCluster` and `family` prop of `ParameterGroupFamily.NEPTUNE_1_2` to `neptune.ClusterParameterGroup` and `neptune.ParameterGroup`.
+Note: To use the Neptune engine versions `1.2.0.0` or later, including the newly added `1.3` series, it's necessary to specify the appropriate `engineVersion` prop in `neptune.DatabaseCluster`. Additionally, for both 1.2 and 1.3 series, the corresponding `family` prop must be set to `ParameterGroupFamily.NEPTUNE_1_2` or `ParameterGroupFamily.NEPTUNE_1_3` respectively in `neptune.ClusterParameterGroup` and `neptune.ParameterGroup`.
 
 ## Adding replicas
 
@@ -126,15 +126,38 @@ const replica1 = new neptune.DatabaseInstance(this, 'Instance', {
 
 ## Automatic minor version upgrades
 
-By setting `autoMinorVersionUpgrade` to true, Neptune will automatically update 
-the engine of the entire cluster to the latest minor version after a stabilization 
-window of 2 to 3 weeks. 
+By setting `autoMinorVersionUpgrade` to true, Neptune will automatically update
+the engine of the entire cluster to the latest minor version after a stabilization
+window of 2 to 3 weeks.
 
 ```ts
 new neptune.DatabaseCluster(this, 'Cluster', {
   vpc,
   instanceType: neptune.InstanceType.R5_LARGE,
   autoMinorVersionUpgrade: true,
+});
+```
+
+You can also specify `autoMinorVersionUpgrade` to a database instance.
+Even within the same cluster, you can modify the `autoMinorVersionUpgrade` setting on a per-instance basis.
+
+```ts fixture=with-cluster
+new neptune.DatabaseInstance(this, 'Instance', {
+  cluster,
+  instanceType: neptune.InstanceType.R5_LARGE,
+  autoMinorVersionUpgrade: true,
+});
+```
+
+## Port
+
+By default, Neptune uses port `8182`. You can override the default port by specifying the `port` property:
+
+```ts
+const cluster = new neptune.DatabaseCluster(this, 'Database', {
+  vpc,
+  instanceType: neptune.InstanceType.R5_LARGE,
+  port: 12345,
 });
 ```
 
@@ -183,3 +206,33 @@ instance.metric('SparqlRequestsPerSec') // instance-level SparqlErrors metric
 ```
 
 For more details on the available metrics, refer to https://docs.aws.amazon.com/neptune/latest/userguide/cw-metrics.html
+
+## Copy tags to snapshot
+
+By setting `copyTagsToSnapshot` to true, all tags of the cluster are copied to the snapshots when they are created.
+
+```ts
+const cluster = new neptune.DatabaseCluster(this, 'Database', {
+  vpc,
+  instanceType: neptune.InstanceType.R5_LARGE,
+  copyTagsToSnapshot: true  // whether to save the cluster tags when creating the snapshot.
+});
+```
+
+## Neptune Serverless
+
+You can configure a Neptune Serverless cluster using the dedicated instance type along with the
+`serverlessScalingConfiguration` property.
+
+> Visit [Using Amazon Neptune Serverless](https://docs.aws.amazon.com/neptune/latest/userguide/neptune-serverless-using.html) for more details.
+
+```ts
+const cluster = new neptune.DatabaseCluster(this, 'ServerlessDatabase', {
+  vpc,
+  instanceType: neptune.InstanceType.SERVERLESS,
+  serverlessScalingConfiguration: {
+    minCapacity: 1,
+    maxCapacity: 5,
+  },
+});
+```

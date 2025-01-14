@@ -11,6 +11,11 @@ export enum IpAddressType {
    * Allocate both IPv4 and IPv6 addresses
    */
   DUAL_STACK = 'dualstack',
+
+  /**
+   * IPv6 only public addresses, with private IPv4 and IPv6 addresses
+   */
+  DUAL_STACK_WITHOUT_PUBLIC_IPV4 = 'dualstack-without-public-ipv4',
 }
 
 /**
@@ -100,6 +105,8 @@ export enum SslPolicy {
   /**
    * The recommended security policy for TLS listeners.
    * This is the default policy for listeners created using the AWS Management Console
+   *
+   * This policy includes TLS 1.3, and is backwards compatible with TLS 1.2
    */
   RECOMMENDED_TLS = 'ELBSecurityPolicy-TLS13-1-2-2021-06',
 
@@ -138,6 +145,46 @@ export enum SslPolicy {
    * TLS1.3 only
    */
   TLS13_13 = 'ELBSecurityPolicy-TLS13-1-3-2021-06',
+
+  /**
+   * TLS 1.3 only with AES 128 and 256 GCM SHA ciphers
+   */
+  FIPS_TLS13_13 = 'ELBSecurityPolicy-TLS13-1-3-FIPS-2023-04',
+
+  /**
+   * TLS 1.2 and 1.3 with AES and ECDHE GCM/SHA ciphers
+   */
+  FIPS_TLS13_12_RES = 'ELBSecurityPolicy-TLS13-1-2-Res-FIPS-2023-04',
+
+  /**
+   * TLS 1.2 and 1.3 with ECDHE SHA/GCM ciphers, excluding SHA1 ciphers
+   */
+  FIPS_TLS13_12 = 'ELBSecurityPolicy-TLS13-1-2-FIPS-2023-04',
+
+  /**
+   * TLS 1.2 and 1.3 with all ECDHE ciphers
+   */
+  FIPS_TLS13_12_EXT0 = 'ELBSecurityPolicy-TLS13-1-2-Ext0-FIPS-2023-04',
+
+  /**
+   * TLS 1.2 and 1.3 with all AES and ECDHE ciphers excluding SHA1 ciphers
+   */
+  FIPS_TLS13_12_EXT1 = 'ELBSecurityPolicy-TLS13-1-2-Ext1-FIPS-2023-04',
+
+  /**
+   * TLS 1.2 and 1.3 with all ciphers
+   */
+  FIPS_TLS13_12_EXT2 = 'ELBSecurityPolicy-TLS13-1-2-Ext2-FIPS-2023-04',
+
+  /**
+   * TLS1.1 through 1.3 with all ciphers
+   */
+  FIPS_TLS13_11 = 'ELBSecurityPolicy-TLS13-1-1-FIPS-2023-04',
+
+  /**
+   *  TLS1.0 through 1.3 with all ciphers
+   */
+  FIPS_TLS13_10 = 'ELBSecurityPolicy-TLS13-1-0-FIPS-2023-04',
 
   /**
    * Strong foward secrecy ciphers and TLV1.2 only (2020 edition).
@@ -258,6 +305,11 @@ export enum TargetGroupLoadBalancingAlgorithmType {
    * least_outstanding_requests
    */
   LEAST_OUTSTANDING_REQUESTS = 'least_outstanding_requests',
+
+  /**
+   * weighted_random
+   */
+  WEIGHTED_RANDOM = 'weighted_random',
 }
 
 /**

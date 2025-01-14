@@ -1,5 +1,5 @@
 {
-  "version": "32.0.0",
+  "version": "36.0.24",
   "artifacts": {
     "lambda-event-source-s3.assets": {
       "type": "cdk:asset-manifest",
@@ -14,10 +14,11 @@
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
         "templateFile": "lambda-event-source-s3.template.json",
+        "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/5bd06159cc98f905590b75493d6797c6776a9f7572a87489f2a0fcca9693a5ae.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/abe4fd35e356ac936ca4c8c76470312dbd0702145a1a11f58e3890062c128b28.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -75,10 +76,16 @@
             "data": "BAllowBucketNotificationsTolambdaeventsources3F741608059EF9F709"
           }
         ],
-        "/lambda-event-source-s3/DefaultCrNodeVersionMap": [
+        "/lambda-event-source-s3/LatestNodeRuntimeMap": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "DefaultCrNodeVersionMap"
+            "data": "LatestNodeRuntimeMap"
+          }
+        ],
+        "/lambda-event-source-s3/Custom::S3AutoDeleteObjectsCustomResourceProvider": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-customResourceProvider",
+            "data": true
           }
         ],
         "/lambda-event-source-s3/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role": [
@@ -125,6 +132,54 @@
         ]
       },
       "displayName": "lambda-event-source-s3"
+    },
+    "LambdaEventSourceS3IntegDefaultTestDeployAssertACE2A452.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "LambdaEventSourceS3IntegDefaultTestDeployAssertACE2A452.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "LambdaEventSourceS3IntegDefaultTestDeployAssertACE2A452": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://unknown-account/unknown-region",
+      "properties": {
+        "templateFile": "LambdaEventSourceS3IntegDefaultTestDeployAssertACE2A452.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/21fbb51d7b23f6a6c262b46a9caee79d744a3ac019fd45422d988b96d44b2a22.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "LambdaEventSourceS3IntegDefaultTestDeployAssertACE2A452.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-lookup-role-${AWS::AccountId}-${AWS::Region}",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "LambdaEventSourceS3IntegDefaultTestDeployAssertACE2A452.assets"
+      ],
+      "metadata": {
+        "/LambdaEventSourceS3Integ/DefaultTest/DeployAssert/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/LambdaEventSourceS3Integ/DefaultTest/DeployAssert/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "LambdaEventSourceS3Integ/DefaultTest/DeployAssert"
     },
     "Tree": {
       "type": "cdk:tree",

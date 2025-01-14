@@ -17,9 +17,37 @@ dependencies.
 
 According to the kind of project you are developing:
 
-- For projects that are CDK libraries, declare them both under the `devDependencies`
-  **and** `peerDependencies` sections.
-- For CDK apps, declare them under the `dependencies` section only.
+For projects that are CDK libraries in NPM, declare them both under the `devDependencies` **and** `peerDependencies` sections.
+To make sure your library is compatible with the widest range of CDK versions: pick the minimum `aws-cdk-lib` version
+that your library requires; declare a range dependency with a caret on that version in peerDependencies, and declare a
+point version dependency on that version in devDependencies.
+
+For example, let's say the minimum version your library needs is `2.38.0`. Your `package.json` should look like this:
+
+```javascript
+{
+  "peerDependencies": {
+    "aws-cdk-lib": "^2.38.0",
+    "constructs": "^10.0.0"
+  },
+  "devDependencies": {
+    /* Install the oldest version for testing so we don't accidentally use features from a newer version than we declare */
+    "aws-cdk-lib": "2.38.0"
+  }
+}
+```
+
+For CDK apps, declare them under the `dependencies` section. Use a caret so you always get the latest version:
+
+```json
+{
+  "dependencies": {
+    "aws-cdk-lib": "^2.38.0",
+    "constructs": "^10.0.0"
+  }
+}
+```
+
 
 ### Use in your code
 
@@ -27,20 +55,27 @@ According to the kind of project you are developing:
 
 You can use a classic import to get access to each service namespaces:
 
-```ts
-import { aws_s3 as s3 } from 'aws-cdk-lib';
+```ts nofixture
+import { Stack, App, aws_s3 as s3 } from 'aws-cdk-lib';
 
-new s3.Bucket(this, 'TestBucket');
+const app = new App();
+const stack = new Stack(app, 'TestStack');
+
+new s3.Bucket(stack, 'TestBucket');
 ```
 
 #### Barrel import
 
 Alternatively, you can use "barrel" imports:
 
-```ts
+```ts nofixture
+import { App, Stack } from 'aws-cdk-lib';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
 
-new Bucket(this, 'TestBucket');
+const app = new App();
+const stack = new Stack(app, 'TestStack');
+
+new Bucket(stack, 'TestBucket');
 ```
 
 <!--BEGIN CORE DOCUMENTATION-->
@@ -119,6 +154,86 @@ new MyStack(app, 'MyStack', {
 
 For more information on bootstrapping accounts and customizing synthesis,
 see [Bootstrapping in the CDK Developer Guide](https://docs.aws.amazon.com/cdk/latest/guide/bootstrapping.html).
+
+### STS Role Options
+
+You can configure STS options that instruct the CDK CLI on which configuration should it use when assuming 
+the various roles that are involved in a deployment operation.
+
+> See https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping-env.html#bootstrapping-env-roles
+
+These options are available via the `DefaultStackSynthesizer` properties:
+
+```ts
+class MyStack extends cdk.Stack {
+  constructor(parent, id, props) {
+    super(parent, id, {
+      ...props,
+      synthesizer: new DefaultStackSynthesizer({
+        deployRoleExternalId: '',
+        deployRoleAdditionalOptions: {
+          // https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html#API_AssumeRole_RequestParameters
+        },
+        fileAssetPublishingExternalId: '',
+        fileAssetPublishingRoleAdditionalOptions: {
+          // https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html#API_AssumeRole_RequestParameters
+        },
+        imageAssetPublishingExternalId: '',
+        imageAssetPublishingRoleAdditionalOptions: {
+          // https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html#API_AssumeRole_RequestParameters
+        },
+        lookupRoleExternalId: '',
+        lookupRoleAdditionalOptions: {
+          // https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html#API_AssumeRole_RequestParameters
+        },
+      })
+    });
+  }
+}
+```
+
+> Note that the `*additionalOptions` property does not allow passing `ExternalId` or `RoleArn`, as these options
+> have dedicated properties that configure them.
+
+#### Session Tags
+
+STS session tags are used to implement [Attribute-Based Access Control](https://docs.aws.amazon.com/IAM/latest/UserGuide/introduction_attribute-based-access-control.html) (ABAC).
+
+> See [IAM tutorial: Define permissions to access AWS resources based on tags](https://docs.aws.amazon.com/IAM/latest/UserGuide/tutorial_attribute-based-access-control.html)
+
+You can pass session tags for each [role created during bootstrap](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping-env.html#bootstrapping-env-roles) via the `*additionalOptions` property:
+
+```ts
+class MyStack extends cdk.Stack {
+  constructor(parent, id, props) {
+    super(parent, id, {
+      ...props,
+      synthesizer: new DefaultStackSynthesizer({
+        deployRoleAdditionalOptions: {
+          Tags: [{ Key: 'Department', Value: 'Engineering' }]
+        },
+        fileAssetPublishingRoleAdditionalOptions: {
+          Tags: [{ Key: 'Department', Value: 'Engineering' }]
+        },
+        imageAssetPublishingRoleAdditionalOptions: {
+          Tags: [{ Key: 'Department', Value: 'Engineering' }]
+        },
+        lookupRoleAdditionalOptions: {
+          Tags: [{ Key: 'Department', Value: 'Engineering' }]
+        },
+      })
+    });
+  }
+}
+```
+
+This will cause the CDK CLI to include session tags when assuming each of these roles during deployment. 
+Note that the trust policy of the role must contain permissions for the `sts:TagSession` action.
+
+> See https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html#id_session-tags_permissions-required
+
+- If you are using a custom bootstrap template, make sure the template includes these permissions.
+- If you are using the default bootstrap template from a CDK version lower than XXXX, you will need to rebootstrap your enviroment (once).
 
 ## Nested Stacks
 
@@ -233,7 +348,7 @@ In order to mimic strong references, a Custom Resource is also created in the co
 stack which marks the SSM parameters as being "imported". When a parameter has been successfully
 imported, the producing stack cannot update the value.
 
-See the [adr](https://github.com/aws/aws-cdk/blob/main/packages/@aws-cdk/core/adr/cross-region-stack-references)
+See the [adr](https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/core/adr/cross-region-stack-references.md)
 for more details on this feature.
 
 ### Removing automatic cross-stack references
@@ -361,7 +476,7 @@ CloudFormation to re-read the secret.
 ## ARN manipulation
 
 Sometimes you will need to put together or pick apart Amazon Resource Names
-(ARNs). The functions `stack.formatArn()` and `stack.parseArn()` exist for
+(ARNs). The functions `stack.formatArn()` and `stack.splitArn()` exist for
 this purpose.
 
 `formatArn()` can be used to build an ARN from components. It will automatically
@@ -374,12 +489,12 @@ declare const stack: Stack;
 stack.formatArn({
   service: 'lambda',
   resource: 'function',
-  sep: ':',
+  arnFormat: ArnFormat.COLON_RESOURCE_NAME,
   resourceName: 'MyFunction'
 });
 ```
 
-`parseArn()` can be used to get a single component from an ARN. `parseArn()`
+`splitArn()` can be used to get a single component from an ARN. `splitArn()`
 will correctly deal with both literal ARNs and deploy-time values (tokens),
 but in case of a deploy-time value be aware that the result will be another
 deploy-time value which cannot be inspected in the CDK application.
@@ -388,14 +503,13 @@ deploy-time value which cannot be inspected in the CDK application.
 declare const stack: Stack;
 
 // Extracts the function name out of an AWS Lambda Function ARN
-const arnComponents = stack.parseArn(arn, ':');
+const arnComponents = stack.splitArn(arn, ArnFormat.COLON_RESOURCE_NAME);
 const functionName = arnComponents.resourceName;
 ```
 
-Note that depending on the service, the resource separator can be either
-`:` or `/`, and the resource name can be either the 6th or 7th
-component in the ARN. When using these functions, you will need to know
-the format of the ARN you are dealing with.
+Note that the format of the resource separator depends on the service and
+may be any of the values supported by `ArnFormat`. When dealing with these
+functions, it is important to know the format of the ARN you are dealing with.
 
 For an exhaustive list of ARN formats used in AWS, see [AWS ARNs and
 Namespaces](https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html)
@@ -482,13 +596,16 @@ new CustomResource(this, 'MyMagicalResource', {
   // the resource properties
   properties: {
     Property1: 'foo',
-    Property2: 'bar'
+    Property2: 'bar',
   },
 
   // the ARN of the provider (SNS/Lambda) which handles
   // CREATE, UPDATE or DELETE events for this resource type
   // see next section for details
-  serviceToken: 'ARN'
+  serviceToken: 'ARN',
+
+  // the maximum time, in seconds, that can elapse before a custom resource operation times out.
+  serviceTimeout: Duration.seconds(60),
 });
 ```
 
@@ -498,12 +615,12 @@ Custom resources are backed by a **custom resource provider** which can be
 implemented in one of the following ways. The following table compares the
 various provider types (ordered from low-level to high-level):
 
-| Provider                                                             | Compute Type | Error Handling | Submit to CloudFormation | Max Timeout     | Language | Footprint |
-|----------------------------------------------------------------------|:------------:|:--------------:|:------------------------:|:---------------:|:--------:|:---------:|
-| [sns.Topic](#amazon-sns-topic)                                       | Self-managed | Manual         | Manual                   | Unlimited       | Any      | Depends   |
-| [lambda.Function](#aws-lambda-function)                              | AWS Lambda   | Manual         | Manual                   | 15min           | Any      | Small     |
-| [core.CustomResourceProvider](#the-corecustomresourceprovider-class) | AWS Lambda   | Auto           | Auto                     | 15min           | Node.js  | Small     |
-| [custom-resources.Provider](#the-custom-resource-provider-framework) | AWS Lambda   | Auto           | Auto                     | Unlimited Async | Any      | Large     |
+| Provider                                                             | Compute Type | Error Handling | Submit to CloudFormation |   Max Timeout   | Language | Footprint |
+| -------------------------------------------------------------------- | :----------: | :------------: | :----------------------: | :-------------: | :------: | :-------: |
+| [sns.Topic](#amazon-sns-topic)                                       | Self-managed |     Manual     |          Manual          |    Unlimited    |   Any    |  Depends  |
+| [lambda.Function](#aws-lambda-function)                              |  AWS Lambda  |     Manual     |          Manual          |      15min      |   Any    |   Small   |
+| [core.CustomResourceProvider](#the-corecustomresourceprovider-class) |  AWS Lambda  |      Auto      |           Auto           |      15min      | Node.js  |   Small   |
+| [custom-resources.Provider](#the-custom-resource-provider-framework) |  AWS Lambda  |      Auto      |           Auto           | Unlimited Async |   Any    |   Large   |
 
 Legend:
 
@@ -576,7 +693,7 @@ response to the CloudFormation service and handle various error cases.
 Set `serviceToken` to `lambda.functionArn` to use this provider:
 
 ```ts
-const fn = new lambda.Function(this, 'MyProvider', functionProps);
+const fn = new lambda.SingletonFunction(this, 'MyProvider', functionProps);
 
 new CustomResource(this, 'MyResource', {
   serviceToken: fn.functionArn,
@@ -605,7 +722,7 @@ stack-unique identifier and returns the service token:
 ```ts
 const serviceToken = CustomResourceProvider.getOrCreate(this, 'Custom::MyCustomResourceType', {
   codeDirectory: `${__dirname}/my-handler`,
-  runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+  runtime: CustomResourceProviderRuntime.NODEJS_18_X,
   description: "Lambda function created by the custom resource provider",
 });
 
@@ -678,8 +795,8 @@ exports.handler = async (e) => {
 `sum.ts`:
 
 ```ts nofixture
+import { Construct } from 'constructs';
 import {
-  Construct,
   CustomResource,
   CustomResourceProvider,
   CustomResourceProviderRuntime,
@@ -700,7 +817,7 @@ export class Sum extends Construct {
     const resourceType = 'Custom::Sum';
     const serviceToken = CustomResourceProvider.getOrCreate(this, resourceType, {
       codeDirectory: `${__dirname}/sum-handler`,
-      runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+      runtime: CustomResourceProviderRuntime.NODEJS_18_X,
     });
 
     const resource = new CustomResource(this, 'Resource', {
@@ -730,7 +847,7 @@ built-in singleton method:
 ```ts
 const provider = CustomResourceProvider.getOrCreateProvider(this, 'Custom::MyCustomResourceType', {
   codeDirectory: `${__dirname}/my-handler`,
-  runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+  runtime: CustomResourceProviderRuntime.NODEJS_18_X,
 });
 
 const roleArn = provider.roleArn;
@@ -743,7 +860,7 @@ To add IAM policy statements to this role, use `addToRolePolicy()`:
 ```ts
 const provider = CustomResourceProvider.getOrCreateProvider(this, 'Custom::MyCustomResourceType', {
   codeDirectory: `${__dirname}/my-handler`,
-  runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+  runtime: CustomResourceProviderRuntime.NODEJS_18_X,
 });
 provider.addToRolePolicy({
   Effect: 'Allow',
@@ -781,7 +898,7 @@ new CustomResource(this, 'MyResource', {
 });
 ```
 
-See the [documentation](https://docs.aws.amazon.com/cdk/api/latest/docs/custom-resources-readme.html) for more details.
+See the [documentation](https://docs.aws.amazon.com/cdk/api/latest/docs/aws-cdk-lib.custom_resources-readme.html) for more details.
 
 ## AWS CloudFormation features
 
@@ -799,6 +916,17 @@ new CfnOutput(this, 'OutputName', {
   value: myBucket.bucketName,
   description: 'The name of an S3 bucket', // Optional
   exportName: 'TheAwesomeBucket', // Registers a CloudFormation export named "TheAwesomeBucket"
+});
+```
+
+You can also use the `exportValue` method to export values as stack outputs:
+
+```ts
+declare const stack: Stack;
+
+stack.exportValue(myBucket.bucketName, {
+  name: 'TheAwesomeBucket',
+  description: 'The name of an S3 bucket',
 });
 ```
 
@@ -905,7 +1033,7 @@ a property of the creationPolicy on the resource options. Setting it to true wil
 resources that depend on the fleet resource.
 
 ```ts
-const fleet = new CfnFleet(stack, 'Fleet', {
+const fleet = new appstream.CfnFleet(this, 'Fleet', {
   instanceType: 'stream.standard.small',
   name: 'Fleet',
   computeCapacity: {
@@ -928,10 +1056,14 @@ The format of the timeout is `PT#H#M#S`. In the example below AWS Cloudformation
 `CREATE_COMPLETE`.
 
 ```ts
-resource.cfnOptions.resourceSignal = {
-  count: 3,
-  timeout: 'PR15M',
-}
+declare const resource: CfnResource;
+
+resource.cfnOptions.creationPolicy = {
+  resourceSignal: {
+    count: 3,
+    timeout: 'PR15M',
+  }
+};
 ```
 
 [creation-policy]: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-attribute-creationpolicy.html
@@ -1058,6 +1190,31 @@ declare const regionTable: CfnMapping;
 regionTable.findInMap(Aws.REGION, 'regionName');
 ```
 
+An optional default value can also be passed to `findInMap`. If either key is not found in the map and the mapping is lazy, `findInMap` will return the default value and not render the mapping.
+If the mapping is not lazy or either key is an unresolved token, the call to `findInMap` will return a token that resolves to
+`{ "Fn::FindInMap": [ "MapName", "TopLevelKey", "SecondLevelKey", { "DefaultValue": "DefaultValue" } ] }`, and the mapping will be rendered.
+Note that the `AWS::LanguageExtentions` transform is added to enable the default value functionality.
+
+For example, the following code will again not produce anything in the "Mappings" section. The
+call to `findInMap` will be able to resolve the value during synthesis and simply return
+`'Region not found'`.
+
+```ts
+const regionTable = new CfnMapping(this, 'RegionTable', {
+  mapping: {
+    'us-east-1': {
+      regionName: 'US East (N. Virginia)',
+    },
+    'us-east-2': {
+      regionName: 'US East (Ohio)',
+    },
+  },
+  lazy: true,
+});
+
+regionTable.findInMap('us-west-1', 'regionName', 'Region not found');
+```
+
 [cfn-mappings]: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/mappings-section-structure.html
 
 ### Dynamic References
@@ -1102,7 +1259,7 @@ The `CfnResource` class allows emitting arbitrary entries in the
 new CfnResource(this, 'ResourceId', {
   type: 'AWS::S3::Bucket',
   properties: {
-    BucketName: 'bucket-name'
+    BucketName: 'amzn-s3-demo-bucket'
   },
 });
 ```
@@ -1149,6 +1306,13 @@ const stack = new Stack(app, 'StackName', {
 });
 ```
 
+You can also set termination protection with the setter after you've instantiated the stack.
+
+```ts
+const stack = new Stack(app, 'StackName', {});
+stack.terminationProtection = true;
+```
+
 By default, termination protection is disabled.
 
 ### Description
@@ -1160,6 +1324,27 @@ const stack = new Stack(app, 'StackName', {
   description: 'This is a description.',
 });
 ```
+
+### Receiving CloudFormation Stack Events
+
+You can add one or more SNS Topic ARNs to any Stack:
+
+```ts
+const stack = new Stack(app, 'StackName', {
+  notificationArns: ['arn:aws:sns:us-east-1:23456789012:Topic'],
+});
+```
+
+Stack events will be sent to any SNS Topics in this list. These ARNs are added to those specified using
+the `--notification-arns` command line option.
+
+Note that in order to do delete notification ARNs entirely, you must pass an empty array ([]) instead of omitting it.
+If you omit the property, no action on existing ARNs will take place.
+
+> [!NOTICE]
+> Adding the `notificationArns` property (or using the `--notification-arns` CLI options) will **override**
+> any existing ARNs configured on the stack. If you have an external system managing notification ARNs,
+> either migrate to use this mechanism, or avoid specfying notification ARNs with the CDK.
 
 ### CfnJson
 
@@ -1209,16 +1394,16 @@ Set the context key `@aws-cdk/core:stackResourceLimit` with the proper value, be
 
 ### Template Indentation
 
-The AWS CloudFormation templates generated by CDK include indentation by default. 
-Indentation makes the templates more readable, but also increases their size, 
+The AWS CloudFormation templates generated by CDK include indentation by default.
+Indentation makes the templates more readable, but also increases their size,
 and CloudFormation templates cannot exceed 1MB.
 
 It's possible to reduce the size of your templates by suppressing indentation.
 
 To do this for all templates, set the context key `@aws-cdk/core:suppressTemplateIndentation` to `true`.
 
-To do this for a specific stack, add a `suppressTemplateIndentation: true` property to the 
-stack's `StackProps` parameter. You can also set this property to `false` to override 
+To do this for a specific stack, add a `suppressTemplateIndentation: true` property to the
+stack's `StackProps` parameter. You can also set this property to `false` to override
 the context key setting.
 
 ## App Context
@@ -1298,8 +1483,6 @@ to all roles within a specific construct scope. The most common use case would
 be to apply a permissions boundary at the `Stage` level.
 
 ```ts
-declare const app: App;
-
 const prodStage = new Stage(app, 'ProdStage', {
   permissionsBoundary: PermissionsBoundary.fromName('cdk-${Qualifier}-PermissionsBoundary'),
 });
@@ -1331,11 +1514,11 @@ will be printed to the console or to a file (see below).
 To use one or more validation plugins in your application, use the
 `policyValidationBeta1` property of `Stage`:
 
-```ts
+```ts fixture=validation-plugin
 // globally for the entire app (an app is a stage)
 const app = new App({
   policyValidationBeta1: [
-    // These hypothetical classes implement IValidationPlugin:
+    // These hypothetical classes implement IPolicyValidationPluginBeta1:
     new ThirdPartyPluginX(),
     new ThirdPartyPluginY(),
   ],
@@ -1343,7 +1526,9 @@ const app = new App({
 
 // only apply to a particular stage
 const prodStage = new Stage(app, 'ProdStage', {
-  policyValidationBeta1: [...],
+  policyValidationBeta1: [
+    new ThirdPartyPluginX(),
+  ],
 });
 ```
 
@@ -1380,35 +1565,39 @@ the standard output.
 ### For plugin authors
 
 The communication protocol between the CDK core module and your policy tool is
-defined by the `IValidationPluginBeta1` interface. To create a new plugin you must
+defined by the `IPolicyValidationPluginBeta1` interface. To create a new plugin you must
 write a class that implements this interface. There are two things you need to
 implement: the plugin name (by overriding the `name` property), and the
 `validate()` method.
 
-The framework will call `validate()`, passing an `IValidationContextBeta1` object.
+The framework will call `validate()`, passing an `IPolicyValidationContextBeta1` object.
 The location of the templates to be validated is given by `templatePaths`. The
-plugin should return an instance of `ValidationPluginReportBeta1`. This object
+plugin should return an instance of `PolicyValidationPluginReportBeta1`. This object
 represents the report that the user wil receive at the end of the synthesis.
 
-```ts
-validate(context: ValidationContextBeta1): ValidationReportBeta1 {
-  // First read the templates using context.templatePaths...
+```ts fixture=validation-plugin
+class MyPlugin implements IPolicyValidationPluginBeta1 {
+  public readonly name = 'MyPlugin';
 
-  // ...then perform the validation, and then compose and return the report.
-  // Using hard-coded values here for better clarity:
-  return {
-    success: false,
-    violations: [{
-      ruleName: 'CKV_AWS_117',
-      recommendation: 'Ensure that AWS Lambda function is configured inside a VPC',
-      fix: 'https://docs.bridgecrew.io/docs/ensure-that-aws-lambda-function-is-configured-inside-a-vpc-1',
-      violatingResources: [{
-        resourceName: 'MyFunction3BAA72D1',
-        templatePath: '/home/johndoe/myapp/cdk.out/MyService.template.json',
-        locations: 'Properties/VpcConfig',
+  public validate(context: IPolicyValidationContextBeta1): PolicyValidationPluginReportBeta1 {
+    // First read the templates using context.templatePaths...
+
+    // ...then perform the validation, and then compose and return the report.
+    // Using hard-coded values here for better clarity:
+    return {
+      success: false,
+      violations: [{
+        ruleName: 'CKV_AWS_117',
+        description: 'Ensure that AWS Lambda function is configured inside a VPC',
+        fix: 'https://docs.bridgecrew.io/docs/ensure-that-aws-lambda-function-is-configured-inside-a-vpc-1',
+        violatingResources: [{
+          resourceLogicalId: 'MyFunction3BAA72D1',
+          templatePath: '/home/johndoe/myapp/cdk.out/MyService.template.json',
+          locations: ['Properties/VpcConfig'],
+        }],
       }],
-    }],
-  };
+    };
+  }
 }
 ```
 
@@ -1427,5 +1616,183 @@ part of the installation of your package. With `npm`, for example, you can run
 add it to the `postinstall`
 [script](https://docs.npmjs.com/cli/v9/using-npm/scripts) in the `package.json`
 file.
+
+## Annotations
+
+Construct authors can add annotations to constructs to report at three different
+levels: `ERROR`, `WARN`, `INFO`.
+
+Typically warnings are added for things that are important for the user to be
+aware of, but will not cause deployment errors in all cases. Some common
+scenarios are (non-exhaustive list):
+
+- Warn when the user needs to take a manual action, e.g. IAM policy should be
+  added to an referenced resource.
+- Warn if the user configuration might not follow best practices (but is still
+  valid)
+- Warn if the user is using a deprecated API
+
+## Aspects
+
+[Aspects](https://docs.aws.amazon.com/cdk/v2/guide/aspects.html) is a feature in CDK that allows you to apply operations or transformations across all
+constructs in a construct tree. Common use cases include tagging resources, enforcing encryption on S3 Buckets, or applying specific security or
+compliance rules to all resources in a stack.
+
+Conceptually, there are two types of Aspects:
+
+- **Read-only aspects** scan the construct tree but do not make changes to the tree. Common use cases of read-only aspects include performing validations
+(for example, enforcing that all S3 Buckets have versioning enabled) and logging (for example, collecting information about all deployed resources for
+audits or compliance).
+- **Mutating aspects** either (1.) add new nodes or (2.) mutate existing nodes of the tree in-place. One commonly used mutating Aspect is adding Tags to
+resources. An example of an Aspect that adds a node is one that automatically adds a security group to every EC2 instance in the construct tree if
+no default is specified.
+
+Here is a simple example of creating and applying an Aspect on a Stack to enable versioning on all S3 Buckets:
+
+```ts
+import { IAspect, IConstruct, Tags, Stack } from 'aws-cdk-lib';
+
+class EnableBucketVersioning implements IAspect {
+  visit(node: IConstruct) {
+    if (node instanceof CfnBucket) {
+      node.versioningConfiguration = {
+        status: 'Enabled'
+      };
+    }
+  }
+}
+
+const app = new App();
+const stack = new MyStack(app, 'MyStack');
+
+// Apply the aspect to enable versioning on all S3 Buckets
+Aspects.of(stack).add(new EnableBucketVersioning());
+```
+
+### Aspect Stabilization
+
+The modern behavior is that Aspects automatically run on newly added nodes to the construct tree. This is controlled by the
+flag `@aws-cdk/core:aspectStabilization`, which is default for new projects (since version 2.172.0).
+
+The old behavior of Aspects (without stabilization) was that Aspect invocation runs once on the entire construct
+tree. This meant that nested Aspects (Aspects that create new Aspects) are not invoked and nodes created by Aspects at a higher level of the construct tree are not visited.
+
+To enable the stabilization behavior for older versions, use this feature by putting the following into your `cdk.context.json`:
+
+```json
+{
+  "@aws-cdk/core:aspectStabilization": true
+}
+```
+
+### Aspect Priorities
+
+Users can specify the order in which Aspects are applied on a construct by using the optional priority parameter when applying an Aspect. Priority
+values must be non-negative integers, where a higher number means the Aspect will be applied later, and a lower number means it will be applied sooner.
+
+By default, newly created nodes always inherit aspects. Priorities are mainly for ordering between mutating aspects on the construct tree.
+
+CDK provides standard priority values for mutating and readonly aspects to help ensure consistency across different construct libraries:
+
+```ts
+/**
+ * Default Priority values for Aspects.
+ */
+export class AspectPriority {
+  /**
+   * Suggested priority for Aspects that mutate the construct tree.
+   */
+  static readonly MUTATING: number = 200;
+
+  /**
+   * Suggested priority for Aspects that only read the construct tree.
+   */
+  static readonly READONLY: number = 1000;
+
+  /**
+   * Default priority for Aspects that are applied without a priority.
+   */
+  static readonly DEFAULT: number = 500;
+}
+```
+
+If no priority is provided, the default value will be 500. This ensures that aspects without a specified priority run after mutating aspects but before
+any readonly aspects.
+
+Correctly applying Aspects with priority values ensures that mutating aspects (such as adding tags or resources) run before validation aspects. This allows users to avoid misconfigurations and ensure that the final
+construct tree is fully validated before being synthesized.
+
+### Applying Aspects with Priority
+
+```ts
+import { Aspects, Stack, IAspect, Tags } from 'aws-cdk-lib';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
+
+class MyAspect implements IAspect {
+  visit(node: IConstruct) {
+    // Modifies a resource in some way
+  }
+}
+
+class ValidationAspect implements IAspect {
+  visit(node: IConstruct) {
+    // Perform some readonly validation on the cosntruct tree
+  }
+}
+
+const stack = new Stack();
+
+Aspects.of(stack).add(new MyAspect(), { priority: AspectPriority.MUTATING } );  // Run first (mutating aspects)
+Aspects.of(stack).add(new ValidationAspect(), { priority: AspectPriority.READONLY } );  // Run later (readonly aspects)
+```
+
+### Inspecting applied aspects and changing priorities
+
+We also give customers the ability to view all of their applied aspects and override the priority on these aspects.
+The `AspectApplication` class represents an Aspect that is applied to a node of the construct tree with a priority.
+
+Users can access AspectApplications on a node by calling `applied` from the Aspects class as follows:
+
+```ts
+const app = new App();
+const stack = new MyStack(app, 'MyStack');
+
+Aspects.of(stack).add(new MyAspect());
+
+let aspectApplications: AspectApplication[] = Aspects.of(root).applied;
+
+for (const aspectApplication of aspectApplications) {
+  // The aspect we are applying
+  console.log(aspectApplication.aspect);
+  // The construct we are applying the aspect to
+  console.log(aspectApplication.construct);
+  // The priority it was applied with
+  console.log(aspectApplication.priority);
+
+  // Change the priority
+  aspectApplication.priority = 700;
+}
+```
+
+### Acknowledging Warnings
+
+If you would like to run with `--strict` mode enabled (warnings will throw
+errors) it is possible to `acknowledge` warnings to make the warning go away.
+
+For example, if > 10 IAM managed policies are added to an IAM Group, a warning
+will be created:
+
+```text
+IAM:Group:MaxPoliciesExceeded: You added 11 to IAM Group my-group. The maximum number of managed policies attached to an IAM group is 10.
+```
+
+If you have requested a [quota increase](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_iam-quotas.html#reference_iam-quotas-entities)
+you may have the ability to add > 10 managed policies which means that this
+warning does not apply to you. You can acknowledge this by `acknowledging` the
+warning by the `id`.
+
+```ts
+Annotations.of(this).acknowledgeWarning('IAM:Group:MaxPoliciesExceeded', 'Account has quota increased to 20');
+```
 
 <!--END CORE DOCUMENTATION-->

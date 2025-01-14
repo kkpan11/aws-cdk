@@ -1,9 +1,8 @@
 import * as path from 'node:path';
-import { ModuleMap, ModuleMapEntry } from '@aws-cdk/cfn2ts';
 import { createLibraryReadme } from '@aws-cdk/pkglint';
 import * as fs from 'fs-extra';
-import awsEventsTargets from './aws-events-targets';
 import cloudformationInclude from './cloudformation-include';
+import { ModuleMap, ModuleMapEntry } from '../codegen';
 
 export default async function submodulesGen(modules: ModuleMap, outPath: string) {
   for (const submodule of Object.values(modules)) {
@@ -16,7 +15,6 @@ export default async function submodulesGen(modules: ModuleMap, outPath: string)
   }
 
   // Do specific code gen for certain submodules
-  await awsEventsTargets(modules, outPath);
   await cloudformationInclude(modules, outPath);
 }
 
@@ -55,7 +53,7 @@ async function ensureSubmodule(submodule: ModuleMapEntry, modulePath: string) {
   if (!fs.existsSync(path.join(modulePath, '.jsiirc.json'))) {
     if (!submodule.definition) {
       throw new Error(
-        `Cannot infer path or namespace for submodule named "${name}". Manually create ${modulePath}/.jsiirc.json file.`,
+        `Cannot infer path or namespace for submodule named "${submodule.name}". Manually create ${modulePath}/.jsiirc.json file.`,
       );
     }
 

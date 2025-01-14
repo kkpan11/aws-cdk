@@ -2,7 +2,7 @@
 import { exec as runCli } from 'aws-cdk/lib';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { createAssembly, prepareContext, prepareDefaultEnvironment } from 'aws-cdk/lib/api/cxapp/exec';
-import { SharedOptions, DeployOptions, DestroyOptions, SynthOptions, ListOptions, StackActivityProgress } from './commands';
+import { SharedOptions, DeployOptions, DestroyOptions, BootstrapOptions, SynthOptions, ListOptions, StackActivityProgress, HotswapMode } from './commands';
 
 /**
  * AWS CDK CLI operations
@@ -17,6 +17,11 @@ export interface IAwsCdkCli {
    * cdk synth
    */
   synth(options?: SynthOptions): Promise<void>;
+
+  /**
+   * cdk bootstrap
+   */
+  bootstrap(options?: BootstrapOptions): Promise<void>;
 
   /**
    * cdk deploy
@@ -41,7 +46,7 @@ export interface CdkAppDirectoryProps {
    *
    * @default - read from cdk.json
    */
-  readonly app?: string
+  readonly app?: string;
 
   /**
    * Emits the synthesized cloud assembly into a directory
@@ -82,7 +87,7 @@ export interface ICloudAssemblyDirectoryProducer {
    * }
    * ```
    */
-  produce(context: Record<string, any>): Promise<string>
+  produce(context: Record<string, any>): Promise<string>;
 }
 
 /**
@@ -164,6 +169,36 @@ export class AwsCdkCli implements IAwsCdkCli {
   }
 
   /**
+   * cdk bootstrap
+   */
+  public async bootstrap(options: BootstrapOptions = {}) {
+    const envs = options.environments ?? [];
+    const bootstrapCommandArgs: string[] = [
+      ...envs,
+      ...renderBooleanArg('force', options.force),
+      ...renderBooleanArg('show-template', options.showTemplate),
+      ...renderBooleanArg('terminationProtection', options.terminationProtection),
+      ...renderBooleanArg('example-permissions-boundary', options.examplePermissionsBoundary),
+      ...renderBooleanArg('terminationProtection', options.usePreviousParameters),
+      ...renderBooleanArg('execute', options.execute),
+      ...options.toolkitStackName ? ['--toolkit-stack-name', options.toolkitStackName] : [],
+      ...options.bootstrapBucketName ? ['--bootstrap-bucket-name', options.bootstrapBucketName] : [],
+      ...options.cfnExecutionPolicy ? ['--cloudformation-execution-policies', options.cfnExecutionPolicy] : [],
+      ...options.template ? ['--template', options.template] : [],
+      ...options.customPermissionsBoundary ? ['--custom-permissions-boundary', options.customPermissionsBoundary] : [],
+      ...options.qualifier ? ['--qualifier', options.qualifier] : [],
+      ...options.trust ? ['--trust', options.trust] : [],
+      ...options.trustForLookup ? ['--trust-for-lookup', options.trustForLookup] : [],
+      ...options.bootstrapKmsKeyId ? ['--bootstrap-kms-key-id', options.bootstrapKmsKeyId] : [],
+      ...options.bootstrapCustomerKey ? ['--bootstrap-customer-key', options.bootstrapCustomerKey] : [],
+      ...options.publicAccessBlockConfiguration ? ['--public-access-block-configuration', options.publicAccessBlockConfiguration] : [],
+      ...this.createDefaultArguments(options),
+    ];
+
+    await this.exec(['bootstrap', ...bootstrapCommandArgs]);
+  }
+
+  /**
    * cdk deploy
    */
   public async deploy(options: DeployOptions = {}) {
@@ -178,6 +213,7 @@ export class AwsCdkCli implements IAwsCdkCli {
       ...renderBooleanArg('asset-parallelism', options.assetParallelism),
       ...renderBooleanArg('asset-prebuild', options.assetPrebuild),
       ...renderNumberArg('concurrency', options.concurrency),
+      ...renderHotswapArg(options.hotswap),
       ...options.reuseAssets ? renderArrayArg('--reuse-assets', options.reuseAssets) : [],
       ...options.notificationArns ? renderArrayArg('--notification-arns', options.notificationArns) : [],
       ...options.parameters ? renderMapArrayArg('--parameters', options.parameters) : [],
@@ -231,6 +267,17 @@ export class AwsCdkCli implements IAwsCdkCli {
       ...options.roleArn ? ['--role-arn', options.roleArn] : [],
       ...stacks,
     ];
+  }
+}
+
+function renderHotswapArg(hotswapMode: HotswapMode | undefined): string[] {
+  switch (hotswapMode) {
+    case HotswapMode.FALL_BACK:
+      return ['--hotswap-fallback'];
+    case HotswapMode.HOTSWAP_ONLY:
+      return ['--hotswap'];
+    default:
+      return [];
   }
 }
 

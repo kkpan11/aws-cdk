@@ -1,11 +1,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { Construct } from 'constructs';
+import { Template } from '../../../assertions';
 import * as cxapi from '../../../cx-api';
-import { builtInCustomResourceProviderNodeRuntime, App, AssetStaging, CustomResourceProvider, CustomResourceProviderRuntime, DockerImageAssetLocation, DockerImageAssetSource, Duration, FileAssetLocation, FileAssetSource, ISynthesisSession, Size, Stack, CfnResource } from '../../lib';
+import { App, AssetStaging, CustomResourceProvider, DockerImageAssetLocation, DockerImageAssetSource, Duration, FileAssetLocation, FileAssetSource, ISynthesisSession, Size, Stack, CfnResource, determineLatestNodeRuntimeName, CustomResourceProviderBase, CustomResourceProviderBaseProps, CustomResourceProviderOptions, CustomResourceProviderRuntime } from '../../lib';
 import { CUSTOMIZE_ROLES_CONTEXT_KEY } from '../../lib/helpers-internal';
 import { toCloudFormation } from '../util';
 
 const TEST_HANDLER = `${__dirname}/mock-provider`;
+// current node runtime available in ALL AWS regions
+const DEFAULT_PROVIDER_RUNTIME = CustomResourceProviderRuntime.NODEJS_18_X;
 
 describe('custom resource provider', () => {
   describe('customize roles', () => {
@@ -26,7 +30,7 @@ describe('custom resource provider', () => {
       // WHEN
       const cr = CustomResourceProvider.getOrCreateProvider(stack, 'Custom:MyResourceType', {
         codeDirectory: TEST_HANDLER,
-        runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+        runtime: DEFAULT_PROVIDER_RUNTIME,
       });
       cr.addToRolePolicy({
         Action: 's3:GetBucket',
@@ -103,7 +107,7 @@ describe('custom resource provider', () => {
       // WHEN
       const cr = CustomResourceProvider.getOrCreateProvider(stack, 'Custom:MyResourceType', {
         codeDirectory: TEST_HANDLER,
-        runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+        runtime: DEFAULT_PROVIDER_RUNTIME,
       });
       cr.addToRolePolicy({
         Action: 's3:GetBucket',
@@ -164,7 +168,7 @@ describe('custom resource provider', () => {
     // WHEN
     CustomResourceProvider.getOrCreate(stack, 'Custom:MyResourceType', {
       codeDirectory: TEST_HANDLER,
-      runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+      runtime: DEFAULT_PROVIDER_RUNTIME,
     });
 
     // THEN
@@ -179,8 +183,6 @@ describe('custom resource provider', () => {
     const bucketParam = paramNames[0];
     const keyParam = paramNames[1];
     const hashParam = paramNames[2];
-
-    expect(fs.existsSync(path.join(sourcePath, '__entrypoint__.js'))).toEqual(true);
 
     expect(cfn).toEqual({
       Resources: {
@@ -250,7 +252,7 @@ describe('custom resource provider', () => {
                 'Arn',
               ],
             },
-            Runtime: 'nodejs14.x',
+            Runtime: DEFAULT_PROVIDER_RUNTIME,
           },
           DependsOn: [
             'CustomMyResourceTypeCustomResourceProviderRoleBD5E655F',
@@ -284,7 +286,7 @@ describe('custom resource provider', () => {
     // WHEN
     CustomResourceProvider.getOrCreate(stack, 'Custom:MyResourceType', {
       codeDirectory: TEST_HANDLER,
-      runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+      runtime: DEFAULT_PROVIDER_RUNTIME,
     });
 
     // Then
@@ -326,7 +328,7 @@ describe('custom resource provider', () => {
     // WHEN
     CustomResourceProvider.getOrCreate(stack, 'Custom:MyResourceType', {
       codeDirectory: TEST_HANDLER,
-      runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+      runtime: DEFAULT_PROVIDER_RUNTIME,
     });
 
     // THEN -- no exception
@@ -343,7 +345,7 @@ describe('custom resource provider', () => {
     // WHEN
     CustomResourceProvider.getOrCreate(stack, 'Custom:MyResourceType', {
       codeDirectory: TEST_HANDLER,
-      runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+      runtime: DEFAULT_PROVIDER_RUNTIME,
       policyStatements: [
         { statement1: 123 },
         { statement2: { foo: 111 } },
@@ -370,7 +372,7 @@ describe('custom resource provider', () => {
     // WHEN
     const provider = CustomResourceProvider.getOrCreateProvider(stack, 'Custom:MyResourceType', {
       codeDirectory: TEST_HANDLER,
-      runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+      runtime: DEFAULT_PROVIDER_RUNTIME,
       policyStatements: [
         { statement1: 123 },
         { statement2: { foo: 111 } },
@@ -397,7 +399,7 @@ describe('custom resource provider', () => {
     // WHEN
     CustomResourceProvider.getOrCreate(stack, 'Custom:MyResourceType', {
       codeDirectory: TEST_HANDLER,
-      runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+      runtime: DEFAULT_PROVIDER_RUNTIME,
       memorySize: Size.gibibytes(2),
       timeout: Duration.minutes(5),
       description: 'veni vidi vici',
@@ -419,7 +421,7 @@ describe('custom resource provider', () => {
     // WHEN
     CustomResourceProvider.getOrCreate(stack, 'Custom:MyResourceType', {
       codeDirectory: TEST_HANDLER,
-      runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+      runtime: DEFAULT_PROVIDER_RUNTIME,
       environment: {
         B: 'b',
         A: 'a',
@@ -445,7 +447,7 @@ describe('custom resource provider', () => {
     // WHEN
     const cr = CustomResourceProvider.getOrCreateProvider(stack, 'Custom:MyResourceType', {
       codeDirectory: TEST_HANDLER,
-      runtime: CustomResourceProviderRuntime.NODEJS_14_X,
+      runtime: DEFAULT_PROVIDER_RUNTIME,
     });
 
     // THEN
@@ -457,22 +459,232 @@ describe('custom resource provider', () => {
     });
 
   });
-  describe('builtInCustomResourceProviderNodeRuntime', () => {
-    test('returns node16 for commercial region', () => {
-      const app = new App();
-      const stack = new Stack(app, 'MyStack', { env: { region: 'us-east-1' } });
+});
 
-      const rt = builtInCustomResourceProviderNodeRuntime(stack);
-      expect(rt).toEqual(CustomResourceProviderRuntime.NODEJS_16_X);
+describe('latest Lambda node runtime', () => {
+  test('with region agnostic stack', () => {
+    // GIVEN
+    const stack = new Stack();
+
+    // WHEN
+    TestCustomResourceProvider.getOrCreateProvider(stack, 'TestCrProvider');
+
+    // THEN
+    Template.fromStack(stack).hasMapping('LatestNodeRuntimeMap', {
+      'af-south-1': {
+        value: 'nodejs20.x',
+      },
+      'ap-east-1': {
+        value: 'nodejs20.x',
+      },
+      'ap-northeast-1': {
+        value: 'nodejs20.x',
+      },
+      'ap-northeast-2': {
+        value: 'nodejs20.x',
+      },
+      'ap-northeast-3': {
+        value: 'nodejs20.x',
+      },
+      'ap-south-1': {
+        value: 'nodejs20.x',
+      },
+      'ap-south-2': {
+        value: 'nodejs20.x',
+      },
+      'ap-southeast-1': {
+        value: 'nodejs20.x',
+      },
+      'ap-southeast-2': {
+        value: 'nodejs20.x',
+      },
+      'ap-southeast-3': {
+        value: 'nodejs20.x',
+      },
+      'ap-southeast-4': {
+        value: 'nodejs20.x',
+      },
+      'ca-central-1': {
+        value: 'nodejs20.x',
+      },
+      'cn-north-1': {
+        value: 'nodejs18.x',
+      },
+      'cn-northwest-1': {
+        value: 'nodejs18.x',
+      },
+      'eu-central-1': {
+        value: 'nodejs20.x',
+      },
+      'eu-central-2': {
+        value: 'nodejs20.x',
+      },
+      'eu-north-1': {
+        value: 'nodejs20.x',
+      },
+      'eu-south-1': {
+        value: 'nodejs20.x',
+      },
+      'eu-south-2': {
+        value: 'nodejs20.x',
+      },
+      'eu-west-1': {
+        value: 'nodejs20.x',
+      },
+      'eu-west-2': {
+        value: 'nodejs20.x',
+      },
+      'eu-west-3': {
+        value: 'nodejs20.x',
+      },
+      'il-central-1': {
+        value: 'nodejs20.x',
+      },
+      'me-central-1': {
+        value: 'nodejs20.x',
+      },
+      'me-south-1': {
+        value: 'nodejs20.x',
+      },
+      'sa-east-1': {
+        value: 'nodejs20.x',
+      },
+      'us-east-1': {
+        value: 'nodejs20.x',
+      },
+      'us-east-2': {
+        value: 'nodejs20.x',
+      },
+      'us-gov-east-1': {
+        value: 'nodejs18.x',
+      },
+      'us-gov-west-1': {
+        value: 'nodejs18.x',
+      },
+      'us-iso-east-1': {
+        value: 'nodejs18.x',
+      },
+      'us-iso-west-1': {
+        value: 'nodejs18.x',
+      },
+      'us-isob-east-1': {
+        value: 'nodejs18.x',
+      },
+      'us-west-1': {
+        value: 'nodejs20.x',
+      },
+      'us-west-2': {
+        value: 'nodejs20.x',
+      },
     });
+    Template.fromStack(stack).hasResource('AWS::Lambda::Function', {
+      Properties: {
+        Runtime: {
+          'Fn::FindInMap': [
+            'LatestNodeRuntimeMap',
+            {
+              Ref: 'AWS::Region',
+            },
+            'value',
+          ],
+        },
+      },
+    });
+  });
 
-    test('returns node14 for iso region', () => {
-      const app = new App();
-      const stack = new Stack(app, 'MyStack', { env: { region: 'us-iso-east-1' } });
+  test('with stack in commercial region', () => {
+    // GIVEN
+    const stack = new Stack(undefined, 'Stack', { env: { region: 'us-east-1' } });
 
-      const rt = builtInCustomResourceProviderNodeRuntime(stack);
-      expect(rt).toEqual(CustomResourceProviderRuntime.NODEJS_14_X);
+    // WHEN
+    TestCustomResourceProvider.getOrCreateProvider(stack, 'TestCrProvider');
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::Lambda::Function', {
+      Properties: {
+        Runtime: 'nodejs20.x',
+      },
+    });
+  });
+
+  test('with stack in china region', () => {
+    // GIVEN
+    const stack = new Stack(undefined, 'Stack', { env: { region: 'cn-north-1' } });
+
+    // WHEN
+    TestCustomResourceProvider.getOrCreateProvider(stack, 'TestCrProvider');
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::Lambda::Function', {
+      Properties: {
+        Runtime: 'nodejs18.x',
+      },
+    });
+  });
+
+  test('with stack in govcloud region', () => {
+    // GIVEN
+    const stack = new Stack(undefined, 'Stack', { env: { region: 'us-gov-east-1' } });
+
+    // WHEN
+    TestCustomResourceProvider.getOrCreateProvider(stack, 'TestCrProvider');
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::Lambda::Function', {
+      Properties: {
+        Runtime: 'nodejs18.x',
+      },
+    });
+  });
+
+  test('with stack in adc region', () => {
+    // GIVEN
+    const stack = new Stack(undefined, 'Stack', { env: { region: 'us-iso-east-1' } });
+
+    // WHEN
+    TestCustomResourceProvider.getOrCreateProvider(stack, 'TestCrProvider');
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::Lambda::Function', {
+      Properties: {
+        Runtime: 'nodejs18.x',
+      },
+    });
+  });
+
+  test('with stack in unsupported region', () => {
+    // GIVEN
+    const stack = new Stack(undefined, 'Stack', { env: { region: 'us-fake-1' } });
+
+    // WHEN
+    TestCustomResourceProvider.getOrCreateProvider(stack, 'TestCrProvider');
+
+    // THEN
+    Template.fromStack(stack).hasResource('AWS::Lambda::Function', {
+      Properties: {
+        Runtime: 'nodejs18.x',
+      },
     });
   });
 });
 
+/**
+ * A class used to simulate and test a code generated custom resource provider.
+ */
+class TestCustomResourceProvider extends CustomResourceProviderBase {
+  public static getOrCreateProvider(scope: Construct, uniqueid: string, props?: CustomResourceProviderOptions) {
+    const id = `${uniqueid}CustomResourceProvider`;
+    const stack = Stack.of(scope);
+    const provider = stack.node.tryFindChild(id) as TestCustomResourceProvider
+      ?? new TestCustomResourceProvider(stack, id, props);
+    return provider;
+  }
+
+  private constructor(scope: Construct, id: string, props?: CustomResourceProviderOptions) {
+    super(scope, id, {
+      ...props,
+      runtimeName: determineLatestNodeRuntimeName(scope),
+      codeDirectory: TEST_HANDLER,
+    });
+  }
+}

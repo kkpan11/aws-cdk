@@ -99,6 +99,15 @@ export interface CommonTaskDefinitionProps {
    * @default - No volumes are passed to the Docker daemon on a container instance.
    */
   readonly volumes?: Volume[];
+
+  /**
+   * Enables fault injection and allows for fault injection requests to be accepted from the task's containers.
+   *
+   * Fault injection only works with tasks using the {@link NetworkMode.AWS_VPC} or {@link NetworkMode.HOST} network modes.
+   *
+   * @default undefined - ECS default setting is false
+   */
+  readonly enableFaultInjection?: boolean;
 }
 
 /**
@@ -193,7 +202,12 @@ export interface TaskDefinitionProps extends CommonTaskDefinitionProps {
   /**
    * The process namespace to use for the containers in the task.
    *
-   * Not supported in Fargate and Windows containers.
+   * Only supported for tasks that are hosted on AWS Fargate if the tasks
+   * are using platform version 1.4.0 or later (Linux). Only the TASK option
+   * is supported for Linux-based Fargate containers. Not supported in Windows
+   * containers. If pidMode is specified for a Fargate task, then
+   * runtimePlatform.operatingSystemFamily must also be specified.  For more
+   * information, see [Task Definition Parameters](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html#task_definition_pidmode).
    *
    * @default - PidMode used by the task is not specified
    */
@@ -219,8 +233,8 @@ export interface TaskDefinitionProps extends CommonTaskDefinitionProps {
 
   /**
    * The operating system that your task definitions are running on.
-   * A runtimePlatform is supported only for tasks using the Fargate launch type.
    *
+   * A runtimePlatform is supported only for tasks using the Fargate launch type.
    *
    * @default - Undefined.
    */
@@ -373,6 +387,17 @@ export class TaskDefinition extends TaskDefinitionBase {
   public readonly ephemeralStorageGiB?: number;
 
   /**
+   * The process namespace to use for the containers in the task.
+   *
+   * Only supported for tasks that are hosted on AWS Fargate if the tasks
+   * are using platform version 1.4.0 or later (Linux). Not supported in
+   * Windows containers. If pidMode is specified for a Fargate task,
+   * then runtimePlatform.operatingSystemFamily must also be specified.  For more
+   * information, see [Task Definition Parameters](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html#task_definition_pidmode).
+   */
+  public readonly pidMode?: PidMode;
+
+  /**
    * The container definitions.
    */
   protected readonly containers = new Array<ContainerDefinition>();
@@ -442,6 +467,11 @@ export class TaskDefinition extends TaskDefinitionBase {
       throw new Error('Cannot specify runtimePlatform in non-Fargate compatible tasks');
     }
 
+    // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fault-injection.html
+    if (props.enableFaultInjection && ![NetworkMode.AWS_VPC, NetworkMode.HOST].includes(this.networkMode)) {
+      throw new Error(`Only AWS_VPC and HOST Network Modes are supported for enabling Fault Injection, got ${this.networkMode} mode.`);
+    }
+
     this._executionRole = props.executionRole;
 
     this.taskRole = props.taskRole || new iam.Role(this, 'TaskRole', {
@@ -453,9 +483,10 @@ export class TaskDefinition extends TaskDefinitionBase {
     }
 
     this.ephemeralStorageGiB = props.ephemeralStorageGiB;
+    this.pidMode = props.pidMode;
 
     // validate the cpu and memory size for the Windows operation system family.
-    if (props.runtimePlatform?.operatingSystemFamily?._operatingSystemFamily.includes('WINDOWS')) {
+    if (props.runtimePlatform?.operatingSystemFamily?.isWindows()) {
       // We know that props.cpu and props.memoryMiB are defined because an error would have been thrown previously if they were not.
       // But, typescript is not able to figure this out, so using the `!` operator here to let the type-checker know they are defined.
       this.checkFargateWindowsBasedTasksSize(props.cpu!, props.memoryMiB!, props.runtimePlatform!);
@@ -485,7 +516,7 @@ export class TaskDefinition extends TaskDefinitionBase {
       cpu: props.cpu,
       memory: props.memoryMiB,
       ipcMode: props.ipcMode,
-      pidMode: props.pidMode,
+      pidMode: this.pidMode,
       inferenceAccelerators: Lazy.any({
         produce: () =>
           !isFargateCompatible(this.compatibility) ? this.renderInferenceAccelerators() : undefined,
@@ -497,6 +528,7 @@ export class TaskDefinition extends TaskDefinitionBase {
         cpuArchitecture: this.runtimePlatform?.cpuArchitecture?._cpuArchitecture,
         operatingSystemFamily: this.runtimePlatform?.operatingSystemFamily?._operatingSystemFamily,
       } : undefined,
+      enableFaultInjection: props.enableFaultInjection,
     });
 
     if (props.placementConstraints) {
@@ -525,6 +557,7 @@ export class TaskDefinition extends TaskDefinitionBase {
       return {
         host: spec.host,
         name: spec.name,
+        configuredAtLaunch: spec.configuredAtLaunch,
         dockerVolumeConfiguration: spec.dockerVolumeConfiguration && {
           autoprovision: spec.dockerVolumeConfiguration.autoprovision,
           driver: spec.dockerVolumeConfiguration.driver,
@@ -547,7 +580,7 @@ export class TaskDefinition extends TaskDefinitionBase {
   private renderInferenceAccelerators(): CfnTaskDefinition.InferenceAcceleratorProperty[] {
     return this._inferenceAccelerators.map(renderInferenceAccelerator);
 
-    function renderInferenceAccelerator(inferenceAccelerator: InferenceAccelerator) : CfnTaskDefinition.InferenceAcceleratorProperty {
+    function renderInferenceAccelerator(inferenceAccelerator: InferenceAccelerator): CfnTaskDefinition.InferenceAcceleratorProperty {
       return {
         deviceName: inferenceAccelerator.deviceName,
         deviceType: inferenceAccelerator.deviceType,
@@ -590,7 +623,11 @@ export class TaskDefinition extends TaskDefinitionBase {
     if (this.networkMode === NetworkMode.BRIDGE || this.networkMode === NetworkMode.NAT) {
       return EPHEMERAL_PORT_RANGE;
     }
-    return portMapping.protocol === Protocol.UDP ? ec2.Port.udp(portMapping.containerPort) : ec2.Port.tcp(portMapping.containerPort);
+    if (portMapping.containerPort !== ContainerDefinition.CONTAINER_PORT_USE_RANGE) {
+      return portMapping.protocol === Protocol.UDP ? ec2.Port.udp(portMapping.containerPort) : ec2.Port.tcp(portMapping.containerPort);
+    }
+    const [startPort, endPort] = portMapping.containerPortRange!.split('-', 2).map(v => Number(v));
+    return portMapping.protocol === Protocol.UDP ? ec2.Port.udpRange(startPort, endPort) : ec2.Port.tcpRange(startPort, endPort);
   }
 
   /**
@@ -649,7 +686,19 @@ export class TaskDefinition extends TaskDefinitionBase {
    * Adds a volume to the task definition.
    */
   public addVolume(volume: Volume) {
+    this.validateVolume(volume);
     this.volumes.push(volume);
+  }
+
+  private validateVolume(volume: Volume): void {
+    if (volume.configuredAtLaunch !== true) {
+      return;
+    }
+
+    // Other volume configurations must not be specified.
+    if (volume.host || volume.dockerVolumeConfiguration || volume.efsVolumeConfiguration) {
+      throw new Error(`Volume Configurations must not be specified for '${volume.name}' when 'configuredAtLaunch' is set to true`);
+    }
   }
 
   /**
@@ -760,7 +809,25 @@ export class TaskDefinition extends TaskDefinitionBase {
         }
       }
     });
+    // Validate if multiple volumes configured with configuredAtLaunch.
+    const runtimeVolumes = this.volumes.filter(vol => vol.configuredAtLaunch);
+    if (runtimeVolumes.length > 1) {
+      const volumeNames = runtimeVolumes.map(vol => vol.name).join(',');
+      ret.push(`More than one volume is configured at launch: [${volumeNames}]`);
+    }
 
+    // Validate that volume with configuredAtLaunch set to true is mounted by at least one container.
+    for (const volume of this.volumes) {
+      if (volume.configuredAtLaunch) {
+        const isVolumeMounted = this.containers.some(container => {
+          return container.mountPoints.some(mp => mp.sourceVolume === volume.name);
+        });
+
+        if (!isVolumeMounted) {
+          ret.push(`Volume '${volume.name}' should be mounted by at least one container when 'configuredAtLaunch' is true`);
+        }
+      }
+    }
     return ret;
   }
 
@@ -832,7 +899,7 @@ export class TaskDefinition extends TaskDefinitionBase {
 
   private checkFargateWindowsBasedTasksSize(cpu: string, memory: string, runtimePlatform: RuntimePlatform) {
     if (Number(cpu) === 1024) {
-      if (Number(memory) < 1024 || Number(memory) > 8192 || (Number(memory)% 1024 !== 0)) {
+      if (Number(memory) < 1024 || Number(memory) > 8192 || (Number(memory) % 1024 !== 0)) {
         throw new Error(`If provided cpu is ${cpu}, then memoryMiB must have a min of 1024 and a max of 8192, in 1024 increments. Provided memoryMiB was ${Number(memory)}.`);
       }
     } else if (Number(cpu) === 2048) {
@@ -841,7 +908,7 @@ export class TaskDefinition extends TaskDefinitionBase {
       }
     } else if (Number(cpu) === 4096) {
       if (Number(memory) < 8192 || Number(memory) > 30720 || (Number(memory) % 1024 !== 0)) {
-        throw new Error(`If provided cpu is ${ cpu }, then memoryMiB must have a min of 8192 and a max of 30720, in 1024 increments.Provided memoryMiB was ${ Number(memory) }.`);
+        throw new Error(`If provided cpu is ${cpu}, then memoryMiB must have a min of 8192 and a max of 30720, in 1024 increments.Provided memoryMiB was ${Number(memory)}.`);
       }
     } else {
       throw new Error(`If operatingSystemFamily is ${runtimePlatform.operatingSystemFamily!._operatingSystemFamily}, then cpu must be in 1024 (1 vCPU), 2048 (2 vCPU), or 4096 (4 vCPU). Provided value was: ${cpu}`);
@@ -887,7 +954,7 @@ export enum NetworkMode {
    * This is the only supported network mode for Windows containers. For more information, see
    * [Task Definition Parameters](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html#network_mode).
    */
-  NAT = 'nat'
+  NAT = 'nat',
 }
 
 /**
@@ -975,6 +1042,13 @@ export interface Volume {
   readonly name: string;
 
   /**
+   * Indicates if the volume should be configured at launch.
+   *
+   * @default false
+   */
+  readonly configuredAtLaunch?: boolean;
+
+  /**
    * This property is specified when you are using Docker volumes.
    *
    * Docker volumes are only supported when you are using the EC2 launch type.
@@ -1025,7 +1099,7 @@ export interface LoadBalancerTarget {
   /**
    * The port mapping of the target.
    */
-  readonly portMapping: PortMapping
+  readonly portMapping: PortMapping;
 }
 
 /**
@@ -1072,13 +1146,13 @@ export interface DockerVolumeConfiguration {
    *
    * @default No options
    */
-  readonly driverOpts?: {[key: string]: string};
+  readonly driverOpts?: { [key: string]: string };
   /**
    * Custom metadata to add to your Docker volume.
    *
    * @default No labels
    */
-  readonly labels?: { [key: string]: string; }
+  readonly labels?: { [key: string]: string };
   /**
    * The scope for the Docker volume that determines its lifecycle.
    */
@@ -1164,7 +1238,7 @@ export enum Scope {
   /**
    * Docker volumes that are scoped as shared persist after the task stops.
    */
-  SHARED = 'shared'
+  SHARED = 'shared',
 }
 
 /**
@@ -1189,7 +1263,7 @@ export enum Compatibility {
   /**
    * The task should specify the External launch type.
    */
-  EXTERNAL
+  EXTERNAL,
 }
 
 /**
@@ -1229,4 +1303,34 @@ export function isFargateCompatible(compatibility: Compatibility): boolean {
  */
 export function isExternalCompatible(compatibility: Compatibility): boolean {
   return [Compatibility.EXTERNAL].includes(compatibility);
+}
+
+/**
+ * Represents revision of a task definition, either a specific numbered revision or
+ * the `latest` revision
+ */
+export class TaskDefinitionRevision {
+  /**
+   * The most recent revision of a task
+   */
+  public static readonly LATEST = new TaskDefinitionRevision('latest');
+
+  /**
+   * Specific revision of a task
+   */
+  public static of(revision: number) {
+    if (revision < 1) {
+      throw new Error(`A task definition revision must be 'latest' or a positive number, got ${revision}`);
+    }
+    return new TaskDefinitionRevision(revision.toString());
+  }
+
+  /**
+   * The string representation of this revision
+   */
+  public readonly revision: string;
+
+  private constructor(revision: string) {
+    this.revision = revision;
+  }
 }

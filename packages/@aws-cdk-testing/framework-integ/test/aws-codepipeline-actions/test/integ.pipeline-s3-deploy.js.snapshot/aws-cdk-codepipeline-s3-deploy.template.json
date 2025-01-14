@@ -3,6 +3,7 @@
   "EnvVarEncryptKey1A7CABDB": {
    "Type": "AWS::KMS::Key",
    "Properties": {
+    "Description": "sample key",
     "KeyPolicy": {
      "Statement": [
       {
@@ -30,8 +31,7 @@
       }
      ],
      "Version": "2012-10-17"
-    },
-    "Description": "sample key"
+    }
    },
    "UpdateReplacePolicy": "Retain",
    "DeletionPolicy": "Retain"
@@ -79,7 +79,8 @@
        "Action": [
         "s3:DeleteObject*",
         "s3:GetBucket*",
-        "s3:List*"
+        "s3:List*",
+        "s3:PutBucketPolicy"
        ],
        "Effect": "Allow",
        "Principal": {
@@ -166,7 +167,7 @@
      "S3Bucket": {
       "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
      },
-     "S3Key": "2575608c9455922c199396dd056f7479bb172f5c6068cd093f6d061160f48cee.zip"
+     "S3Key": "44e9c4d7a5d3fd2d677e1a7e416b2b56f6b0104bd5eff9cac5557b4c65a9dc61.zip"
     },
     "Timeout": 900,
     "MemorySize": 128,
@@ -177,7 +178,15 @@
       "Arn"
      ]
     },
-    "Runtime": "nodejs16.x",
+    "Runtime": {
+     "Fn::FindInMap": [
+      "LatestNodeRuntimeMap",
+      {
+       "Ref": "AWS::Region"
+      },
+      "value"
+     ]
+    },
     "Description": {
      "Fn::Join": [
       "",
@@ -220,7 +229,8 @@
        "Action": [
         "s3:DeleteObject*",
         "s3:GetBucket*",
-        "s3:List*"
+        "s3:List*",
+        "s3:PutBucketPolicy"
        ],
        "Effect": "Allow",
        "Principal": {
@@ -303,7 +313,8 @@
        "Action": [
         "s3:DeleteObject*",
         "s3:GetBucket*",
-        "s3:List*"
+        "s3:List*",
+        "s3:PutBucketPolicy"
        ],
        "Effect": "Allow",
        "Principal": {
@@ -474,6 +485,27 @@
   "PipelineC660917D": {
    "Type": "AWS::CodePipeline::Pipeline",
    "Properties": {
+    "ArtifactStore": {
+     "EncryptionKey": {
+      "Id": {
+       "Fn::GetAtt": [
+        "EnvVarEncryptKey1A7CABDB",
+        "Arn"
+       ]
+      },
+      "Type": "KMS"
+     },
+     "Location": {
+      "Ref": "PipelineBucketB967BD35"
+     },
+     "Type": "S3"
+    },
+    "DisableInboundStageTransitions": [
+     {
+      "Reason": "Transition disabled",
+      "StageName": "Disabled"
+     }
+    ],
     "RoleArn": {
      "Fn::GetAtt": [
       "PipelineRoleD68726F7",
@@ -585,27 +617,6 @@
        }
       ],
       "Name": "Disabled"
-     }
-    ],
-    "ArtifactStore": {
-     "EncryptionKey": {
-      "Id": {
-       "Fn::GetAtt": [
-        "EnvVarEncryptKey1A7CABDB",
-        "Arn"
-       ]
-      },
-      "Type": "KMS"
-     },
-     "Location": {
-      "Ref": "PipelineBucketB967BD35"
-     },
-     "Type": "S3"
-    },
-    "DisableInboundStageTransitions": [
-     {
-      "Reason": "Transition disabled",
-      "StageName": "Disabled"
      }
     ]
    },
@@ -1018,105 +1029,126 @@
   }
  },
  "Mappings": {
-  "DefaultCrNodeVersionMap": {
+  "LatestNodeRuntimeMap": {
    "af-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-northeast-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-south-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "ap-southeast-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-4": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-5": {
+    "value": "nodejs20.x"
+   },
+   "ap-southeast-7": {
+    "value": "nodejs20.x"
    },
    "ca-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "ca-west-1": {
+    "value": "nodejs20.x"
    },
    "cn-north-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "cn-northwest-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "eu-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-central-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "eu-isoe-west-1": {
+    "value": "nodejs18.x"
    },
    "eu-north-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-south-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "eu-west-3": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "il-central-1": {
+    "value": "nodejs20.x"
    },
    "me-central-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "me-south-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
+   },
+   "mx-central-1": {
+    "value": "nodejs20.x"
    },
    "sa-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-east-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-gov-east-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "us-gov-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs18.x"
    },
    "us-iso-east-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-iso-west-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-isob-east-1": {
-    "value": "nodejs14.x"
+    "value": "nodejs18.x"
    },
    "us-west-1": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    },
    "us-west-2": {
-    "value": "nodejs16.x"
+    "value": "nodejs20.x"
    }
   }
  },

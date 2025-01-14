@@ -5,7 +5,7 @@ export enum DependenciesFile {
   PIP = 'requirements.txt',
   POETRY = 'poetry.lock',
   PIPENV = 'Pipfile.lock',
-  NONE = ''
+  NONE = '',
 }
 
 export interface PackagingProps {
@@ -27,9 +27,16 @@ export interface PoetryPackagingProps {
    * export with a hash.
    *
    * @see https://github.com/aws/aws-cdk/issues/19232
-   * @default Hashes are NOT included in the exported `requirements.txt` file
+   * @default Hashes are NOT included in the exported `requirements.txt` file.
    */
   readonly poetryIncludeHashes?: boolean;
+
+  /**
+   * Whether to export Poetry dependencies with source repository urls.
+   *
+   * @default URLs are included in the exported `requirements.txt` file.
+   */
+  readonly poetryWithoutUrls?: boolean;
 }
 
 export class Packaging {
@@ -51,7 +58,7 @@ export class Packaging {
       dependenciesFile: DependenciesFile.PIPENV,
       // By default, pipenv creates a virtualenv in `/.local`, so we force it to create one in the package directory.
       // At the end, we remove the virtualenv to avoid creating a duplicate copy in the Lambda package.
-      exportCommand: `PIPENV_VENV_IN_PROJECT=1 pipenv lock -r > ${DependenciesFile.PIP} && rm -rf .venv`,
+      exportCommand: `PIPENV_VENV_IN_PROJECT=1 pipenv requirements > ${DependenciesFile.PIP} && rm -rf .venv`,
     });
   }
 
@@ -63,12 +70,13 @@ export class Packaging {
       dependenciesFile: DependenciesFile.POETRY,
       // Export dependencies with credentials available in the bundling image.
       exportCommand: [
-	    'poetry', 'export',
+        'poetry', 'export',
         ...props?.poetryIncludeHashes ? [] : ['--without-hashes'],
+        ...props?.poetryWithoutUrls ? ['--without-urls'] : [],
         '--with-credentials',
         '--format', DependenciesFile.PIP,
         '--output', DependenciesFile.PIP,
-	  ].join(' '),
+      ].join(' '),
     });
   }
 
@@ -79,11 +87,11 @@ export class Packaging {
     return new Packaging({ dependenciesFile: DependenciesFile.NONE });
   }
 
-  public static fromEntry(entry: string, poetryIncludeHashes?: boolean): Packaging {
+  public static fromEntry(entry: string, poetryIncludeHashes?: boolean, poetryWithoutUrls?: boolean): Packaging {
     if (fs.existsSync(path.join(entry, DependenciesFile.PIPENV))) {
       return this.withPipenv();
     } if (fs.existsSync(path.join(entry, DependenciesFile.POETRY))) {
-      return this.withPoetry({ poetryIncludeHashes });
+      return this.withPoetry({ poetryIncludeHashes, poetryWithoutUrls });
     } else if (fs.existsSync(path.join(entry, DependenciesFile.PIP))) {
       return this.withPip();
     } else {
